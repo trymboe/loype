@@ -29,6 +29,8 @@ export function RouteMap({
     (async () => {
       const maplibre = await import("maplibre-gl");
       if (cancelled || !el.current) return;
+      // bundled MapLibre can't find its worker on its own (copied to /public at build time)
+      maplibre.setWorkerUrl(`/maplibre-gl-worker.mjs?v=${maplibre.getVersion()}`);
       const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6fe3a8";
       const bounds = coords.reduce((b, c) => b.extend(c), new maplibre.LngLatBounds(coords[0], coords[0]));

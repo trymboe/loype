@@ -48,8 +48,23 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
       setError(null);
       try {
         let body: object = first;
+        let transient = 0;
         for (let i = 0; i < 200; i++) {
-          const r = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+          let r: Response | null = null;
+          try {
+            r = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+          } catch {
+            r = null; // offline / connection dropped
+          }
+          // A timed-out or dropped tick loses nothing (state is in the database):
+          // wait and carry on instead of abandoning a long import.
+          if (!r || r.status >= 500) {
+            if (++transient > 3) throw new Error("Garmin sync keeps timing out. It will continue in the background; try again later.");
+            await new Promise((res) => setTimeout(res, 2000 * 2 ** transient));
+            body = { action: "continue" };
+            continue;
+          }
+          transient = 0;
           const j = await r.json().catch(() => ({}));
           await refresh();
           if (!r.ok) throw new Error(j.error ?? `Sync failed (HTTP ${r.status})`);

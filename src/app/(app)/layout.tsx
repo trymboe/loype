@@ -1,4 +1,5 @@
 import { BottomNav, SideNav } from "@/components/nav";
+import { TimezoneSync } from "@/components/timezone-sync";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,6 +9,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <BottomNav />
+      <TimezoneSync />
     </div>
   );
 }

@@ -4,13 +4,15 @@ import { SyncBanner } from "@/components/sync-banner";
 import { ButtonLink, Card, EmptyState, Stat } from "@/components/ui";
 import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
 import { addDaysIso, formatDay, todayIn, weekStart } from "@/lib/dates";
-import { weeklyVolume } from "@/lib/analytics/volume";
+import { isRun, weeklyVolume } from "@/lib/analytics/volume";
+import { userTimezone } from "@/lib/user-tz";
 import { formatDuration, formatKm } from "@/lib/units";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
-  const today = todayIn();
+  const tz = await userTimezone();
+  const today = todayIn(tz);
   const thisWeek = weekStart(today);
   const from = addDaysIso(thisWeek, -7 * 7);
   const [acts, integration] = await Promise.all([activitiesSince(from), getIntegrationStatus()]);
@@ -18,10 +20,11 @@ export default async function TodayPage() {
   const current = weeks[weeks.length - 1];
   const prior = weeks.slice(-5, -1);
   const priorAvg = prior.reduce((s, w) => s + w.distanceM, 0) / Math.max(1, prior.length);
-  const latest = acts[acts.length - 1];
+  const runs = acts.filter((a) => isRun(a.sport));
+  const latest = runs[runs.length - 1];
   const days = Array.from({ length: 7 }, (_, i) => addDaysIso(thisWeek, i));
   const dayDist = new Map<string, number>();
-  for (const a of acts) if (a.local_date >= thisWeek) dayDist.set(a.local_date, (dayDist.get(a.local_date) ?? 0) + (a.distance_m ?? 0));
+  for (const a of runs) if (a.local_date >= thisWeek) dayDist.set(a.local_date, (dayDist.get(a.local_date) ?? 0) + (a.distance_m ?? 0));
   const maxDay = Math.max(1, ...dayDist.values());
   const maxWeek = Math.max(1, ...weeks.map((w) => w.distanceM));
   const connected = integration && integration.status !== "not_configured";
@@ -91,7 +94,7 @@ export default async function TodayPage() {
                 </Link>
               </div>
               <div className="card px-2">
-                <ActivityRow a={latest} />
+                <ActivityRow a={latest} tz={tz} />
               </div>
             </section>
           )}

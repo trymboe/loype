@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchAll } from "@/lib/db/paginate";
 import { createUserClient, getSessionUser } from "@/lib/db/server";
 
 export const dynamic = "force-dynamic";
@@ -9,11 +10,24 @@ export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = await createUserClient();
-  const tables = ["athlete_profile", "activities", "activity_laps", "activity_splits", "workout_feedback", "wellness_daily", "sync_jobs"];
+  // table -> primary key, used for a stable order while paging past the 1000-row limit
+  const tables: Record<string, string> = {
+    athlete_profile: "user_id",
+    activities: "id",
+    activity_laps: "id",
+    activity_splits: "id",
+    workout_feedback: "activity_id",
+    wellness_daily: "id",
+    sync_jobs: "id",
+  };
   const out: Record<string, unknown> = { exportedAt: new Date().toISOString() };
-  for (const t of tables) {
-    const { data } = await db.from(t).select("*").eq("user_id", user.id);
-    out[t] = data ?? [];
+  try {
+    for (const [t, pk] of Object.entries(tables)) {
+      out[t] = await fetchAll((from, to) => db.from(t).select("*").eq("user_id", user.id).order(pk).range(from, to));
+    }
+  } catch {
+    // never hand out a silently incomplete export
+    return NextResponse.json({ error: "Export failed; please try again." }, { status: 500 });
   }
   return new NextResponse(JSON.stringify(out, null, 2), {
     headers: {

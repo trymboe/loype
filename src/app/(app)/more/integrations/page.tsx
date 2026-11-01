@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { Badge, PageHeader } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { getIntegrationStatus } from "@/lib/db/queries";
+import { userTimezone } from "@/lib/user-tz";
 import { GarminKeyForm } from "./garmin-key-form";
 import { SyncPanel } from "./sync-panel";
 
@@ -17,7 +18,7 @@ const STATUS: Record<string, { label: string; tone: "accent" | "warn" | "hr" | "
 };
 
 export default async function IntegrationsPage() {
-  const integration = await getIntegrationStatus();
+  const [integration, tz] = await Promise.all([getIntegrationStatus(), userTimezone()]);
   const db = await createUserClient();
   const { data: jobs } = await db
     .from("sync_jobs")
@@ -44,7 +45,7 @@ export default async function IntegrationsPage() {
           <Badge tone={status.tone}>{status.label}</Badge>
         </div>
         {integration?.last_success_at && (
-          <p className="mb-3 text-xs text-muted">Last successful sync: {new Date(integration.last_success_at).toLocaleString("en-GB")}</p>
+          <p className="mb-3 text-xs text-muted">Last successful sync: {new Date(integration.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
         )}
         {integration?.last_error && integration.status !== "connected" && <p className="mb-3 text-sm text-hr">{integration.last_error}</p>}
         <details open={!connected} className="group">

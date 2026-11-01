@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DerivedActivity } from "../analytics/summarize";
 import type { NormalizedActivity } from "../fit/types";
 import { VERSIONS } from "../analytics/versions";
+import { fetchAll } from "../db/paginate";
 import type { IngestRepo, JobCounters, JobKind, RawSourceRow, SyncJob, WellnessObservation } from "./types";
 
 export const RAW_BUCKET = "raw-activity-files";
@@ -109,9 +110,16 @@ export class SupabaseIngestRepo implements IngestRepo {
   }
 
   async countForJob(jobId: string): Promise<JobCounters> {
-    const rows = check(
-      await this.db.from("raw_activity_sources").select("status").eq("user_id", this.userId).eq("sync_job_id", jobId),
-    ) as { status: string }[];
+    // fetchAll: a long historical import can exceed PostgREST's 1000-row page.
+    const rows = await fetchAll<{ status: string }>((from, to) =>
+      this.db
+        .from("raw_activity_sources")
+        .select("status")
+        .eq("user_id", this.userId)
+        .eq("sync_job_id", jobId)
+        .order("id")
+        .range(from, to),
+    );
     const c = (s: string[]) => rows.filter((r) => s.includes(r.status)).length;
     return {
       discovered: rows.length,

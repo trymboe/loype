@@ -5,7 +5,7 @@ import { formatDuration, formatKm, formatPaceFromSpeed } from "@/lib/units";
 import { RouteThumb } from "./route-thumb";
 import { Badge } from "./ui";
 
-export function ActivityRow({ a }: { a: ActivityListItem }) {
+export function ActivityRow({ a, tz }: { a: ActivityListItem; tz?: string }) {
   return (
     <Link href={`/activities/${a.id}`} className="flex items-center gap-4 rounded-2xl px-2 py-3 transition-colors hover:bg-surface-2">
       <RouteThumb points={a.route_preview} />
@@ -16,7 +16,7 @@ export function ActivityRow({ a }: { a: ActivityListItem }) {
           {!a.usable_for_fitness && <Badge tone="warn">Data issues</Badge>}
         </div>
         <p className="text-xs text-muted">
-          {formatDay(a.local_date)} · {localTime(a.start_time, a.utc_offset_s)}
+          {formatDay(a.local_date)} · {localTime(a.start_time, a.utc_offset_s, tz)}
         </p>
       </div>
       <div className="tabular grid grid-cols-3 gap-4 text-right text-sm">

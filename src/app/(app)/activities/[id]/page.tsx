@@ -8,6 +8,7 @@ import { buildChartSeries } from "@/lib/analytics/series";
 import { getActivityDetail } from "@/lib/db/queries";
 import { formatDay, localTime } from "@/lib/dates";
 import { formatDuration, formatKm, formatPace, formatPaceFromSpeed } from "@/lib/units";
+import { userTimezone } from "@/lib/user-tz";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function ActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const detail = await getActivityDetail(id);
+  const [detail, tz] = await Promise.all([getActivityDetail(id), userTimezone()]);
   if (!detail) notFound();
   const { activity: a, streams, laps, splits, feedback } = detail;
 
@@ -35,7 +36,9 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
   }));
   const flags: { code: string; severity: string; message: string }[] = a.quality?.flags ?? [];
   const prov: Record<string, string> = a.provenance ?? {};
-  const fastestSplit = Math.min(...splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km));
+  const fullPaces: number[] = splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km);
+  // runs shorter than 1 km have no full split: compare against the partial one instead of Infinity
+  const fastestSplit = fullPaces.length ? Math.min(...fullPaces) : (splits[0]?.pace_s_per_km ?? null);
 
   return (
     <>
@@ -44,7 +47,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       </Link>
       <header className="mb-5">
         <p className="label">
-          {formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {localTime(a.start_time, a.utc_offset_s)}
+          {formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {localTime(a.start_time, a.utc_offset_s, tz)}
         </p>
         <h1 className="font-display text-4xl font-bold tracking-tight">{a.name ?? "Run"}</h1>
         <div className="mt-2 flex flex-wrap gap-1.5">

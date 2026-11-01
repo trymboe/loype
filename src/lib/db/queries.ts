@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchAll } from "./paginate";
 import { createUserClient } from "./server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -37,14 +38,16 @@ export async function listActivities(limit = 50, before?: string): Promise<Activ
 
 export async function activitiesSince(isoDate: string): Promise<ActivityListItem[]> {
   const db = await createUserClient();
-  const { data, error } = await db
-    .from("activities")
-    .select(LIST_COLS)
-    .is("duplicate_of", null)
-    .gte("local_date", isoDate)
-    .order("start_time", { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as ActivityListItem[];
+  return fetchAll<ActivityListItem>((from, to) =>
+    db
+      .from("activities")
+      .select(LIST_COLS)
+      .is("duplicate_of", null)
+      .gte("local_date", isoDate)
+      .order("start_time", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to) as any,
+  );
 }
 
 export async function getActivityDetail(id: string) {

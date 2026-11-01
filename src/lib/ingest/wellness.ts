@@ -1,4 +1,4 @@
-import type { GarminPersonalApiClient } from "../integrations/garmin/client";
+import { GarminAuthError, type GarminPersonalApiClient } from "../integrations/garmin/client";
 import type { IngestRepo, WellnessObservation } from "./types";
 
 /**
@@ -97,11 +97,24 @@ export const WELLNESS_SOURCES: {
 export interface WellnessResult {
   stored: number;
   errors: { source: string; message: string }[];
+  /** First date not yet synced when the deadline was reached, else null. */
+  resumeFrom: string | null;
 }
 
-/** Sync wellness for an inclusive date range (YYYY-MM-DD), in ≤28-day chunks. */
-export async function syncWellness(client: GarminPersonalApiClient, repo: IngestRepo, start: string, end: string): Promise<WellnessResult> {
-  const result: WellnessResult = { stored: 0, errors: [] };
+/**
+ * Sync wellness for an inclusive date range (YYYY-MM-DD), in ≤28-day chunks,
+ * oldest first. Stops starting new chunks after `deadline` (epoch ms) and
+ * reports where to resume, so a long backfill spans several invocations
+ * instead of being killed by the function time limit and restarting forever.
+ */
+export async function syncWellness(
+  client: GarminPersonalApiClient,
+  repo: IngestRepo,
+  start: string,
+  end: string,
+  deadline = Infinity,
+): Promise<WellnessResult> {
+  const result: WellnessResult = { stored: 0, errors: [], resumeFrom: null };
   const chunks: [string, string][] = [];
   let cur = new Date(`${start}T00:00:00Z`);
   const last = new Date(`${end}T00:00:00Z`);
@@ -110,15 +123,22 @@ export async function syncWellness(client: GarminPersonalApiClient, repo: Ingest
     chunks.push([cur.toISOString().slice(0, 10), chunkEnd.toISOString().slice(0, 10)]);
     cur = new Date(chunkEnd.getTime() + 86400_000);
   }
-  for (const src of WELLNESS_SOURCES) {
-    for (const [s, e] of chunks) {
+  const failed = new Set<string>();
+  for (const [s, e] of chunks) {
+    if (Date.now() >= deadline) {
+      result.resumeFrom = s;
+      break;
+    }
+    for (const src of WELLNESS_SOURCES) {
+      if (failed.has(src.name)) continue; // skip the rest of a failing source; others continue
       try {
         const payload = await src.fetch(client, s, e);
         const obs = extractDaily(payload, src.listKeys, src.extractors);
         result.stored += await repo.saveWellness(obs);
       } catch (err) {
+        if (err instanceof GarminAuthError) throw err;
+        failed.add(src.name);
         result.errors.push({ source: src.name, message: err instanceof Error ? err.message : String(err) });
-        break; // skip the rest of this source; others continue
       }
     }
   }
