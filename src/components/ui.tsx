@@ -20,17 +20,19 @@ export function Stat({
   unit,
   hint,
   className,
+  size = "lg",
 }: {
   label: string;
   value: ReactNode;
   unit?: string;
   hint?: ReactNode;
   className?: string;
+  size?: "lg" | "md";
 }) {
   return (
     <div className={clsx("min-w-0", className)}>
       <div className="label">{label}</div>
-      <div className="tabular mt-1 font-display text-3xl font-semibold leading-none">
+      <div className={clsx("tabular mt-1 font-display font-semibold leading-none", size === "lg" ? "text-3xl" : "text-2xl")}>
         {value}
         {unit && <span className="ml-1 font-sans text-sm font-normal text-muted">{unit}</span>}
       </div>

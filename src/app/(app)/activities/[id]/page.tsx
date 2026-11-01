@@ -64,7 +64,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
         <Stat label="Avg HR" value={a.avg_hr ? Math.round(a.avg_hr) : "–"} unit="bpm" hint={a.max_hr ? `max ${Math.round(a.max_hr)}` : undefined} />
         <Stat label="Cadence" value={a.avg_cadence ? Math.round(a.avg_cadence) : "–"} unit="spm" />
         <Stat label="Elevation" value={a.elevation_gain_m != null ? Math.round(a.elevation_gain_m) : "–"} unit="m gain" />
-        <Stat label="Device" value={<span className="text-base">{a.device_product ?? a.device_manufacturer ?? "–"}</span>} />
+        <Stat label="Device" value={<span className="text-base capitalize">{deviceLabel(a.device_manufacturer, a.device_product)}</span>} />
         <Stat label="Data quality" value={a.quality_score != null ? `${Math.round(a.quality_score * 100)}` : "–"} unit="/ 100" />
       </section>
 
@@ -139,4 +139,10 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       </details>
     </>
   );
+}
+
+/** "vivoactive5" stays, a bare product number ("1") falls back to the manufacturer. */
+function deviceLabel(manufacturer: string | null, product: string | null): string {
+  if (product && !/^\d+$/.test(product)) return product.replace(/_/g, " ");
+  return manufacturer ?? product ?? "–";
 }

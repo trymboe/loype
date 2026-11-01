@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MlMap, GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -22,6 +22,7 @@ export function RouteMap({
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MlMap | null>(null);
   const ready = useRef(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!el.current || coords.length < 2) return;
@@ -43,7 +44,13 @@ export function RouteMap({
         cooperativeGestures: true,
       });
       map.current = m;
+      // Map style/tiles unreachable (offline, tile host down): show the route without a base map.
+      const giveUp = setTimeout(() => !ready.current && setFailed(true), 12_000);
+      m.on("error", () => {
+        if (!ready.current && !m.isStyleLoaded()) setFailed(true);
+      });
       m.on("load", () => {
+        clearTimeout(giveUp);
         m.addSource("route", { type: "geojson", data: line(coords) });
         m.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#000", "line-opacity": 0.35, "line-width": 7 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": accent, "line-width": 4 }, layout: { "line-join": "round", "line-cap": "round" } });
@@ -73,6 +80,12 @@ export function RouteMap({
   }, [coords]);
 
   useEffect(() => {
+    if (!failed) return;
+    map.current?.remove();
+    map.current = null;
+  }, [failed]);
+
+  useEffect(() => {
     if (!ready.current || !map.current) return;
     (map.current.getSource("hover") as GeoJSONSource | undefined)?.setData(point(hover));
   }, [hover]);
@@ -89,7 +102,8 @@ export function RouteMap({
   }, [highlight]);
 
   if (coords.length < 2) return null;
-  return <div ref={el} className="h-64 w-full overflow-hidden rounded-2xl md:h-80" />;
+  if (failed) return <RouteFallback coords={coords} highlight={highlight} />;
+  return <div ref={el} className="h-64 w-full overflow-hidden rounded-2xl bg-surface-2 md:h-80" />;
 }
 
 function line(c: Coord[]): GeoJSON.Feature<GeoJSON.LineString> {
@@ -100,4 +114,35 @@ function pt(c: Coord, kind: string): GeoJSON.Feature<GeoJSON.Point> {
 }
 function point(c: Coord | null): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: c ? [pt(c, "hover")] : [] };
+}
+
+/** Plain SVG of the route, used when the map can't load. */
+function RouteFallback({ coords, highlight }: { coords: Coord[]; highlight: Coord[] | null }) {
+  const W = 600;
+  const H = 320;
+  const project = useMemo(() => {
+    const lats = coords.map((c) => c[1]);
+    const lngs = coords.map((c) => c[0]);
+    const kx = Math.cos((((Math.max(...lats) + Math.min(...lats)) / 2) * Math.PI) / 180);
+    const minX = Math.min(...lngs) * kx;
+    const maxY = Math.max(...lats);
+    const w = Math.max(...lngs) * kx - minX || 1e-6;
+    const h = maxY - Math.min(...lats) || 1e-6;
+    const scale = Math.min((W - 40) / w, (H - 40) / h);
+    const ox = (W - w * scale) / 2;
+    const oy = (H - h * scale) / 2;
+    return (c: Coord) => `${(ox + (c[0] * kx - minX) * scale).toFixed(1)},${(oy + (maxY - c[1]) * scale).toFixed(1)}`;
+  }, [coords]);
+  const path = (cs: Coord[]) => cs.map((c, i) => `${i ? "L" : "M"}${project(c)}`).join("");
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-surface-2">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-64 w-full md:h-80" role="img" aria-label="Route">
+        <path d={path(coords)} fill="none" stroke="var(--accent)" strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" />
+        {highlight && highlight.length > 1 && (
+          <path d={path(highlight)} fill="none" stroke="var(--fg)" strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
+        )}
+      </svg>
+      <span className="absolute bottom-2 left-3 text-[10px] text-muted">Map unavailable · route only</span>
+    </div>
+  );
 }
