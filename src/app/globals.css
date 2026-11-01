@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/* Løype design tokens. Dark is the primary theme; light follows the OS. */
+:root {
+  --bg: #f5f6f4;
+  --surface: #ffffff;
+  --surface-2: #eef0ec;
+  --border: #dfe3dc;
+  --fg: #101411;
+  --muted: #5d665f;
+  --accent: #0f8a5f;
+  --accent-fg: #ffffff;
+  --hr: #d9434b;
+  --pace: #0f8a5f;
+  --cadence: #7c5cd6;
+  --elev: #8a8f86;
+  --warn: #b7791f;
+  --easy: #3b82c4;
+  --tempo: #d4882a;
+  --intervals: #d9434b;
+  --long: #7c5cd6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0d0c;
+    --surface: #141816;
+    --surface-2: #1b201d;
+    --border: #262c28;
+    --fg: #ecf0ec;
+    --muted: #8d978f;
+    --accent: #6fe3a8;
+    --accent-fg: #06110b;
+    --hr: #ff6b70;
+    --pace: #6fe3a8;
+    --cadence: #a98bff;
+    --elev: #7d857f;
+    --warn: #f0b456;
+    --easy: #6aaef0;
+    --tempo: #f0b456;
+    --intervals: #ff6b70;
+    --long: #a98bff;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-hr: var(--hr);
+  --color-pace: var(--pace);
+  --color-cadence: var(--cadence);
+  --color-elev: var(--elev);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-display);
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+
+.label {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 0.35s ease-out both; }
