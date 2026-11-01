@@ -16,7 +16,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
       ) : (
         <>
-          {error && <p className="mb-4 text-sm text-hr">That sign-in link was invalid or expired. Request a new one.</p>}
+          {error && <p className="mb-4 text-sm text-hr">That sign-in link was invalid, already used or expired. Request a new email, or use the code from it.</p>}
           <LoginForm />
         </>
       )}
