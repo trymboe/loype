@@ -64,4 +64,6 @@ npm run lint && npm run typecheck
 
 ## 6. Deployment (Vercel)
 
-Import `trymboe/loype` in Vercel (framework: Next.js, no build overrides), set the environment variables, deploy. Then update the Supabase Site URL / redirect URLs to the production domain.
+Vercel project **loype** (team "Trym Bø's projects", functions in `arn1` Stockholm, next to the database) is linked to `trymboe/loype`; every push deploys, `main` goes to production. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are already set. Add the secret variables from §2, redeploy, then set the Supabase Site URL / redirect URLs to the production domain.
+
+Vercel Deployment Protection (Vercel Authentication) is on by default for `*.vercel.app` URLs. Vercel Cron is unaffected, but the Supabase pg_cron call in §4 needs either a custom domain or a [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret added as an `x-vercel-protection-bypass` header.
