@@ -10,6 +10,16 @@ Auth settings (Dashboard → Authentication):
 1. **Sign In / Providers → Email**: enabled (magic link). You may disable "Allow new users to sign up" *after* your first sign-in.
 2. **URL Configuration**: Site URL = your Vercel production URL; add `https://<your-app>.vercel.app/auth/callback` (and `http://localhost:3000/auth/callback` for local dev) to Redirect URLs.
 
+3. **Emails → Magic Link** template: replace the body with the following, so each email has both a code (works on any device) and a link that doesn't depend on the browser that requested it:
+
+```html
+<h2>Sign in to Løype</h2>
+<p>Your sign-in code: <strong style="font-size:24px;letter-spacing:4px">{{ .Token }}</strong></p>
+<p>Or <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">sign in with this link</a>.</p>
+```
+
+The built-in Supabase mailer only sends a few emails per hour. If you hit "Too many emails requested", wait, or configure custom SMTP (Authentication → Emails → SMTP settings).
+
 Keys (Project settings → API): copy the **anon/publishable** key and the **service_role/secret** key into the environment variables below.
 
 ## 2. Environment variables
