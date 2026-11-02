@@ -1,4 +1,4 @@
--- 0005: calendar subscription feed, 30-minute background sync, in-app data deletion.
+-- 0006: calendar subscription feed, 30-minute background sync, in-app data deletion.
 -- Additive only.
 
 -- ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /**
- * Scheduled sync. Called every 30 minutes by Supabase pg_cron (migration 0005,
+ * Scheduled sync. Called every 30 minutes by Supabase pg_cron (migration 0006,
  * bearer token kept in Supabase Vault) and daily by Vercel Cron
  * (`Authorization: Bearer $CRON_SECRET`) as a backstop.
  */
