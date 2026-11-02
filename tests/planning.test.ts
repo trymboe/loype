@@ -110,8 +110,8 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
   const perWeek = p.weeks.map((w) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)));
 
   it("treats ticked days as availability, not a run every day", () => {
-    for (const ws of perWeek) expect(ws.length).toBeLessThanOrEqual(3);
-    expect(p.config.runsPerWeek).toBe(3);
+    for (const ws of perWeek.slice(0, 4)) expect(ws.length).toBeLessThanOrEqual(3);
+    for (const ws of perWeek) expect(ws.length).toBeLessThanOrEqual(5);
   });
 
   it("starts near what you run now and limits week-to-week and acute:chronic increases", () => {
@@ -132,14 +132,25 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
     expect(perWeek[0].concat(perWeek[1]).some((x) => isHard(x.type))).toBe(false);
   });
 
-  it("builds up runs per week gradually when you ask for more", () => {
-    const five = generatePlan(tenK, { ...all, runsPerWeek: 5 }, low);
-    const counts = five.weeks.map((w) => five.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length);
+  it("adds runs only as weekly time grows, never more than one above what you have shown", () => {
+    const counts = perWeek.map((ws) => ws.length);
     expect(counts[0]).toBeLessThanOrEqual(3);
-    expect(Math.max(...counts)).toBeLessThanOrEqual(5);
-    // never more than one run above the most you have done so far in the plan (a lighter week may dip in between)
     for (let i = 1; i < counts.length; i++) expect(counts[i] - Math.max(...counts.slice(0, i))).toBeLessThanOrEqual(1);
-    expect(five.warnings.some((w) => w.includes("adds one every two weeks"))).toBe(true);
+  });
+
+  it("grows when you run more than planned (re-anchored on your actual weeks)", () => {
+    const quiet = generatePlan(tenK, all, base({ ...low, recentWeeks: [50, 50, 50, 50], maxRecentRuns: 2 }));
+    const keen = generatePlan(tenK, all, base({ ...low, weeklyMinutes: 120, recentWeeks: [100, 110, 125, 140], maxRecentRuns: 4, runsPerWeek: 3.5 }));
+    expect(keen.weeks[0].targetMinutes).toBeGreaterThan(quiet.weeks[0].targetMinutes * 1.8);
+    expect(keen.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(140, 119 * ACWR_MAX) + 20);
+    const n = (p: typeof keen) => p.workouts.filter((x) => x.date <= addDaysIso(p.weeks[0].start, 6)).length;
+    expect(n(keen)).toBeGreaterThan(n(quiet));
+  });
+
+  it("keeps the original phases when the rest of the plan is recalculated", () => {
+    const later = generatePlan(tenK, { ...all, startDate: "2027-03-01", phases: p.weeks.slice(-8).map((w) => w.phase) }, low);
+    expect(later.weeks.map((w) => w.phase)).toEqual(p.weeks.slice(-8).map((w) => w.phase));
+    expect(later.weeks[0].start).toBe("2027-03-01");
   });
 
   it("projects the race time if you follow the plan, with a range", () => {

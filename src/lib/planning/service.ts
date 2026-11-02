@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDaysIso, formatDay } from "../dates";
+import { addDaysIso, formatDay, weekStart } from "../dates";
 import { fetchAll } from "../db/paginate";
 import { trainingPaces } from "../analytics/fitness/vdot";
 import { buildBaseline } from "./baseline";
@@ -8,7 +8,7 @@ import { generatePlan, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
 import { proposeAdaptations, type AdaptWorkout, type Change } from "./adapt";
 import { buildWorkout, stepsDistance, stepsDuration, type TargetContext } from "./workouts";
-import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlannedWorkout, type WorkoutType } from "./types";
+import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type WorkoutType } from "./types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -134,7 +134,7 @@ export function planContext(plan: any): TargetContext {
 export async function runPlanMaintenance(db: SupabaseClient, userId: string, today: string) {
   const plan = await activePlan(db, userId);
   if (!plan) return { status: "no_plan" as const };
-  const ws = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date").range(from, to));
+  let ws = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date").range(from, to));
   if (!ws.length) return { status: "empty" as const };
   const start = ws[0].date as string;
   const from = addDaysIso(start < today ? start : today, -21);
@@ -178,7 +178,12 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     for (const w of ws) if (result.missed.includes(w.id)) w.status = "missed";
   }
 
-  // 2. proposals
+  // 2. weekly refresh from what you actually ran
+  if (await refreshFutureWeeks(db, userId, plan, today)) {
+    ws = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date").range(from, to));
+  }
+
+  // 3. proposals
   const { data: state } = await db.from("fitness_state").select("output").eq("user_id", userId).maybeSingle();
   const est = state?.output?.estimate;
   const { data: existing } = await db.from("adaptation_proposals").select("id, key, status, changes").eq("plan_id", plan.id);
@@ -215,6 +220,72 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     );
   }
   return { status: "ok" as const, matched: result.matches.length, missed: result.missed.length, proposals: proposals.length };
+}
+
+/**
+ * Once a week, recalculates the rest of the plan from your actual running:
+ * the coming weeks start from what you really did (last week and your
+ * 4-week average), so the plan grows when you handle more and backs off when
+ * you do less. Phases and race date stay; workouts you locked, moved, swapped,
+ * finished or skipped, and accepted adaptations, are kept. Versioned, so it
+ * can be undone from History.
+ */
+export async function refreshFutureWeeks(db: SupabaseClient, userId: string, plan: any, today: string): Promise<boolean> {
+  const thisWeek = weekStart(today);
+  const weeks = plan.weeks as PlanWeek[];
+  const idx = weeks.findIndex((w) => w.start === thisWeek);
+  if (idx < 1 || plan.config?.refreshedWeek === thisWeek) return false;
+  const remaining = weeks.slice(idx);
+  const fresh = await loadBaseline(db, userId, today);
+  const old = plan.baseline as Baseline;
+  const baseline: Baseline = {
+    ...old,
+    asOf: fresh.asOf,
+    weeklyMinutes: fresh.weeklyMinutes,
+    weeklyKm: fresh.weeklyKm,
+    runsPerWeek: fresh.runsPerWeek,
+    consistency: fresh.consistency,
+    longestRunMinutes: fresh.longestRunMinutes,
+    recentWeeks: fresh.recentWeeks,
+    maxRecentRuns: fresh.maxRecentRuns,
+  };
+  const goal = goalFromRow(plan.goal);
+  const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase) };
+  const gen = generatePlan(goal, config, baseline);
+  if (gen.weeks.length !== remaining.length || gen.weeks[0]?.start !== thisWeek) {
+    await check(db.from("training_plans").update({ config: { ...plan.config, refreshedWeek: thisWeek } }).eq("id", plan.id));
+    return false;
+  }
+
+  const { data: rows } = await db.from("planned_workouts").select("id, date, status, locked, source").eq("plan_id", plan.id).gte("date", today);
+  const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
+  const keptDates = new Set((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
+  // never re-plan a day you already ran
+  const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
+  if (ran?.length) keptDates.add(today);
+  if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
+  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date));
+  if (fresh_.length) await check(db.from("planned_workouts").insert(fresh_.map((w) => workoutRow(w, plan.id, userId))));
+
+  await check(
+    db
+      .from("training_plans")
+      .update({
+        weeks: [...weeks.slice(0, idx), ...gen.weeks.map((w, k) => ({ ...w, index: idx + k }))],
+        config: { ...plan.config, refreshedWeek: thisWeek },
+      })
+      .eq("id", plan.id),
+  );
+  await check(db.from("adaptation_proposals").update({ status: "superseded", decided_at: new Date().toISOString() }).eq("plan_id", plan.id).eq("status", "pending"));
+  const rw = fresh.recentWeeks ?? [];
+  await snapshot(
+    db,
+    userId,
+    plan.id,
+    `Weekly update: the coming weeks were recalculated from your actual running (last week ${rw.at(-1) ?? 0} min, 4-week average ${fresh.weeklyMinutes} min). This week: ${gen.weeks[0].targetMinutes} min.`,
+    "adaptation",
+  );
+  return true;
 }
 
 const toAdapt =

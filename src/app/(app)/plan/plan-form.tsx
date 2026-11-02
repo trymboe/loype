@@ -24,8 +24,7 @@ export interface PlanFormDefaults {
   runDays: number[];
   longRunDay: number;
   today: string;
-  /** suggested runs per week, and what you have averaged */
-  suggestedRuns: number;
+  /** most runs in a week over the last 4 weeks */
   recentRuns: number;
 }
 
@@ -33,8 +32,6 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
   const [state, action, pending] = useActionState<PlanFormState, FormData>(createPlanAction, {});
   const [kind, setKind] = useState("half");
   const [runDays, setRunDays] = useState<number[]>(defaults.runDays);
-  const [runs, setRuns] = useState(defaults.suggestedRuns);
-  const maxRuns = Math.max(2, runDays.length);
   const isRace = ["5k", "10k", "half", "marathon", "race"].includes(kind);
 
   return (
@@ -125,18 +122,10 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
             <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
           </Field>
         </div>
-        <Field
-          label="Runs per week"
-          hint={`You have averaged ${defaults.recentRuns} runs a week over the last 4 weeks. The plan starts near that and adds one run every two weeks, up to this number.${runs > defaults.suggestedRuns + 1 ? " That is a big step up: injury risk rises when frequency grows quickly." : ""}`}
-        >
-          <select name="runs_per_week" value={Math.min(runs, maxRuns)} onChange={(e) => setRuns(Number(e.target.value))} className={input}>
-            {Array.from({ length: maxRuns - 1 }, (_, i) => i + 2).map((n) => (
-              <option key={n} value={n}>
-                {n} runs{n === defaults.suggestedRuns ? " (suggested)" : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+          How many of these days you run comes from your training load, not a fixed number. You have done up to {defaults.recentRuns} runs in a week lately, so the plan starts there
+          (plus at most one) and adds runs only as your weekly time grows. Each week the plan is recalculated from what you actually ran.
+        </p>
       </section>
 
       <section className="grid grid-cols-2 gap-3">

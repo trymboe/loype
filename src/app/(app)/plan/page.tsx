@@ -118,6 +118,9 @@ export default async function PlanPage() {
               {(plan.summary as string[]).map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
+              {plan.config?.refreshedWeek === thisWeek && (
+                <li>Recalculated this week from what you actually ran, so the coming weeks follow your real load. See History to compare or restore.</li>
+              )}
               <li>
                 Built from your last 4 weeks ({baseline.weeklyMinutes} min/week, {baseline.runsPerWeek} runs/week) and{" "}
                 {baseline.vdot ? `your fitness estimate (VDOT ${baseline.vdot.toFixed(1)}, ${baseline.vdotConfidence} confidence)` : "heart-rate zones (no fitness estimate yet)"}.

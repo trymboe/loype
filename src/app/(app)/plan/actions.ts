@@ -57,8 +57,6 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
 
   const runDays = days("run_days");
   if (runDays.length < 2) return { error: "Pick at least 2 days you could run" };
-  const runsPerWeek = Number(s("runs_per_week") || 0) || undefined;
-  if (runsPerWeek != null && (!Number.isInteger(runsPerWeek) || runsPerWeek < 2 || runsPerWeek > 7)) return { error: "Runs per week should be between 2 and 7" };
   const longRunDay = s("long_run_day") === "" ? null : Number(s("long_run_day"));
   const startDate = s("start_date") || today;
   if (!DATE.safeParse(startDate).success || startDate < today) return { error: "The start date can't be in the past" };
@@ -71,7 +69,6 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
     startDate,
     weeks: Number.isFinite(weeks) ? weeks : 12,
     runDays,
-    runsPerWeek: runsPerWeek ? Math.min(runsPerWeek, runDays.length) : undefined,
     longRunDay: longRunDay != null && Number.isInteger(longRunDay) ? longRunDay : null,
     // days you didn't tick count as unavailable, so moving a workout there gives a warning
     unavailableDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => !runDays.includes(d)),

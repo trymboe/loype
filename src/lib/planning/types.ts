@@ -36,10 +36,12 @@ export interface PlanConfig {
   startDate: string;
   /** used when there is no race date */
   weeks: number;
-  /** days you are available to run, 0 = Monday … 6 = Sunday */
+  /** days you are available to run, 0 = Monday … 6 = Sunday; how many of them are used comes from your load */
   runDays: number[];
-  /** how many of those days to run each week (built up to gradually); defaults from your history */
-  runsPerWeek?: number;
+  /** set when the plan is refreshed: keeps the original phase of each remaining week */
+  phases?: Phase[];
+  /** Monday of the week the future weeks were last recalculated from your actual running */
+  refreshedWeek?: string;
   longRunDay: number | null;
   unavailableDays: number[];
   maxWeeklyMinutes: number | null;
@@ -63,6 +65,10 @@ export interface Baseline {
   /** weeks with at least one run, out of the last 8 */
   consistency: number;
   longestRunMinutes: number;
+  /** running minutes in each of the last 4 complete calendar weeks, oldest first */
+  recentWeeks?: number[];
+  /** most runs (≥ 10 min) in any of those weeks */
+  maxRecentRuns?: number;
   /** race-time predictions by distance (m → s) at the current estimate */
   predictions: { distanceM: number; timeS: number }[];
 }

@@ -2,7 +2,6 @@ import { Card, CardHeader, Stat } from "@/components/ui";
 import { addDaysIso } from "@/lib/dates";
 import { createAdminClient } from "@/lib/db/server";
 import type { Baseline } from "@/lib/planning/types";
-import { suggestedRunsPerWeek } from "@/lib/planning/generator";
 import { formatPace } from "@/lib/units";
 
 /** Form defaults: every day available, long-run day from where your longest runs fall, runs per week from your history. */
@@ -21,7 +20,7 @@ export async function defaultsFor(userId: string, today: string, b: Baseline) {
     longest[dow] = Math.max(longest[dow], a.moving_s ?? 0);
   }
   const longRunDay = longest.some((x) => x > 0) ? longest.indexOf(Math.max(...longest)) : 6;
-  return { runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay, today, suggestedRuns: suggestedRunsPerWeek(b), recentRuns: b.runsPerWeek };
+  return { runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay, today, recentRuns: b.maxRecentRuns ?? Math.ceil(b.runsPerWeek) };
 }
 
 export function BaselineCard({ b }: { b: Baseline }) {

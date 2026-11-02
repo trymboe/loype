@@ -199,7 +199,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const { start, weeks: n, warnings: w0 } = planWeeks(goal, config);
   warnings.push(...w0);
   const lowConsistency = baseline.consistency < 0.6;
-  const phases = assignPhases(goal, n, lowConsistency);
+  const phases = config.phases && config.phases.length === n ? config.phases : assignPhases(goal, n, lowConsistency);
   const dist = goalDistance(goal);
   const dk = distanceKey(dist);
   if (!baseline.paceZones) warnings.push(baseline.hrZones ? "No fitness estimate yet, so sessions use heart-rate targets only. Paces are added once the estimate is available." : "No fitness estimate or heart-rate zones yet, so sessions are described by effort.");
@@ -208,15 +208,19 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const unavailable = new Set(config.unavailableDays);
   const avail = [...new Set(config.runDays)].filter((d) => d >= 0 && d <= 6 && !unavailable.has(d)).sort((a, b) => a - b);
   if (avail.length === 0) avail.push(1, 3, 5, 6);
-  const suggested = suggestedRunsPerWeek(baseline);
-  const maxRuns = Math.max(2, Math.min(avail.length, config.runsPerWeek ?? Math.min(avail.length, suggested)));
-  const startRuns = Math.min(maxRuns, Math.max(2, Math.ceil(baseline.runsPerWeek) + 1));
-  if (maxRuns > startRuns) warnings.push(`You have run about ${baseline.runsPerWeek} times a week lately. The plan starts with ${startRuns} runs a week and adds one every two weeks, up to ${maxRuns}.`);
+  // frequency comes from load: runs average ~45 min (longer runs before more runs), and at most one more
+  // than you have shown you can do in a week recently, plus one more every three weeks into the plan
+  const shownRuns = Math.max(1, baseline.maxRecentRuns ?? Math.ceil(baseline.runsPerWeek));
+  const freqCap = (weeksIn: number) => Math.min(avail.length, shownRuns + 1 + Math.floor(weeksIn / 3));
   const longDay = config.includeLongRuns ? (config.longRunDay != null && avail.includes(config.longRunDay) ? config.longRunDay : avail.includes(6) ? 6 : avail.includes(5) ? 5 : avail[avail.length - 1]) : null;
 
   // --- volume ---------------------------------------------------------------
-  const chronic0 = baseline.weeklyMinutes;
-  const startMin = Math.max(45, Math.min(chronic0 * 1.15, chronic0 + 20));
+  // start from what you actually ran: the larger of last week and your 4-week average, one safe step up,
+  // and never above 1.3× the 4-week average
+  const recent = baseline.recentWeeks?.length === 4 ? baseline.recentWeeks : [baseline.weeklyMinutes, baseline.weeklyMinutes, baseline.weeklyMinutes, baseline.weeklyMinutes];
+  const chronic0 = recent.reduce((a, b) => a + b, 0) / 4;
+  const anchor = Math.max(recent[3], chronic0);
+  const startMin = Math.max(45, Math.min(anchor + weeklyStep(anchor, baseline.consistency < 0.6) * 0.75, chronic0 * ACWR_MAX + 10));
   let peak = PEAK_MINUTES[dk ?? goal.kind] ?? 300;
   if (goal.kind === "volume" && goal.targetWeeklyKm) {
     const easy = baseline.paceZones?.find((z) => z.key === "easy");
@@ -231,7 +235,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   peak = Math.max(peak, 45);
 
   const weekly: number[] = [];
-  const history = [chronic0, chronic0, chronic0, chronic0];
+  const history = [...recent];
   let level = Math.min(startMin, peak);
   const taperIdx = phases.map((p, i) => (p === "taper" || p === "race" ? i : -1)).filter((i) => i >= 0);
   const taperFactors = goal.raceDate ? (TAPER_FACTORS[taperIdx.length] ?? []) : [0.7];
@@ -294,7 +298,6 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   let longest = Math.max(baseline.longestRunMinutes, 30);
   let altern = 0;
   let buildWeeks = 0;
-  let runs = startRuns;
   for (let i = 0; i < n; i++) {
     const ws = addDaysIso(start, i * 7);
     const ph = phases[i];
@@ -302,13 +305,10 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     const progress = phaseLen(i) > 1 ? (i - phaseStart(i)) / (phaseLen(i) - 1) : 0.5;
     const raceDay = ph === "race" && goal.raceDate ? daysBetween(ws, goal.raceDate) : null;
 
-    // runs this week: +1 every two normal weeks, one fewer in recovery weeks, only when the week has ~28 min per run
-    if (ph !== "recovery" && ph !== "taper" && ph !== "race") {
-      if (i > 0 && buildWeeks % 2 === 0) runs = Math.min(maxRuns, runs + 1);
-      buildWeeks++;
-    }
-    let runsW = ph === "recovery" ? Math.max(2, runs - 1) : runs;
-    runsW = Math.max(2, Math.min(runsW, Math.floor(target / 28)));
+    // runs this week come from the week's time (~45 min per run), capped by what you have shown you can do
+    let runsW = Math.max(2, Math.min(freqCap(buildWeeks), Math.round(target / 45)));
+    if (ph !== "recovery" && ph !== "taper" && ph !== "race") buildWeeks++;
+    if (ph === "recovery") runsW = Math.max(2, runsW - 1);
     const days = spreadDays(avail, runsW, longDay);
     const wLong = longDay != null && days.includes(longDay) ? longDay : null;
 
@@ -438,7 +438,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   return {
     version: PLANNER_VERSION,
     goal,
-    config: { ...config, runDays: avail, longRunDay: longDay, runsPerWeek: maxRuns },
+    config: { ...config, runDays: avail, longRunDay: longDay, phases: undefined },
     baseline,
     weeks: weekRows,
     workouts,
