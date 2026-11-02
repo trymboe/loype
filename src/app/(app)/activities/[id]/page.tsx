@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { Info } from "lucide-react";
+import { Download, Info, Map as MapIcon } from "lucide-react";
+import { saveActivityAsRouteAction } from "@/app/(app)/routes/actions";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
 import { AnalysisCard } from "@/components/activity/analysis-card";
 import { FeedbackForm } from "@/components/activity/feedback-form";
@@ -130,6 +131,19 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
             </tbody>
           </table>
         </section>
+      )}
+
+      {a.has_gps && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <form action={saveActivityAsRouteAction.bind(null, a.id)}>
+            <button className="btn btn-secondary btn-sm">
+              <MapIcon size={16} /> Save as route
+            </button>
+          </form>
+          <a href={`/api/activities/${a.id}/gpx`} className="btn btn-secondary btn-sm" download>
+            <Download size={16} /> Export GPX
+          </a>
+        </div>
       )}
 
       <div className="mt-3">

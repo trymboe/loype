@@ -48,4 +48,7 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ⛔ End-to-end on the vívoactive 5: needs Trym's Intervals.icu account + watch (checklist in `docs/WATCH.md`)
 
 ## Phase 5 — Coach, routes, polish
+- ✅ Routes (More → Routes): draw a route that follows paths (Valhalla pedestrian costing tuned for running) or straight lines, drag/remove waypoints, undo, reverse, back to start; generate a loop of a chosen distance from a start point; "where I've run" layer; distance + estimated elevation profile; save, favourite, rename, edit, delete; GPX export; save any recorded run as a route; link a route to an upcoming planned workout (shown on the workout)
+- ✅ Activity analysis: "Select" a stretch on the charts to highlight it on the map with its distance, time, pace, HR (+ drift), cadence and elevation; lap comparison (deltas vs a reference lap, pace spread, fade and HR rise across reps, pace/HR overlay by metres into the lap, one-tap "work laps"); activity GPX export
+- ⏳ Routes: check loop generation and elevation against real places (routing service was unreachable from the dev sandbox; tested with a mock)
 - ⛔ Phase 5 coach needs an LLM API key

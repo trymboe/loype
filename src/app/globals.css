@@ -513,3 +513,27 @@
     }
   }
 }
+
+/* Route planner waypoints (MapLibre markers) */
+.route-wp {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  touch-action: none;
+}
+.route-wp[data-kind="start"] {
+  width: 20px;
+  height: 20px;
+  background: #22c55e;
+  border-color: #fff;
+}
+.route-wp[data-kind="end"] {
+  width: 20px;
+  height: 20px;
+  background: #ef4444;
+  border-color: #fff;
+}

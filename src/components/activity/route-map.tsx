@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 /** OpenFreeMap: free OSM vector tiles, no API key. */
 export const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
-const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/positron";
+export const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/positron";
 
 type Coord = [number, number];
 

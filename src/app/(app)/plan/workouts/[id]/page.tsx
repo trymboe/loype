@@ -9,6 +9,7 @@ import { toEditable } from "@/lib/planning/edit-steps";
 import { analyzeIntervals, mainRepeat } from "@/lib/planning/intervals";
 import { IntervalReps } from "@/components/plan/interval-reps";
 import { WatchCard } from "./watch-card";
+import { WorkoutRoute } from "@/components/routes/workout-route";
 import { createUserClient } from "@/lib/db/server";
 import { formatDay, todayIn } from "@/lib/dates";
 import { WORKOUT_LABEL, type WorkoutType } from "@/lib/planning/types";
@@ -110,6 +111,8 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
             thresholdMissing={intervals?.settings?.run ? !intervals.settings.run.hasThresholdPace : false}
           />
         )}
+
+        {w.type !== "rest" && <WorkoutRoute routeId={w.route_id ?? null} />}
 
         {w.status !== "completed" && <WorkoutActions id={w.id} date={w.date} today={today} locked={w.locked} status={w.status} type={w.type} />}
       </div>
