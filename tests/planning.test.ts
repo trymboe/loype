@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDaysIso } from "@/lib/dates";
 import { predictTimeS, trainingPaces } from "@/lib/analytics/fitness/vdot";
-import { ACWR_MAX, HARD_SHARE_MAX, generatePlan, hardMinutes, pickQualityDays, spreadDays } from "@/lib/planning/generator";
+import { ACWR_MAX, HARD_SHARE_MAX, SPIKE_MAX, generatePlan, hardMinutes, pickQualityDays, spreadDays } from "@/lib/planning/generator";
 import { buildBaseline } from "@/lib/planning/baseline";
 import { validateSchedule, moveIssues } from "@/lib/planning/validate";
 import { assessExecution, matchRuns } from "@/lib/planning/match";
@@ -156,6 +156,29 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
     const nothing = generatePlan(tenK, all, base({ weeklyMinutes: 0, runsPerWeek: 0, consistency: 0, longestRunMinutes: 0, recentWeeks: [0, 0, 0, 0], recentRunCounts: [0, 0, 0, 0], habitualRunMinutes: null }));
     expect(firstWeek(nothing)).toBe(2);
     expect(nothing.weeks[0].targetMinutes).toBeLessThanOrEqual(60);
+  });
+
+  it("never plans a run more than 10 % longer than the longest in the previous 30 days", () => {
+    for (const pl of [p, generatePlan(half, config(), base({ longestRun30Minutes: 60 }))]) {
+      const ref = pl.baseline.longestRun30Minutes ?? pl.baseline.longestRunMinutes;
+      for (const w of pl.workouts) {
+        if (w.type === "race") continue;
+        const prior = pl.workouts.filter((x) => x.type !== "race" && x.date < w.date && x.date >= addDaysIso(w.date, -30)).map((x) => x.durationS / 60);
+        const within = w.date <= addDaysIso(pl.baseline.asOf, 30) ? [ref] : [];
+        expect(w.durationS / 60).toBeLessThanOrEqual(Math.max(30, SPIKE_MAX * Math.max(...prior, ...within, 0)) + 1);
+      }
+    }
+  });
+
+  it("tapers volume by 40–60 % over two weeks and keeps your run frequency", () => {
+    const peak = Math.max(...p.weeks.map((w) => w.targetMinutes));
+    const [taper, race] = p.weeks.slice(-2);
+    expect(taper.phase).toBe("taper");
+    expect(race.targetMinutes / peak).toBeLessThanOrEqual(0.65);
+    const count = (w: (typeof p.weeks)[number]) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length;
+    const lastBuild = p.weeks.filter((w) => w.phase === "specific").at(-1)!;
+    expect(count(taper)).toBeGreaterThanOrEqual(count(lastBuild));
+    expect(count(race)).toBeGreaterThanOrEqual(count(lastBuild) - 1);
   });
 
   it("keeps the original phases when the rest of the plan is recalculated", () => {

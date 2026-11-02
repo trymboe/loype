@@ -246,6 +246,7 @@ export async function refreshFutureWeeks(db: SupabaseClient, userId: string, pla
     runsPerWeek: fresh.runsPerWeek,
     consistency: fresh.consistency,
     longestRunMinutes: fresh.longestRunMinutes,
+    longestRun30Minutes: fresh.longestRun30Minutes,
     recentWeeks: fresh.recentWeeks,
     recentRunCounts: fresh.recentRunCounts,
     habitualRunMinutes: fresh.habitualRunMinutes,

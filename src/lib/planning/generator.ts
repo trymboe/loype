@@ -34,8 +34,14 @@ const PEAK_MINUTES: Record<string, number> = { "5k": 240, "10k": 300, half: 360,
 /** Longest long run, minutes. */
 const LONG_CAP: Record<string, number> = { "5k": 75, "10k": 90, half: 120, marathon: 150, race: 120, general: 90, endurance: 120, consistency: 75, maintain: 90, volume: 120 };
 /** Weeks of taper including race week. */
-const TAPER_WEEKS: Record<string, number> = { "5k": 1, "10k": 1, half: 2, marathon: 3, race: 2 };
-const TAPER_FACTORS: Record<number, number[]> = { 1: [0.6], 2: [0.75, 0.5], 3: [0.8, 0.6, 0.4] };
+// ~2 weeks is the best-supported taper length (Bosquet 2007; 2023 endurance meta-analysis), 3 for the marathon
+const TAPER_WEEKS: Record<string, number> = { "5k": 2, "10k": 2, half: 2, marathon: 3, race: 2 };
+/** Taper volume as a share of peak: a progressive 40–60 % cut, intensity and frequency kept. */
+const TAPER_FACTORS: Record<number, number[]> = { 1: [0.6], 2: [0.75, 0.5], 3: [0.8, 0.6, 0.45] };
+/** No single run more than 10 % longer than your longest run in the previous 30 days (Frandsen et al., BJSM 2025). */
+export const SPIKE_MAX = 1.1;
+/** Floor for the spike limit, so someone with no recent running can still do a 30-minute session. */
+const SPIKE_FLOOR_MIN = 30;
 
 export const goalDistance = (g: Goal): number | null => g.distanceM ?? GOAL_DISTANCE[g.kind] ?? null;
 
@@ -297,6 +303,17 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     return e - phaseStart(i) + 1;
   };
   let longest = Math.max(baseline.longestRunMinutes, 30);
+  // single-session spike limit: longest session in the last 30 days (your real runs for the first 4 weeks, then the plan's)
+  const ref30 = baseline.longestRun30Minutes ?? baseline.longestRunMinutes;
+  // planned sessions so far; a week's cap uses only sessions from the 24 days before it starts, which lie in
+  // every one of its days' 30-day windows, so the limit holds for each day of the week
+  const sessions: { date: string; min: number }[] = [];
+  const spikeCap = (ws: string) => {
+    const from = addDaysIso(ws, -24);
+    const prior = sessions.filter((x) => x.date >= from && x.date < ws).map((x) => x.min);
+    return Math.max(SPIKE_FLOOR_MIN, Math.floor(SPIKE_MAX * Math.max(from <= baseline.asOf ? ref30 : 0, ...prior)));
+  };
+  let lastRuns = 0;
   let altern = 0;
   let buildWeeks = 0;
   for (let i = 0; i < n; i++) {
@@ -317,6 +334,10 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     let runsW = Math.max(2, Math.min(freqCap(), Math.max(Math.round(target / lenW), extra)));
     if (ph !== "recovery" && ph !== "taper" && ph !== "race") buildWeeks++;
     if (ph === "recovery") runsW = Math.max(2, runsW - 1);
+    // taper: keep frequency (cut volume, not runs)
+    if (ph === "taper" || ph === "race") runsW = Math.min(avail.length, Math.max(runsW, lastRuns));
+    else if (ph !== "recovery") lastRuns = runsW;
+    const cap = spikeCap(ws);
     const days = spreadDays(avail, runsW, longDay);
     const wLong = longDay != null && days.includes(longDay) ? longDay : null;
 
@@ -326,7 +347,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     let longMin = 0;
     if (wLong != null && ph !== "race") {
       const share = Math.max(ph === "build" || ph === "specific" ? 0.32 : 0.3, runsW <= 3 ? 1.1 / runsW : 0);
-      const allowed = Math.min(longCap, longest + 5);
+      const allowed = Math.min(longCap, longest + 5, cap);
       longMin = Math.max(25, Math.min(allowed, Math.max(Math.round(target * share), Math.round(Math.min(longest * 0.8, target * 0.4)))));
       if (ph !== "recovery" && ph !== "taper") longest = Math.max(longest, longMin);
       if (ph === "taper") longMin = Math.min(longMin, Math.round(longest * 0.7));
@@ -385,6 +406,12 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       if (primer != null) list.push({ dow: primer, spec: { type: "easy", minutes: 25, strides: true }, why: "A short run with strides keeps your legs sharp without tiring them before the race.", key: false });
       const opener = avail.filter((d) => primer != null && d < primer - 1).pop();
       if (opener != null) list.push({ dow: opener, spec: { type: "easy", minutes: 30 }, why: "Easy running to stay loose in race week.", key: false });
+      // keep your usual frequency in race week with short easy runs (tapers cut volume, not frequency)
+      for (const d of [...avail].reverse()) {
+        if (list.length >= runsW) break;
+        if (d >= rd - 1 || list.some((l) => l.dow === d)) continue;
+        list.push({ dow: d, spec: { type: "easy", minutes: 20 }, why: "A short easy run: in a taper you cut volume but keep your usual rhythm of runs.", key: false });
+      }
     }
 
     // easy runs fill the rest of the week's time on the chosen days
@@ -392,7 +419,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     const flexible = (l: (typeof list)[number]) => l.spec.type === "strides" || (l.spec.type === "easy" && ph !== "race");
     const fixedMin = list.filter((l) => !flexible(l)).map((l) => stepsDuration(buildWorkout(l.spec, ctx).steps) / 60).reduce((a, b) => a + b, 0);
     const easyDays = ph === "race" ? [] : days.filter((d) => !used.has(d));
-    const easyCap = Math.max(35, Math.round(longMin * 0.85) || 60);
+    const easyCap = Math.min(cap, Math.max(35, Math.round(longMin * 0.85) || 60));
     const left = Math.max(0, target - fixedMin);
     const slots = easyDays.length + list.filter(flexible).length;
     const each = slots ? Math.round(Math.max(20, Math.min(easyCap, left / slots))) : 0;
@@ -427,6 +454,19 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         h.why = "An easy run with strides instead of a hard session, to keep this week's total within a safe step from the last.";
       } else break;
     }
+
+    // single-session spike limit: no run more than 10 % longer than the longest in the last 30 days
+    for (const l of list) {
+      if (l.spec.type === "race") continue;
+      while (isHard(l.spec.type) && mins(l) > cap && (l.spec.progress ?? 0) > 0) l.spec.progress = Math.max(0, (l.spec.progress ?? 0) - 0.25);
+      if (isHard(l.spec.type) && mins(l) > cap) {
+        l.spec = { type: "easy", minutes: cap, strides: config.includeStrides };
+        l.key = false;
+        l.why = `An easy run instead of a hard session: with warm-up and cool-down it would be longer than ${cap} min, more than 10 % above your longest run in the last 30 days.`;
+      }
+      if (l.spec.minutes) for (let g = 0; g < 120 && mins(l) > cap && l.spec.minutes > 20; g++) l.spec.minutes -= 1;
+    }
+    for (const l of list) if (l.spec.type !== "race" && addDaysIso(ws, l.dow) >= config.startDate) sessions.push({ date: addDaysIso(ws, l.dow), min: mins(l) });
 
     for (const l of list.sort((a, b) => a.dow - b.dow)) {
       const date = addDaysIso(ws, l.dow);

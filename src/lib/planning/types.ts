@@ -65,6 +65,8 @@ export interface Baseline {
   /** weeks with at least one run, out of the last 8 */
   consistency: number;
   longestRunMinutes: number;
+  /** longest single run in the last 30 days (minutes): the reference for the single-session spike limit */
+  longestRun30Minutes?: number;
   /** running minutes in each of the last 4 complete calendar weeks, oldest first */
   recentWeeks?: number[];
   /** runs (≥ 10 min) in each of those weeks, oldest first */

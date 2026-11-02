@@ -175,7 +175,7 @@ export function buildWorkout(spec: WorkoutSpec, ctx: TargetContext): Built {
   switch (spec.type) {
     case "easy":
     case "recovery": {
-      const total = roundMin((spec.minutes ?? 40) * 60);
+      const total = roundMin((spec.minutes ?? 40) * 60, 1);
       if (spec.strides) {
         const main = Math.max(15 * 60, total - 6 * 80);
         return {
@@ -190,10 +190,12 @@ export function buildWorkout(spec: WorkoutSpec, ctx: TargetContext): Built {
     }
     case "long":
     case "progressive_long": {
-      const total = roundMin((spec.minutes ?? 70) * 60);
+      const total = roundMin((spec.minutes ?? 70) * 60, 1);
       if (spec.withRacePace && ctx.racePace) {
-        const seg = g === "marathon" ? Math.round(lerp(15, 25)) : Math.round(lerp(8, 15));
         const n = g === "marathon" ? (p > 0.5 ? 3 : 2) : 2;
+        // fit the race-pace segments inside the run's time (at least 20 min easy first, 10 min easy to finish)
+        const room = Math.floor((total - 1800 - (n - 1) * 300) / n / 60);
+        const seg = Math.max(5, Math.min(room, g === "marathon" ? Math.round(lerp(15, 25)) : Math.round(lerp(8, 15))));
         const work = n * seg * 60 + (n - 1) * 300;
         const easyBefore = Math.max(20 * 60, total - work - 600);
         return {
