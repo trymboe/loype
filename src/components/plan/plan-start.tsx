@@ -2,10 +2,11 @@ import { Card, CardHeader, Stat } from "@/components/ui";
 import { addDaysIso } from "@/lib/dates";
 import { createAdminClient } from "@/lib/db/server";
 import type { Baseline } from "@/lib/planning/types";
+import { suggestedRunsPerWeek } from "@/lib/planning/generator";
 import { formatPace } from "@/lib/units";
 
-/** Suggested run days and long-run day from the weekdays you have actually been running. */
-export async function defaultsFor(userId: string, today: string) {
+/** Form defaults: every day available, long-run day from where your longest runs fall, runs per week from your history. */
+export async function defaultsFor(userId: string, today: string, b: Baseline) {
   const db = createAdminClient();
   const { data } = await db
     .from("activities")
@@ -14,19 +15,13 @@ export async function defaultsFor(userId: string, today: string) {
     .eq("sport", "running")
     .is("duplicate_of", null)
     .gte("local_date", addDaysIso(today, -56));
-  const count = new Array(7).fill(0);
   const longest = new Array(7).fill(0);
   for (const a of data ?? []) {
     const dow = (new Date(`${a.local_date}T00:00:00Z`).getUTCDay() + 6) % 7;
-    count[dow]++;
     longest[dow] = Math.max(longest[dow], a.moving_s ?? 0);
   }
-  const perWeek = Math.round((data?.length ?? 0) / 8);
-  const n = Math.max(3, Math.min(6, perWeek || 3));
-  const ranked = count.map((c, i) => ({ c, i })).sort((a, b) => b.c - a.c || a.i - b.i);
-  const runDays = (ranked[0].c ? ranked.slice(0, n).map((x) => x.i) : [1, 3, 5, 6]).sort();
   const longRunDay = longest.some((x) => x > 0) ? longest.indexOf(Math.max(...longest)) : 6;
-  return { runDays: runDays.includes(longRunDay) ? runDays : [...runDays.slice(0, n - 1), longRunDay].sort(), longRunDay, today };
+  return { runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay, today, suggestedRuns: suggestedRunsPerWeek(b), recentRuns: b.runsPerWeek };
 }
 
 export function BaselineCard({ b }: { b: Baseline }) {

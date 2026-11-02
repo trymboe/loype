@@ -1,6 +1,7 @@
 /** Planning types (`planner@1`). Durations in seconds, distances in metres, paces in s/km. */
 import type { HrZone } from "../analytics/fitness/physiology";
 import type { PaceZone } from "../analytics/fitness/vdot";
+import type { Projection } from "./projection";
 
 export const PLANNER_VERSION = "planner@1";
 
@@ -35,8 +36,10 @@ export interface PlanConfig {
   startDate: string;
   /** used when there is no race date */
   weeks: number;
-  /** 0 = Monday … 6 = Sunday */
+  /** days you are available to run, 0 = Monday … 6 = Sunday */
   runDays: number[];
+  /** how many of those days to run each week (built up to gradually); defaults from your history */
+  runsPerWeek?: number;
   longRunDay: number | null;
   unavailableDays: number[];
   maxWeeklyMinutes: number | null;
@@ -159,4 +162,5 @@ export interface GeneratedPlan {
   warnings: string[];
   /** pace used for race-pace work, s/km */
   racePace: number | null;
+  projection: Projection | null;
 }

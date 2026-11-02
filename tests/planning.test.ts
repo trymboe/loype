@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDaysIso } from "@/lib/dates";
 import { predictTimeS, trainingPaces } from "@/lib/analytics/fitness/vdot";
-import { generatePlan, pickQualityDays } from "@/lib/planning/generator";
+import { ACWR_MAX, HARD_SHARE_MAX, generatePlan, hardMinutes, pickQualityDays, spreadDays } from "@/lib/planning/generator";
 import { buildBaseline } from "@/lib/planning/baseline";
 import { validateSchedule, moveIssues } from "@/lib/planning/validate";
 import { assessExecution, matchRuns } from "@/lib/planning/match";
@@ -76,7 +76,7 @@ describe("plan generator", () => {
 
   it("flags a target that is out of reach and trains at a realistic pace instead", () => {
     const p = generatePlan({ ...half, targetTimeS: 5400 }, config(), base());
-    expect(p.warnings.some((w) => w.includes("faster than your current prediction"))).toBe(true);
+    expect(p.warnings.some((w) => w.includes("faster than even the optimistic end"))).toBe(true);
     expect(p.racePace!).toBeGreaterThan(5400 / 21.0975);
   });
 
@@ -98,6 +98,64 @@ describe("plan generator", () => {
   it("spreads quality days", () => {
     expect(pickQualityDays([1, 3, 5, 6], 6, 2)).toEqual([1, 3]);
     expect(pickQualityDays([0, 1, 2], 2, 2).length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("load safety (a low-volume runner who ticks every day)", () => {
+  // like Trym: ~50 min/week over ~1.5 runs, longest run an hour
+  const low = base({ weeklyMinutes: 50, runsPerWeek: 1.5, consistency: 0.75, longestRunMinutes: 61 });
+  const tenK: Goal = { kind: "10k", name: null, distanceM: null, raceDate: "2027-04-24", targetTimeS: null, targetWeeklyKm: null };
+  const all = config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 3 });
+  const p = generatePlan(tenK, all, low);
+  const perWeek = p.weeks.map((w) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)));
+
+  it("treats ticked days as availability, not a run every day", () => {
+    for (const ws of perWeek) expect(ws.length).toBeLessThanOrEqual(3);
+    expect(p.config.runsPerWeek).toBe(3);
+  });
+
+  it("starts near what you run now and limits week-to-week and acute:chronic increases", () => {
+    expect(p.weeks[0].targetMinutes).toBeLessThanOrEqual(50 * 1.25 + 5);
+    const mins = p.weeks.map((w) => w.targetMinutes);
+    const hist = [50, 50, 50, 50, ...mins];
+    for (let i = 0; i < mins.length; i++) {
+      const chronic = hist.slice(i, i + 4).reduce((a, b) => a + b, 0) / 4;
+      expect(mins[i]).toBeLessThanOrEqual(Math.max(chronic * ACWR_MAX * 1.1, 70));
+    }
+  });
+
+  it("keeps hard running to about 20 % and no hard sessions in the first two weeks", () => {
+    p.weeks.forEach((w, i) => {
+      const hard = perWeek[i].filter((x) => x.type !== "race").reduce((a, x) => a + hardMinutes(x.steps), 0);
+      expect(hard).toBeLessThanOrEqual(Math.max(12, w.targetMinutes * HARD_SHARE_MAX) + 6);
+    });
+    expect(perWeek[0].concat(perWeek[1]).some((x) => isHard(x.type))).toBe(false);
+  });
+
+  it("builds up runs per week gradually when you ask for more", () => {
+    const five = generatePlan(tenK, { ...all, runsPerWeek: 5 }, low);
+    const counts = five.weeks.map((w) => five.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length);
+    expect(counts[0]).toBeLessThanOrEqual(3);
+    expect(Math.max(...counts)).toBeLessThanOrEqual(5);
+    // never more than one run above the most you have done so far in the plan (a lighter week may dip in between)
+    for (let i = 1; i < counts.length; i++) expect(counts[i] - Math.max(...counts.slice(0, i))).toBeLessThanOrEqual(1);
+    expect(five.warnings.some((w) => w.includes("adds one every two weeks"))).toBe(true);
+  });
+
+  it("projects the race time if you follow the plan, with a range", () => {
+    const pr = p.projection!;
+    expect(pr.distanceM).toBe(10_000);
+    expect(pr.projectedS).toBeLessThan(pr.nowS);
+    expect(pr.fastS).toBeLessThanOrEqual(pr.projectedS);
+    expect(pr.slowS).toBeGreaterThanOrEqual(pr.projectedS);
+    expect(pr.nowS / pr.projectedS).toBeLessThan(1.12);
+  });
+
+  it("spreads chosen days around the week", () => {
+    expect(spreadDays([0, 1, 2, 3, 4, 5, 6], 3, 3)).toEqual(expect.arrayContaining([3]));
+    const d = spreadDays([0, 1, 2, 3, 4, 5, 6], 3, 6);
+    expect(d).toContain(6);
+    for (let i = 1; i < d.length; i++) expect(d[i] - d[i - 1]).toBeGreaterThanOrEqual(2);
   });
 });
 

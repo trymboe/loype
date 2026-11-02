@@ -86,6 +86,7 @@ export async function createPlan(db: SupabaseClient, userId: string, goal: Goal,
         weeks: plan.weeks,
         summary: plan.summary,
         warnings: plan.warnings,
+        projection: plan.projection,
         current_version: 0,
       })
       .select("id"),

@@ -24,12 +24,17 @@ export interface PlanFormDefaults {
   runDays: number[];
   longRunDay: number;
   today: string;
+  /** suggested runs per week, and what you have averaged */
+  suggestedRuns: number;
+  recentRuns: number;
 }
 
 export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; replacing?: boolean }) {
   const [state, action, pending] = useActionState<PlanFormState, FormData>(createPlanAction, {});
   const [kind, setKind] = useState("half");
   const [runDays, setRunDays] = useState<number[]>(defaults.runDays);
+  const [runs, setRuns] = useState(defaults.suggestedRuns);
+  const maxRuns = Math.max(2, runDays.length);
   const isRace = ["5k", "10k", "half", "marathon", "race"].includes(kind);
 
   return (
@@ -83,7 +88,8 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
       )}
 
       <section className="space-y-3">
-        <h2 className="section-title">When can you run?</h2>
+        <h2 className="section-title">Which days could you run?</h2>
+        <p className="-mt-1 text-xs text-muted">Tick every day that can work. Løype picks the best of them and keeps the rest as rest days.</p>
         <div className="grid grid-cols-7 gap-1.5">
           {DAYS.map((d, i) => (
             <label
@@ -119,18 +125,18 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
             <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
           </Field>
         </div>
-        <details className="text-sm">
-          <summary className="cursor-pointer font-medium text-accent">Days you can never run (optional)</summary>
-          <p className="mt-2 text-xs text-muted">You will get a warning if you move a workout onto one of these days.</p>
-          <div className="mt-2 grid grid-cols-7 gap-1.5">
-            {DAYS.map((d, i) => (
-              <label key={d} className="flex flex-col items-center gap-1 text-xs">
-                <input type="checkbox" name="unavailable_days" value={i} className="size-5 accent-[var(--accent)]" />
-                {d}
-              </label>
+        <Field
+          label="Runs per week"
+          hint={`You have averaged ${defaults.recentRuns} runs a week over the last 4 weeks. The plan starts near that and adds one run every two weeks, up to this number.${runs > defaults.suggestedRuns + 1 ? " That is a big step up: injury risk rises when frequency grows quickly." : ""}`}
+        >
+          <select name="runs_per_week" value={Math.min(runs, maxRuns)} onChange={(e) => setRuns(Number(e.target.value))} className={input}>
+            {Array.from({ length: maxRuns - 1 }, (_, i) => i + 2).map((n) => (
+              <option key={n} value={n}>
+                {n} runs{n === defaults.suggestedRuns ? " (suggested)" : ""}
+              </option>
             ))}
-          </div>
-        </details>
+          </select>
+        </Field>
       </section>
 
       <section className="grid grid-cols-2 gap-3">
