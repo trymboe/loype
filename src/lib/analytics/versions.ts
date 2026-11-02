@@ -9,4 +9,6 @@ export const VERSIONS = {
   splits: "splits@2",
   quality: "quality@1",
   dedupe: "dedupe@1",
+  features: "features@1",
+  fitness: "fitness@1",
 } as const;

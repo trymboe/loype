@@ -1,5 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { todayIn } from "../dates";
+import { recomputeFitness, type RecomputeResult } from "../fitness/service";
 import { decryptSecret, encryptSecret, fingerprint } from "../crypto/secretbox";
 import { env } from "../env";
 import { GarminAuthError, GarminPersonalApiClient, type TokenStore } from "../integrations/garmin/client";
@@ -91,6 +93,7 @@ async function setIntegrationState(db: SupabaseClient, userId: string, patch: Re
 export interface UserTickOutcome extends Partial<TickResult> {
   configured: boolean;
   wellness?: WellnessResult;
+  fitness?: RecomputeResult | { error: string };
   error?: string;
 }
 
@@ -153,5 +156,14 @@ export async function syncTickForUser(
       }
     }
   }
-  return { configured: true, ...result, wellness };
+  // Fitness model: cheap no-op when nothing changed, so run it whenever the queue is drained.
+  let fitness: UserTickOutcome["fitness"];
+  if (result.done && Date.now() < deadline) {
+    try {
+      fitness = await recomputeFitness(db, userId, todayIn(profile?.timezone ?? "Europe/Oslo"), deadline);
+    } catch (e) {
+      fitness = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { configured: true, ...result, wellness, fitness };
 }

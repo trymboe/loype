@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createUserClient, getSessionUser } from "@/lib/db/server";
+import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
+import { todayIn } from "@/lib/dates";
+import { recomputeFitness } from "@/lib/fitness/service";
+import { userTimezone } from "@/lib/user-tz";
 
 const Feedback = z.object({
   activityId: z.string().uuid(),
@@ -37,4 +40,21 @@ export async function saveFeedback(form: FormData) {
   const { error } = await db.from("workout_feedback").upsert(row, { onConflict: "activity_id" });
   if (error) throw new Error("Could not save your check-in");
   revalidatePath(`/activities/${parsed.activityId}`);
+}
+
+const CLASSES = ["recovery", "easy", "long", "steady", "threshold", "intervals", "race"] as const;
+
+/** Manual workout-type correction; "" clears it. The fitness model keeps it on every recompute. */
+export async function setClassification(form: FormData) {
+  const user = await getSessionUser();
+  if (!user) throw new Error("Not signed in");
+  const id = z.string().uuid().parse(form.get("activityId"));
+  const raw = String(form.get("classification") ?? "");
+  const value = raw === "" ? null : z.enum(CLASSES).parse(raw);
+  const db = createAdminClient();
+  const { error } = await db.from("activities").update({ classification_override: value }).eq("id", id).eq("user_id", user.id);
+  if (error) throw new Error("Could not save the workout type");
+  await recomputeFitness(db, user.id, todayIn(await userTimezone()));
+  revalidatePath(`/activities/${id}`);
+  revalidatePath("/progress");
 }

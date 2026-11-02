@@ -12,7 +12,7 @@ import type { IngestRepo, WellnessObservation } from "./types";
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Extractor = { metric: string; unit: string; paths: string[] };
+type Extractor = { metric: string; unit: string; paths: string[]; compute?: (day: any) => number | null };
 
 function get(obj: any, path: string): unknown {
   return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -34,13 +34,22 @@ function asList(payload: any, keys: string[]): any[] {
   return payload && typeof payload === "object" ? [payload] : [];
 }
 
+function batteryExtreme(day: any, pick: (...v: number[]) => number): number | null {
+  const arr = day?.bodyBatteryValuesArray;
+  if (Array.isArray(arr)) {
+    const v = arr.map((e: any) => (Array.isArray(e) ? e[1] : null)).filter((x: unknown): x is number => typeof x === "number");
+    if (v.length) return pick(...v);
+  }
+  return firstNumber(day, pick === Math.max ? ["bodyBatteryHighestValue", "highest"] : ["bodyBatteryLowestValue", "lowest"]);
+}
+
 export function extractDaily(payload: unknown, listKeys: string[], extractors: Extractor[]): WellnessObservation[] {
   const out: WellnessObservation[] = [];
   for (const day of asList(payload, listKeys)) {
     const date = dateOf(day);
     if (!date) continue;
     for (const ex of extractors) {
-      const value = firstNumber(day, ex.paths);
+      const value = ex.compute ? ex.compute(day) : firstNumber(day, ex.paths);
       out.push({ calendarDate: date, metric: ex.metric, value, unit: ex.unit, raw: day });
     }
   }
@@ -69,6 +78,7 @@ export const WELLNESS_SOURCES: {
     extractors: [
       { metric: "sleep_seconds", unit: "s", paths: ["sleepTimeSeconds", "dailySleepDTO.sleepTimeSeconds", "durationInSeconds"] },
       { metric: "sleep_score", unit: "score", paths: ["sleepScores.overall.value", "dailySleepDTO.sleepScores.overall.value", "overallSleepScore.value", "sleepScore"] },
+      { metric: "sleep_avg_hr", unit: "bpm", paths: ["avgHeartRate", "dailySleepDTO.avgHeartRate"] },
     ],
   },
   {
@@ -88,8 +98,9 @@ export const WELLNESS_SOURCES: {
     fetch: (c, s, e) => c.bodyBatteryDaily(s, e),
     listKeys: ["values", "bodyBatteryReports"],
     extractors: [
-      { metric: "body_battery_high", unit: "score", paths: ["charged", "bodyBatteryHighestValue", "highest"] },
-      { metric: "body_battery_low", unit: "score", paths: ["drained", "bodyBatteryLowestValue", "lowest"] },
+      // "charged"/"drained" are amounts gained/used, not levels: take the extremes of the values array
+      { metric: "body_battery_high", unit: "score", paths: ["bodyBatteryHighestValue", "highest"], compute: (d) => batteryExtreme(d, Math.max) },
+      { metric: "body_battery_low", unit: "score", paths: ["bodyBatteryLowestValue", "lowest"], compute: (d) => batteryExtreme(d, Math.min) },
     ],
   },
 ];

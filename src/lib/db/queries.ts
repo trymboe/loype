@@ -91,3 +91,34 @@ export async function getActiveJob() {
     .maybeSingle();
   return data as any | null;
 }
+
+export async function getFitnessState() {
+  const db = await createUserClient();
+  const { data } = await db.from("fitness_state").select("model_version, as_of, computed_at, output").maybeSingle();
+  return data as { model_version: string; as_of: string; computed_at: string; output: any } | null;
+}
+
+/** Weekly VO2max-estimate history: retrospective rows, plus today's contemporaneous value. */
+export async function getVdotHistory(modelVersion: string) {
+  const db = await createUserClient();
+  const { data, error } = await db
+    .from("fitness_snapshots")
+    .select("as_of, kind, value, lower_bound, upper_bound, confidence")
+    .eq("metric", "vdot")
+    .eq("model_version", modelVersion)
+    .order("as_of");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as { as_of: string; kind: string; value: number | null; lower_bound: number | null; upper_bound: number | null; confidence: string | null }[];
+}
+
+export async function getActivityScore(id: string) {
+  const db = await createUserClient();
+  const { data } = await db.from("activity_scores").select("*").eq("activity_id", id).maybeSingle();
+  return data as any | null;
+}
+
+export async function getActivityFeatures(id: string) {
+  const db = await createUserClient();
+  const { data } = await db.from("activity_features").select("features").eq("activity_id", id).maybeSingle();
+  return (data?.features ?? null) as any | null;
+}

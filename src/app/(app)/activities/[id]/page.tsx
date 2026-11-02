@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Info } from "lucide-react";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
+import { AnalysisCard } from "@/components/activity/analysis-card";
 import { FeedbackForm } from "@/components/activity/feedback-form";
 import { Badge, Stat } from "@/components/ui";
 import { buildChartSeries } from "@/lib/analytics/series";
-import { getActivityDetail } from "@/lib/db/queries";
+import { getActivityDetail, getActivityFeatures, getActivityScore } from "@/lib/db/queries";
 import { formatDay, localTime } from "@/lib/dates";
 import { formatDuration, formatKm, formatPace, formatPaceFromSpeed } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function ActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [detail, tz] = await Promise.all([getActivityDetail(id), userTimezone()]);
+  const [detail, tz, score, features] = await Promise.all([getActivityDetail(id), userTimezone(), getActivityScore(id), getActivityFeatures(id)]);
   if (!detail) notFound();
   const { activity: a, streams, laps, splits, feedback } = detail;
 
@@ -78,6 +79,8 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
           ))}
         </section>
       )}
+
+      {a.sport === "running" && <AnalysisCard activityId={a.id} score={score} features={features} override={a.classification_override ?? null} />}
 
       {points.length > 0 ? (
         <ActivityExplorer points={points} laps={lapViews} />
