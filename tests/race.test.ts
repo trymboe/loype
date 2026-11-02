@@ -154,3 +154,17 @@ describe("race status", () => {
     expect(raceGoalFromRow({ id: "g", kind: "consistency" })).toBeNull();
   });
 });
+
+describe("plan projection on the race page", () => {
+  it("re-projects the stored plan projection from current fitness, or returns null without one", async () => {
+    const { livePlanProjection } = await import("@/lib/race/projection");
+    const { project } = await import("@/lib/planning/projection");
+    const start = project({ vdot: 42, distanceM: 10_000, label: "10 km", trainingWeeks: 20, volumeFactor: 1, longestPlannedM: 14_000, currentLongestM: 10_000, asOf: "2026-10-01" });
+    const weeks = Array.from({ length: 20 }, (_, i) => ({ index: i, start: new Date(Date.UTC(2026, 9, 5 + i * 7)).toISOString().slice(0, 10), phase: "build", targetMinutes: 100, note: "" }));
+    const plan = { config: { projection: start }, weeks };
+    const live = livePlanProjection(plan, { estimate: { withheld: false, vdot: 44 }, longestRecentM: 12_000 }, [], "2026-11-02")!;
+    expect(live.projectedS).toBeLessThan(start.projectedS);
+    expect(livePlanProjection(plan, null, [], "2026-11-02")!.projectedS).toBe(start.projectedS);
+    expect(livePlanProjection({ config: {} }, null, [], "2026-11-02")).toBeNull();
+  });
+});
