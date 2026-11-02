@@ -24,6 +24,10 @@ export interface PlanFormDefaults {
   runDays: number[];
   longRunDay: number;
   today: string;
+  /** average runs per week over the last 4 weeks */
+  recentRuns: number;
+  /** your usual run length (median, last 8 weeks), if any */
+  runMinutes: number | null;
 }
 
 export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; replacing?: boolean }) {
@@ -83,7 +87,8 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
       )}
 
       <section className="space-y-3">
-        <h2 className="section-title">When can you run?</h2>
+        <h2 className="section-title">Which days could you run?</h2>
+        <p className="-mt-1 text-xs text-muted">Tick every day that can work. Løype picks the best of them and keeps the rest as rest days.</p>
         <div className="grid grid-cols-7 gap-1.5">
           {DAYS.map((d, i) => (
             <label
@@ -119,18 +124,10 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
             <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
           </Field>
         </div>
-        <details className="text-sm">
-          <summary className="cursor-pointer font-medium text-accent">Days you can never run (optional)</summary>
-          <p className="mt-2 text-xs text-muted">You will get a warning if you move a workout onto one of these days.</p>
-          <div className="mt-2 grid grid-cols-7 gap-1.5">
-            {DAYS.map((d, i) => (
-              <label key={d} className="flex flex-col items-center gap-1 text-xs">
-                <input type="checkbox" name="unavailable_days" value={i} className="size-5 accent-[var(--accent)]" />
-                {d}
-              </label>
-            ))}
-          </div>
-        </details>
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+          How often you run is measured from your history, not set here. You have averaged {defaults.recentRuns} runs a week lately{defaults.runMinutes ? `, usually about ${defaults.runMinutes} min each` : ""}, so the plan starts from that and only adds time and runs as fast as is considered
+          safe (about 10 % a week, and never more than 1.3× your last four weeks). Each week it is recalculated from what you actually ran, so it grows if you do more.
+        </p>
       </section>
 
       <section className="grid grid-cols-2 gap-3">

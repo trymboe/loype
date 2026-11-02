@@ -14,7 +14,8 @@ export default async function NewPlanPage() {
   if (!user) return null;
   const today = todayIn(await userTimezone());
   const db = createAdminClient();
-  const [baseline, defaults, plan] = await Promise.all([loadBaseline(db, user.id, today), defaultsFor(user.id, today), activePlan(db, user.id)]);
+  const [baseline, plan] = await Promise.all([loadBaseline(db, user.id, today), activePlan(db, user.id)]);
+  const defaults = await defaultsFor(user.id, today, baseline);
   return (
     <>
       <PageHeader back={{ href: "/plan", label: "Plan" }} title={plan ? "Change goal" : "New plan"} subtitle={plan ? "Builds a new plan from today. The current plan and its history are kept under History." : undefined} />

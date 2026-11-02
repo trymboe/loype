@@ -56,7 +56,7 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
   if (weeklyKm != null && (!Number.isFinite(weeklyKm) || weeklyKm < 5 || weeklyKm > 200)) return { error: "Target weekly km should be between 5 and 200" };
 
   const runDays = days("run_days");
-  if (runDays.length < 2) return { error: "Pick at least 2 days you can run" };
+  if (runDays.length < 2) return { error: "Pick at least 2 days you could run" };
   const longRunDay = s("long_run_day") === "" ? null : Number(s("long_run_day"));
   const startDate = s("start_date") || today;
   if (!DATE.safeParse(startDate).success || startDate < today) return { error: "The start date can't be in the past" };
@@ -70,7 +70,8 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
     weeks: Number.isFinite(weeks) ? weeks : 12,
     runDays,
     longRunDay: longRunDay != null && Number.isInteger(longRunDay) ? longRunDay : null,
-    unavailableDays: days("unavailable_days"),
+    // days you didn't tick count as unavailable, so moving a workout there gives a warning
+    unavailableDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => !runDays.includes(d)),
     maxWeeklyMinutes: maxH ? Math.round(maxH * 60) : null,
     includeIntervals: form.get("intervals") === "on",
     includeLongRuns: form.get("long_runs") === "on",

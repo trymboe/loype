@@ -1,6 +1,7 @@
 /** Planning types (`planner@1`). Durations in seconds, distances in metres, paces in s/km. */
 import type { HrZone } from "../analytics/fitness/physiology";
 import type { PaceZone } from "../analytics/fitness/vdot";
+import type { Projection } from "./projection";
 
 export const PLANNER_VERSION = "planner@1";
 
@@ -35,8 +36,14 @@ export interface PlanConfig {
   startDate: string;
   /** used when there is no race date */
   weeks: number;
-  /** 0 = Monday … 6 = Sunday */
+  /** days you are available to run, 0 = Monday … 6 = Sunday; how many of them are used comes from your load */
   runDays: number[];
+  /** set when the plan is refreshed: keeps the original phase of each remaining week */
+  phases?: Phase[];
+  /** Monday of the week the future weeks were last recalculated from your actual running */
+  refreshedWeek?: string;
+  /** race-time projection made when the plan was created */
+  projection?: Projection | null;
   longRunDay: number | null;
   unavailableDays: number[];
   maxWeeklyMinutes: number | null;
@@ -60,6 +67,14 @@ export interface Baseline {
   /** weeks with at least one run, out of the last 8 */
   consistency: number;
   longestRunMinutes: number;
+  /** longest single run in the last 30 days (minutes): the reference for the single-session spike limit */
+  longestRun30Minutes?: number;
+  /** running minutes in each of the last 4 complete calendar weeks, oldest first */
+  recentWeeks?: number[];
+  /** runs (≥ 10 min) in each of those weeks, oldest first */
+  recentRunCounts?: number[];
+  /** median length of your runs over the last 8 weeks, minutes */
+  habitualRunMinutes?: number | null;
   /** race-time predictions by distance (m → s) at the current estimate */
   predictions: { distanceM: number; timeS: number }[];
 }
@@ -159,4 +174,5 @@ export interface GeneratedPlan {
   warnings: string[];
   /** pace used for race-pace work, s/km */
   racePace: number | null;
+  projection: Projection | null;
 }

@@ -4,6 +4,8 @@ import { Check, ChevronDown, ChevronRight, History, Lock, Minus, Target, X } fro
 import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";
 import { ProposalCard, type ProposalRow } from "@/components/plan/proposal-card";
 import { PlanForm } from "./plan-form";
+import { ProjectionCard } from "@/components/plan/projection-card";
+import { adherence, liveProjection, type Projection } from "@/lib/planning/projection";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
 import { addDaysIso, daysBetween, formatDay, todayIn, weekStart } from "@/lib/dates";
 import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
@@ -58,6 +60,24 @@ export default async function PlanPage() {
   const applied = (proposals ?? []).filter((p: any) => p.status === "accepted");
   const todays = ws.filter((w) => w.date === today && w.type !== "rest");
 
+  // projection: as stored at plan start, and re-projected from today's fitness
+  const startProj = ((plan.config as { projection?: Projection | null } | null)?.projection ?? null) as Projection | null;
+  let liveProj: Projection | null = null;
+  if (startProj) {
+    const { data: fs } = await db.from("fitness_state").select("output").maybeSingle();
+    const est = fs?.output?.estimate;
+    if (est && !est.withheld) {
+      const remainingWeeks = weeks.filter((w) => w.start >= thisWeek && w.phase !== "taper" && w.phase !== "race").length;
+      liveProj = liveProjection(startProj, {
+        vdot: est.vdot,
+        remainingWeeks,
+        adherence: adherence(ws, today, addDaysIso(today, -28)),
+        currentLongestM: fs.output.longestRecentM ?? 0,
+        asOf: today,
+      });
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -79,6 +99,8 @@ export default async function PlanPage() {
           <ProposalCard key={p.id} p={p as ProposalRow} />
         ))}
 
+        {startProj && <ProjectionCard start={startProj} live={liveProj} target={goal.target_time_s ?? null} />}
+
         <Card>
           <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
             {goal.race_date ? (
@@ -96,6 +118,9 @@ export default async function PlanPage() {
               {(plan.summary as string[]).map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
+              {plan.config?.refreshedWeek === thisWeek && (
+                <li>Recalculated this week from what you actually ran, so the coming weeks follow your real load. See History to compare or restore.</li>
+              )}
               <li>
                 Built from your last 4 weeks ({baseline.weeklyMinutes} min/week, {baseline.runsPerWeek} runs/week) and{" "}
                 {baseline.vdot ? `your fitness estimate (VDOT ${baseline.vdot.toFixed(1)}, ${baseline.vdotConfidence} confidence)` : "heart-rate zones (no fitness estimate yet)"}.
@@ -270,7 +295,8 @@ function PhaseBar({ weeks, current }: { weeks: PlanWeek[]; current: string }) {
 }
 
 async function NoPlan({ userId, today }: { userId: string; today: string }) {
-  const [baseline, defaults] = await Promise.all([loadBaseline(createAdminClient(), userId, today), defaultsFor(userId, today)]);
+  const baseline = await loadBaseline(createAdminClient(), userId, today);
+  const defaults = await defaultsFor(userId, today, baseline);
   return (
     <>
       <PageHeader title="Plan" subtitle="Set a goal and Løype builds a plan from your actual training." />
