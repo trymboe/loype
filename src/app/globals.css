@@ -440,11 +440,71 @@
     animation: shimmer 1.6s linear infinite;
   }
 
+  /* New-run reveal */
+  @keyframes reveal-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .reveal-in {
+    animation: reveal-in 0.35s ease-out both;
+  }
+  .reveal-map {
+    animation: reveal-zoom 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes reveal-zoom {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(12px);
+    }
+  }
+  .reveal-badge,
+  .reveal-up {
+    animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes reveal-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.08);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  .reveal-pop {
+    animation: reveal-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes reveal-spark {
+    0% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3);
+    }
+  }
+  .reveal-spark {
+    animation: reveal-spark 0.9s cubic-bezier(0.1, 0.7, 0.3, 1) both;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .rise,
     .stagger > *,
-    .skeleton {
+    .skeleton,
+    .reveal-in,
+    .reveal-map,
+    .reveal-badge,
+    .reveal-up,
+    .reveal-pop {
       animation: none;
+    }
+    .reveal-spark {
+      display: none;
     }
   }
 }

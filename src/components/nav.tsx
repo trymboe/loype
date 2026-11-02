@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Activity, CalendarDays, LineChart, MessageCircle, Ellipsis, Sun } from "lucide-react";
 import clsx from "clsx";
 import { LogoMark, Wordmark } from "./logo";
+import { SyncButton } from "./sync/sync-button";
 
 const ITEMS = [
   { href: "/", label: "Today", icon: Sun },
@@ -75,6 +76,9 @@ export function SideNav() {
           </Link>
         );
       })}
+      <div className="mt-auto px-1">
+        <SyncButton className="w-full justify-center" />
+      </div>
     </nav>
   );
 }

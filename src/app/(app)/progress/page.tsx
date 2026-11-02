@@ -2,6 +2,7 @@ import { LineChart } from "lucide-react";
 import { ButtonLink, Card, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { VolumeChart } from "@/components/volume-chart";
 import { weeklyVolume } from "@/lib/analytics/volume";
+import { ChartRangeProvider, ChartRangeSelector } from "@/components/progress/chart-range";
 import { FitnessSection } from "@/components/fitness/fitness-section";
 import { activitiesSince, getFitnessState, getVdotHistory } from "@/lib/db/queries";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
@@ -49,6 +50,7 @@ export default async function ProgressPage() {
   return (
     <>
       <PageHeader title="Progress" subtitle="Training volume and consistency, calculated from your imported runs." />
+      <ChartRangeProvider today={today}>
       <div className="stagger space-y-3">
         <Card>
           <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
@@ -74,6 +76,7 @@ export default async function ProgressPage() {
             <Stat label="Weeks with runs" value={`${weeksWithRuns}/${last12.length}`} hint={`last ${last12.length} weeks`} />
           </div>
         </Card>
+        <ChartRangeSelector />
         <Card>
           <h2 className="section-title mb-4">Weekly distance</h2>
           <VolumeChart weeks={weeks} />
@@ -87,6 +90,7 @@ export default async function ProgressPage() {
           </Card>
         )}
       </div>
+      </ChartRangeProvider>
     </>
   );
 }

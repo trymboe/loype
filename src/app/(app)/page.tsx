@@ -2,10 +2,11 @@ import Link from "next/link";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SyncBanner } from "@/components/sync-banner";
+import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
-import { addDaysIso, formatDay, localTime, relativeDay, relativeTime, todayIn, weekStart } from "@/lib/dates";
+import { addDaysIso, formatDay, localTime, relativeDay, todayIn, weekStart } from "@/lib/dates";
 import { isRun, weeklyVolume } from "@/lib/analytics/volume";
 import { formatDuration, formatKm, formatPaceFromSpeed } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
@@ -37,14 +38,7 @@ export default async function TodayPage() {
       <PageHeader
         eyebrow={formatDay(today, { weekday: "long", day: "numeric", month: "long" })}
         title="Today"
-        action={
-          connected && integration.last_success_at ? (
-            <Link href="/more/integrations" className="mb-1 inline-flex h-8 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-xs font-medium text-muted hover:text-fg">
-              <span className="size-1.5 rounded-full bg-good" />
-              Synced {relativeTime(integration.last_success_at)}
-            </Link>
-          ) : undefined
-        }
+        action={connected ? <SyncButton className="mb-1" /> : undefined}
       />
       <SyncBanner integration={integration} />
 

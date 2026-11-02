@@ -1,32 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { WeekVolume } from "@/lib/analytics/volume";
 import { formatDuration } from "@/lib/units";
+import { addDaysIso } from "@/lib/dates";
+import { EmptyRange, useChartRange } from "@/components/progress/chart-range";
 
 const shortDate = (v: string) => new Date(`${v}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
-const WINDOWS = [
-  { key: 4, label: "4W" },
-  { key: 13, label: "3M" },
-  { key: 26, label: "6M" },
-  { key: 52, label: "12M" },
-  { key: 0, label: "All" },
-];
-
 export function VolumeChart({ weeks }: { weeks: WeekVolume[] }) {
-  const [win, setWin] = useState(13);
-  const data = (win ? weeks.slice(-win) : weeks).map((w) => ({ ...w, km: Math.round(w.distanceM / 100) / 10, longKm: Math.round(w.longestM / 100) / 10 }));
+  const { filter } = useChartRange();
+  // a week counts when any of its days is inside the window
+  const data = filter(weeks, (w) => addDaysIso(w.weekStart, 6)).map((w) => ({ ...w, km: Math.round(w.distanceM / 100) / 10, longKm: Math.round(w.longestM / 100) / 10 }));
+  if (data.length === 0) return <EmptyRange what="weeks" />;
   return (
     <div>
-      <div className="seg mb-4 w-full">
-        {WINDOWS.map((w) => (
-          <button key={w.key} type="button" aria-pressed={win === w.key} onClick={() => setWin(w.key)} className="flex-1">
-            {w.label}
-          </button>
-        ))}
-      </div>
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 0, left: -18, bottom: 0 }}>

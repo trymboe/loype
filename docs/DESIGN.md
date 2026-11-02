@@ -34,3 +34,4 @@ Instrument Sans (one family). Page title 32px bold (`<PageHeader>`), card headin
 | Chart tooltip | `.chart-tip`; grid stroke `var(--grid)`, axis ticks `var(--subtle)` 11px |
 | Entrance animation | `.rise` on one element, `.stagger` on a list parent |
 | Loading placeholder | `.skeleton` |
+| Garmin sync status / sync now | `<SyncButton>` (reads `useSync()` from `SyncProvider` in the app layout) |

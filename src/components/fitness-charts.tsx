@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyRange, useChartRange } from "@/components/progress/chart-range";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis, Bar } from "recharts";
 
 const axis = { tick: { fontSize: 11, fill: "var(--subtle)" }, tickLine: false, axisLine: false } as const;
@@ -29,7 +30,10 @@ export interface TrendPoint {
   confidence: string | null;
 }
 
-export function FitnessTrendChart({ points }: { points: TrendPoint[] }) {
+export function FitnessTrendChart({ points: all }: { points: TrendPoint[] }) {
+  const { filter } = useChartRange();
+  const points = filter(all, (p) => p.date);
+  if (points.length < 2) return <EmptyRange what="weekly estimates" />;
   const values = points.flatMap((p) => (p.band ? p.band : p.value != null ? [p.value] : []));
   if (values.length < 2) return <p className="text-sm text-muted">Not enough weekly estimates yet to draw a trend.</p>;
   const lo = Math.floor(Math.min(...values) - 1);
@@ -78,7 +82,10 @@ export interface LoadPoint {
   tsb: number;
 }
 
-export function LoadChart({ days }: { days: LoadPoint[] }) {
+export function LoadChart({ days: all }: { days: LoadPoint[] }) {
+  const { filter } = useChartRange();
+  const days = filter(all, (d) => d.date);
+  if (days.length < 2) return <EmptyRange what="training load" />;
   return (
     <div>
       <div className="h-52">
@@ -131,7 +138,10 @@ export interface EfPoint {
   trend?: number;
 }
 
-export function EfficiencyChart({ points }: { points: EfPoint[] }) {
+export function EfficiencyChart({ points: all }: { points: EfPoint[] }) {
+  const { filter } = useChartRange();
+  const points = filter(all, (p) => p.date);
+  if (points.length === 0) return <EmptyRange what="easy or steady runs" />;
   return (
     <div className="h-44">
       <ResponsiveContainer width="100%" height="100%">
