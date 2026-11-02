@@ -122,3 +122,47 @@ export async function getActivityFeatures(id: string) {
   const { data } = await db.from("activity_features").select("features").eq("activity_id", id).maybeSingle();
   return (data?.features ?? null) as any | null;
 }
+
+export interface RouteListItem {
+  id: string;
+  name: string;
+  coords: [number, number][];
+  distance_m: number;
+  elevation_gain_m: number | null;
+  favorite: boolean;
+  source: "drawn" | "loop" | "activity";
+  updated_at: string;
+}
+
+export async function listRoutes(): Promise<RouteListItem[]> {
+  const db = await createUserClient();
+  const { data, error } = await db
+    .from("routes")
+    .select("id, name, coords, distance_m, elevation_gain_m, favorite, source, updated_at")
+    .order("favorite", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as RouteListItem[];
+}
+
+export async function getRoute(id: string) {
+  const db = await createUserClient();
+  const { data, error } = await db.from("routes").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as any;
+}
+
+/** Simplified tracks of recent outdoor runs, for the planner's "my runs" layer. */
+export async function recentRunTracks(limit = 150): Promise<[number, number][][]> {
+  const db = await createUserClient();
+  const { data } = await db
+    .from("activities")
+    .select("route_preview")
+    .is("duplicate_of", null)
+    .eq("is_indoor", false)
+    .not("route_preview", "is", null)
+    .order("start_time", { ascending: false })
+    .limit(limit);
+  return ((data ?? []) as { route_preview: [number, number][] | null }[]).map((r) => r.route_preview!).filter((r) => r && r.length > 1);
+}
