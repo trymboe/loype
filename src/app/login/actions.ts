@@ -50,3 +50,27 @@ export async function verifyCode(_prev: CodeState, form: FormData): Promise<Code
   if (error) return { error: "That code is invalid or has expired. Request a new email." };
   redirect("/");
 }
+
+export interface PasswordState {
+  error?: string;
+}
+
+/**
+ * Email + password sign-in. Needs no email, so it works inside an installed
+ * iPhone home-screen app, which has its own storage separate from Safari and
+ * never receives magic links. The password is set under More → Password.
+ */
+export async function signInWithPassword(_prev: PasswordState, form: FormData): Promise<PasswordState> {
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const password = String(form.get("password") ?? "");
+  const generic = { error: "Wrong email or password. If you haven't set a password yet, use an email link first." };
+  if (!email.includes("@") || !password) return generic;
+  if (email !== env.allowedEmail()) return generic;
+  const supabase = await createUserClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    if (error.status === 429) return { error: "Too many attempts. Wait a minute and try again." };
+    return generic;
+  }
+  redirect("/");
+}
