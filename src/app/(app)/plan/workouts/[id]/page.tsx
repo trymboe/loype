@@ -4,6 +4,8 @@ import { ArrowRight } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat, type Tone } from "@/components/ui";
 import { Steps } from "@/components/plan/steps";
 import { WorkoutActions } from "./workout-actions";
+import { StepEditor } from "./step-editor";
+import { toEditable } from "@/lib/planning/edit-steps";
 import { createUserClient } from "@/lib/db/server";
 import { formatDay, todayIn } from "@/lib/dates";
 import { WORKOUT_LABEL, type WorkoutType } from "@/lib/planning/types";
@@ -75,6 +77,11 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
         <Card>
           <CardHeader title="Session" className="mb-4" />
           <Steps steps={w.steps} />
+          {w.status === "planned" && w.type !== "rest" && w.type !== "race" && w.steps?.length > 0 && (
+            <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+              <StepEditor id={w.id} initial={toEditable(w.steps)} />
+            </div>
+          )}
         </Card>
 
         {w.status !== "completed" && <WorkoutActions id={w.id} date={w.date} today={today} locked={w.locked} status={w.status} type={w.type} />}

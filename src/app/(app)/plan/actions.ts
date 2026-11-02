@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { addDaysIso, todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
-import { createPlan, decideProposal, editWorkout, restoreVersion, undoProposal } from "@/lib/planning/service";
+import { checkStepEdit, createPlan, decideProposal, editWorkout, restoreVersion, undoProposal } from "@/lib/planning/service";
+import { editableSteps } from "@/lib/planning/edit-steps";
 import { moveIssues } from "@/lib/planning/validate";
 import type { Goal, GoalKind, PlanConfig } from "@/lib/planning/types";
 import { userTimezone } from "@/lib/user-tz";
@@ -157,6 +158,22 @@ export async function editWorkoutAction(_prev: EditState, form: FormData): Promi
     else if (op === "skip") await editWorkout(db, user.id, id.data, { kind: "skip" });
     else if (op === "unskip") await editWorkout(db, user.id, id.data, { kind: "unskip" });
     else if (op === "easy" || op === "rest") await editWorkout(db, user.id, id.data, { kind: "swap", to: op });
+    else if (op === "steps") {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(String(form.get("steps") ?? ""));
+      } catch {
+        return { error: "Couldn't read the steps" };
+      }
+      const parsed = editableSteps.safeParse(raw);
+      if (!parsed.success) return { error: "Some steps are incomplete: every step needs a time or a distance." };
+      const payload = String(form.get("steps"));
+      if (form.get("confirm") !== "1") {
+        const issues = await checkStepEdit(db, user.id, id.data, parsed.data);
+        if (issues.length) return { issues, issuesFor: payload };
+      }
+      await editWorkout(db, user.id, id.data, { kind: "steps", steps: parsed.data });
+    }
     else return { error: "Unknown action" };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
