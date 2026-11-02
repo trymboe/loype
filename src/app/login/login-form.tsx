@@ -14,7 +14,7 @@ export function LoginForm() {
       <input name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={input} />
       {state.error && <p className="text-sm text-hr">{state.error}</p>}
       <button disabled={pending} className={button}>
-        {pending ? "Sending…" : "Email me a sign-in code"}
+        {pending ? "Sending…" : "Email me a sign-in link"}
       </button>
     </form>
   );
@@ -25,7 +25,7 @@ function CodeForm({ email }: { email: string }) {
   return (
     <form action={action} className="space-y-3">
       <p className="text-sm text-muted">
-        If that address belongs to this app, an email is on its way. Enter the code from it here, or open its link in this browser.
+        If that address belongs to this app, an email is on its way. Open its link in this same browser. If the email also shows a code, you can enter it below instead.
       </p>
       <input type="hidden" name="email" value={email} />
       <input
@@ -33,7 +33,7 @@ function CodeForm({ email }: { email: string }) {
         inputMode="numeric"
         autoComplete="one-time-code"
         required
-        placeholder="123456"
+        placeholder="Code (optional)"
         className={`${input} tabular text-center text-2xl tracking-[0.4em]`}
       />
       {state.error && <p className="text-sm text-hr">{state.error}</p>}
