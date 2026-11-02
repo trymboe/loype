@@ -2,6 +2,7 @@ import { Send, Watch } from "lucide-react";
 import { Badge, IconTile, PageHeader, type Tone } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { getIntegrationStatus } from "@/lib/db/queries";
+import { relativeTime } from "@/lib/dates";
 import { userTimezone } from "@/lib/user-tz";
 import { GarminKeyForm } from "./garmin-key-form";
 import { SyncPanel } from "./sync-panel";
@@ -47,6 +48,12 @@ export default async function IntegrationsPage() {
         </div>
         {integration?.last_success_at && (
           <p className="mb-3 text-xs text-muted">Last successful sync: {new Date(integration.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
+        )}
+        {connected && (
+          <p className="mb-3 text-xs text-muted">
+            Background sync every 30 minutes
+            {integration?.settings?.lastScheduledRunAt ? ` · last ran ${relativeTime(integration.settings.lastScheduledRunAt)}` : " · hasn't run yet"}
+          </p>
         )}
         {integration?.last_error && integration.status !== "connected" && <p className="mb-3 text-sm text-danger">{integration.last_error}</p>}
         <details open={!connected} className="group">

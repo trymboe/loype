@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
+import { SetupPrompt } from "@/components/setup-prompt";
 import { SyncBanner } from "@/components/sync-banner";
 import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
@@ -46,13 +47,14 @@ export default async function TodayPage() {
         <EmptyState
           icon={<Watch size={22} />}
           title="Let's get your training history in"
-          action={<ButtonLink href="/more/integrations">Connect Garmin</ButtonLink>}
+          action={<ButtonLink href="/welcome">Set up Løype</ButtonLink>}
         >
           Løype builds everything from your real runs. Connect your Garmin account with a Personal API key and import at least 3–6 months of history to establish
           a baseline.
         </EmptyState>
       ) : (
         <div className="stagger space-y-3">
+          <SetupPrompt />
           <NextWorkout today={today} />
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
