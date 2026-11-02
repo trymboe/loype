@@ -187,7 +187,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
             <Stat label="Form" value={`${last.tsb > 0 ? "+" : ""}${last.tsb.toFixed(0)}`} hint={out.rampRate != null ? `fitness ${out.rampRate >= 0 ? "+" : ""}${out.rampRate}/wk` : undefined} />
           </div>
           <div className="mt-4">
-            <LoadChart days={out.load.slice(-120)} />
+            <LoadChart days={out.load} />
           </div>
           <p className="mt-2 text-xs text-muted">
             Heart-rate-based load from runs and other sports with heart rate ({out.otherLoadTotal} non-running activities). These are trends in what you did, not a
