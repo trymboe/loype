@@ -32,6 +32,12 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ Edits: move (with schedule warnings), lock, skip, swap to easy/rest; every change versioned and restorable
 - ✅ Run ↔ workout matching, execution vs targets, missed sessions after a day of grace
 - ✅ Adaptation proposals (fitness change / outperforming, missed sessions, fatigue, return after a break) with accept / keep / undo; goal change regenerates and keeps history
+- ✅ Load-driven frequency, single-run spike limit, 2-week tapers, weekly refresh, race-time projection, evidence table
+- ✅ Workout step editor (reps, durations/distances, intensities, own paces) with safety checks
+- ✅ Month view with drag-to-move
+- ✅ Proposals: explain further, accept only some of the changes
+- ✅ Wellness signals (HRV, resting/sleeping HR, sleep, Body Battery) in the fatigue rule
+- ✅ Rep-by-rep interval analysis (laps or stream): pacing, fade, HR drift, HR recovery
 - ⏳ Validate against a few weeks of real training
 
 ## Phase 4 — Workout export (see `docs/WATCH.md`)

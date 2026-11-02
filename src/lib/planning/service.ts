@@ -8,6 +8,7 @@ import { generatePlan, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
 import { proposeAdaptations, type AdaptWorkout, type Change } from "./adapt";
 import { buildWorkout, stepsDistance, stepsDuration, type TargetContext } from "./workouts";
+import { editIssues, hardSeconds, rebuildSteps, titleFor, type EditableStep } from "./edit-steps";
 import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type WorkoutType } from "./types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -201,6 +202,7 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     runs: runs.map((r: any) => ({ date: r.local_date, movingS: r.moving_s, classification: classOf(r), rpe: feedback.get(r.id)?.rpe ?? null, legs: feedback.get(r.id)?.legs ?? null })),
     fitness: est && !est.withheld ? { vdot: est.vdot, confidence: est.confidence } : null,
     existingKeys: new Set((existing ?? []).map((p: any) => p.key)),
+    wellness: await loadWellness(db, userId, today),
   });
   if (proposals.length) {
     await check(
@@ -322,14 +324,18 @@ const fieldsToRow = (f: Change["after"]) => ({
 const same = (row: any, f: Change["after"]) => row.type === f.type && row.title === f.title && JSON.stringify(row.steps) === JSON.stringify(f.steps);
 
 /** Accept: apply each change whose workout hasn't been edited since; reject: just record it. */
-export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean) {
+export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean, only?: string[]) {
   const p = await single(db.from("adaptation_proposals").select("*").eq("id", id).eq("user_id", userId));
   if (p.status !== "pending") return;
+  const all = p.changes as Change[];
+  const chosen = only ? all.filter((c) => only.includes(c.workoutId)) : all;
+  if (accept && chosen.length === 0) accept = false;
   if (!accept) {
     await check(db.from("adaptation_proposals").update({ status: "rejected", decided_at: new Date().toISOString() }).eq("id", id));
     return;
   }
-  const changes = p.changes as Change[];
+  const changes = chosen;
+  const modified = changes.length < all.length;
   const { data: rows } = await db.from("planned_workouts").select("*").in("id", changes.map((c) => c.workoutId));
   let applied = 0;
   for (const c of changes) {
@@ -349,8 +355,14 @@ export async function decideProposal(db: SupabaseClient, userId: string, id: str
         .eq("id", p.plan_id),
     );
   }
-  const version = await snapshot(db, userId, p.plan_id, `Accepted: ${p.title} (${applied} workout${applied === 1 ? "" : "s"} changed)`, "adaptation");
-  await check(db.from("adaptation_proposals").update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch }).eq("id", id));
+  const version = await snapshot(db, userId, p.plan_id, `Accepted${modified ? " with changes" : ""}: ${p.title} (${applied} workout${applied === 1 ? "" : "s"} changed)`, "adaptation");
+  // a modified acceptance keeps only the chosen changes, so undo reverts exactly those
+  await check(
+    db
+      .from("adaptation_proposals")
+      .update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch, ...(modified ? { changes, title: `${p.title} (${changes.length} of ${all.length} workouts)` } : {}) })
+      .eq("id", id),
+  );
 }
 
 export async function undoProposal(db: SupabaseClient, userId: string, id: string) {
@@ -389,7 +401,7 @@ export async function restoreVersion(db: SupabaseClient, userId: string, planId:
   await snapshot(db, userId, planId, `Restored version ${version}`, "athlete");
 }
 
-export type WorkoutEdit = { kind: "move"; date: string } | { kind: "lock"; locked: boolean } | { kind: "skip" } | { kind: "unskip" } | { kind: "swap"; to: "easy" | "rest" };
+export type WorkoutEdit = { kind: "move"; date: string } | { kind: "lock"; locked: boolean } | { kind: "skip" } | { kind: "unskip" } | { kind: "swap"; to: "easy" | "rest" } | { kind: "steps"; steps: EditableStep[] };
 
 export async function editWorkout(db: SupabaseClient, userId: string, id: string, edit: WorkoutEdit) {
   const w = await single(db.from("planned_workouts").select("*, plan:training_plans(*, goal:goals(*))").eq("id", id).eq("user_id", userId));
@@ -431,6 +443,12 @@ export async function editWorkout(db: SupabaseClient, userId: string, id: string
       reason = `Swapped ${label} for ${edit.to === "rest" ? "rest" : "an easy run"}`;
       break;
     }
+    case "steps": {
+      const steps = rebuildSteps(edit.steps, planContext(w.plan));
+      update = { steps, title: titleFor(w.type as WorkoutType, steps), duration_s: stepsDuration(steps), distance_m: stepsDistance(steps) };
+      reason = `Edited the steps of ${label}`;
+      break;
+    }
   }
   if (edit.kind !== "lock") update.source = "athlete";
   await check(db.from("planned_workouts").update(update).eq("id", id));
@@ -449,4 +467,37 @@ async function single(q: PromiseLike<{ data: any; error: { message: string } | n
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error("Not found");
   return row;
+}
+
+async function loadWellness(db: SupabaseClient, userId: string, today: string) {
+  const { data } = await db
+    .from("wellness_daily")
+    .select("calendar_date, metric, value")
+    .eq("user_id", userId)
+    .in("metric", ["hrv_overnight_avg", "resting_hr", "sleep_avg_hr", "sleep_seconds", "body_battery_high"])
+    .gte("calendar_date", addDaysIso(today, -60))
+    .lte("calendar_date", today);
+  return (data ?? []).map((r: any) => ({ date: r.calendar_date as string, metric: r.metric as string, value: r.value as number | null }));
+}
+
+/** Checks an edited workout against the planner's safety rules before saving. */
+export async function checkStepEdit(db: SupabaseClient, userId: string, id: string, edited: EditableStep[]): Promise<string[]> {
+  const w = await single(db.from("planned_workouts").select("*, plan:training_plans(*, goal:goals(*))").eq("id", id).eq("user_id", userId));
+  const ctx = planContext(w.plan);
+  const steps = rebuildSteps(edited, ctx);
+  const from = addDaysIso(w.date, -30);
+  const ws = weekStart(w.date);
+  const [{ data: acts }, { data: planned }] = await Promise.all([
+    db.from("activities").select("moving_s").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).gte("local_date", from).lt("local_date", w.date),
+    db.from("planned_workouts").select("id, date, duration_s, steps, status").eq("plan_id", w.plan_id).gte("date", from < ws ? from : ws).lte("date", addDaysIso(ws, 6)),
+  ]);
+  const realMax = Math.max(0, ...(acts ?? []).map((a: any) => (a.moving_s ?? 0) / 60));
+  const plannedMax = Math.max(0, ...(planned ?? []).filter((p: any) => p.id !== id && p.status === "planned" && p.date < w.date && p.date >= from).map((p: any) => p.duration_s / 60));
+  const week = (planned ?? []).filter((p: any) => p.id !== id && p.date >= ws && p.status !== "skipped");
+  return editIssues(w.type as WorkoutType, steps, {
+    longest30Min: Math.max(realMax, plannedMax),
+    weekOtherMin: week.reduce((a: number, p: any) => a + p.duration_s / 60, 0),
+    weekOtherHardMin: week.reduce((a: number, p: any) => a + hardSeconds(p.steps ?? []) / 60, 0),
+    ctx,
+  });
 }

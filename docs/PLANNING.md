@@ -47,16 +47,20 @@ What each rule rests on, and how strong that is. Where the evidence is weak, the
 - A run matches a planned workout on the same day (score 1) or ±1 day (0.6), minus a duration mismatch penalty, ± 0.1 for hard/easy agreement. Threshold 0.4; best pairs first. Unmatched runs stay unscheduled.
 - A planned workout is **missed** once 2 days have passed without a match.
 - Execution: work pace = your best effort whose duration is closest to one work bout, compared with the target range (±3 %); easy runs are checked against the easy HR ceiling; duration ratio < 75 % or > 130 % is noted.
+- Rep by rep (`intervals.ts`, on the workout page): the main repeat's work bouts are taken from the watch laps when they match the plan (right length, faster than the laps around them), otherwise detected from the 15 s-smoothed speed stream with a threshold halfway between target and easy speed. Per rep: pace, avg HR, HR at the end and its drop over the next 60 s. Across reps: pace variation (CV; ≤ 2 % even, > 4 % uneven), fade (last third vs first third, ≥ 3 %), HR drift, and HR recovery shrinking below 70 % of the first rep's. Nothing is shown when the reps can't be found reliably.
+
+## Editing a workout (`edit-steps.ts`)
+Steps, reps, durations or distances, intensities and your own pace ranges can be edited. Targets are rebuilt from your zones (or your pace); a distance step gets an estimated time from its pace. Before saving, the edit is checked against the planner's rules (single-run spike limit against the longest run in the previous 30 days, real and planned; the week's hard share near 20 %; hard running added to an easy day; your own pace > 3 % faster than your current zone) and you can save anyway. The month view (Plan → Month) moves sessions by drag and drop with the same checks as moving from the workout page.
 
 ## Adaptation (`adapt.ts`) — proposals only
 | Rule | Trigger | Change |
 |---|---|---|
 | A | Fitness estimate moved ≥ 1 VDOT (medium/high confidence), or ≥ 2 of the last 3 quality sessions ≥ 3 % faster than target with RPE ≤ 7 | Re-target future paces (structure unchanged) |
 | B | ≥ 2 missed sessions in 10 days and next week planned > 110 % of last 7 days' running + 30 min | Shorten non-key runs in the next 7 days; missed sessions are not made up |
-| C | Easy run rated RPE ≥ 8 in the last 3 days, or legs heavy/sore in 2 of the last 3 check-ins | Next hard session within 3 days becomes an easy run |
+| C | Easy run rated RPE ≥ 8 in the last 3 days, legs heavy/sore in 2 of the last 3 check-ins, or wellness signals scoring ≥ 2 (`wellness-signals.ts`: 7-day ln HRV below your 60-day mean − 0.5 SD = 2; resting or sleeping HR ≥ 5 bpm and ≥ 1.5 SD above your mean on 2 of 3 days = 1; < 6 h sleep on 2 of 3 nights = 1; Body Battery peak < 40 on 2 of 3 days = 0.5; each metric needs 14 days of history) | Next hard session within 3 days becomes an easy run |
 | D | No run for ≥ 12 days | Next 7 days at ~55 %, no hard sessions |
 
-Proposals are deduplicated by a key, expire when they would change the past, never touch locked or finished workouts, and can be accepted, declined ("Keep my plan") or undone. Changing the goal builds a new plan from today and archives the old one with its history.
+Proposals are deduplicated by a key, expire when they would change the past, never touch locked or finished workouts, and can be accepted, declined ("Keep my plan") or undone. "Explain further" shows what the rule looks at, why, the evidence behind it and what happens if you keep your plan. A proposal touching several workouts can be accepted for only the ticked ones; undo then reverts exactly those. Changing the goal builds a new plan from today and archives the old one with its history.
 
 ## Versions
 Every generation, edit, accepted proposal and undo writes a full snapshot to `plan_versions`. Any version can be restored from Plan → History (finished workouts are left as they are).

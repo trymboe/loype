@@ -5,7 +5,7 @@
  *
  *  A  fitness moved: re-target future paces
  *  B  missed sessions: ease the coming week back to what you've actually run
- *  C  fatigue signals: turn the next hard session into an easy run
+ *  C  fatigue signals (RPE, legs, HRV/resting HR/sleep vs your own normal): turn the next hard session into an easy run
  *  D  return after a break: a gentle week without intensity
  * (A goal change regenerates the plan from today; that is not a proposal.)
  */
@@ -14,6 +14,7 @@ import { predictTimeS, trainingPaces } from "../analytics/fitness/vdot";
 import { formatPace } from "../units";
 import type { Execution } from "./match";
 import { isHard, WORKOUT_LABEL, type Baseline, type Goal, type Step, type WorkoutType } from "./types";
+import { SIGNAL_THRESHOLD, wellnessSignals, type WellnessPoint } from "./wellness-signals";
 import { buildWorkout, stepsDistance, stepsDuration, target, type TargetContext } from "./workouts";
 
 export type Rule = "A" | "B" | "C" | "D";
@@ -82,6 +83,8 @@ export interface AdaptInput {
   runs: AdaptRun[];
   fitness: { vdot: number; confidence: "high" | "medium" | "low" } | null;
   existingKeys: Set<string>;
+  /** Garmin wellness (HRV, resting/sleeping HR, sleep, Body Battery), last ~60 days */
+  wellness?: WellnessPoint[];
 }
 
 const fields = (w: AdaptWorkout | WorkoutFields): WorkoutFields => ({
@@ -178,18 +181,29 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-3)
     .filter((r) => r.date >= addDaysIso(today, -7) && (r.legs === "heavy" || r.legs === "sore"));
-  if (hardEasy.length || legs.length >= 2) {
+  const well = wellnessSignals(input.wellness ?? [], today);
+  const wellTired = well.score >= SIGNAL_THRESHOLD;
+  if (hardEasy.length || legs.length >= 2 || wellTired) {
     const next = future.filter((w) => isHard(w.type) && w.date <= addDaysIso(today, 3)).sort((a, b) => a.date.localeCompare(b.date))[0];
     if (next) {
       const ev = [
         ...hardEasy.map((r) => `${formatDay(r.date)}: easy run rated ${r.rpe}/10`),
         ...(legs.length >= 2 ? legs.map((r) => `${formatDay(r.date)}: legs ${r.legs}`) : []),
+        ...(wellTired ? well.evidence : []),
       ];
+      const what = hardEasy.length
+        ? "An easy run felt hard"
+        : legs.length >= 2
+          ? "Your legs have felt heavy or sore"
+          : (() => {
+              const names = well.fired.filter((f) => f !== "battery").map((f) => ({ hrv: "HRV", rhr: "resting heart rate", sleep: "sleep" })[f as "hrv" | "rhr" | "sleep"]);
+              return `Your ${names.join(" and ")} ${names.length === 1 ? "is" : "are"} outside your normal range`;
+            })();
       push({
         rule: "C",
         key: `C:${next.id}`,
         title: `Make ${formatDay(next.date)} an easy run`,
-        explanation: `${hardEasy.length ? "An easy run felt hard" : "Your legs have felt heavy or sore"} recently, which often means you haven't recovered. ${WORKOUT_LABEL[next.type]} on ${formatDay(next.date)} becomes an easy run; the rest of the plan is unchanged.`,
+        explanation: `${what} recently, which often means you haven't recovered. ${WORKOUT_LABEL[next.type]} on ${formatDay(next.date)} becomes an easy run; the rest of the plan is unchanged.`,
         evidence: ev,
         changes: [{ workoutId: next.id, date: next.date, before: fields(next), after: easyInstead(next, Math.min(40, Math.max(25, Math.round(next.durationS / 60 / 1.5))), ctx, "Swapped to easy because of recent fatigue signals.") }],
       });
@@ -243,3 +257,33 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
   }
   return out;
 }
+
+/** "Explain further": what each rule looks at, why, the evidence behind it, and what happens if you keep your plan. */
+export const RULE_DETAIL: Record<Rule, { looksAt: string; why: string; evidence: string; ifKept: string }> = {
+  A: {
+    looksAt: "Your fitness estimate (VDOT) compared with the one your paces were set from, or two to three recent quality sessions run clearly faster than target without feeling very hard.",
+    why: "Training paces only do their job when they match your current fitness. Too slow and the session under-loads the system it targets; too fast and threshold work turns into VO2max work and needs more recovery.",
+    evidence: "Paces follow Daniels' VDOT tables. A change is only proposed when the estimate moves by at least 1 VDOT with medium or high confidence, which is about the size of a real fitness change rather than day-to-day noise.",
+    ifKept: "Your sessions keep their current paces. The plan's structure is the same either way, and the suggestion is not repeated for the same estimate.",
+  },
+  B: {
+    looksAt: "Two or more missed sessions in the last 10 days, and how much you actually ran in the last 7 compared with what is planned for the next 7.",
+    why: "After missed days your recent load is lower than the plan assumed. Going straight back to the planned week is a sudden jump relative to what your body has just done.",
+    evidence: "Large jumps in load and single runs well above your recent longest are linked to more running injuries (Nielsen et al. 2014; Frandsen et al. 2025). Missed sessions are not made up, because stacking them creates exactly that kind of spike.",
+    ifKept: "The week stays as planned. That is reasonable if the missed days were short and you feel fresh, but watch for niggles in the first runs back.",
+  },
+  C: {
+    looksAt:
+      "An easy run you rated 8/10 or harder in the last 3 days, legs logged as heavy or sore at least twice in the last week, or Garmin recovery data outside your own normal range: a 7-day HRV average clearly below your 60-day baseline, resting (or sleeping) heart rate well above usual on 2 of the last 3 days, under 6 h of sleep on 2 of the last 3 nights. Body Battery only counts as supporting evidence.",
+    why: "When easy running feels hard, you are usually carrying fatigue. A hard session on top of that tends to be run below target and adds stress without much benefit.",
+    evidence:
+      "Perceived exertion is a well-validated marker of internal load (session-RPE, Foster et al. 2001). HRV-guided training, which holds back intensity when the 7-day HRV average falls below your normal range, matched or beat fixed plans in trials (Kiviniemi et al. 2007; Vesterinen et al. 2016; Plews et al. 2013 on the method). Elevated resting HR and short sleep are weaker signals on their own, so it takes two of them.",
+    ifKept: "The hard session stays. If you do it, start conservatively and stop the reps early if the target pace feels much harder than usual.",
+  },
+  D: {
+    looksAt: "Twelve or more days since your last recorded run.",
+    why: "After about two weeks off, aerobic fitness has dipped slightly, and tendons and bones adapt more slowly than heart and lungs, so they are the first to complain when you restart at full load.",
+    evidence: "Detraining studies show measurable VO2max loss within 2–4 weeks (Mujika & Padilla 2000). A shorter week without intensity lets you restart without a load spike.",
+    ifKept: "The plan carries on as if you hadn't stopped. That is fine after a short planned break, but more risky after illness or injury.",
+  },
+};

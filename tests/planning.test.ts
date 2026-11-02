@@ -293,6 +293,14 @@ describe("adaptation", () => {
     expect(c.changes[0].after.type).toBe("easy");
   });
 
+  it("also eases a hard session when HRV is below your normal range (C)", () => {
+    const hrv = Array.from({ length: 40 }, (_, i) => ({ date: addDaysIso(today, -(39 - i)), metric: "hrv_overnight_avg", value: i >= 34 ? 45 : 60 + [0, 3, -2, 4, -3, 1, -1, 2][i % 8] }));
+    const c = proposeAdaptations({ ...input, wellness: hrv }).find((x) => x.rule === "C")!;
+    expect(c).toBeTruthy();
+    expect(c.explanation).toMatch(/HRV is outside your normal range/);
+    expect(c.evidence.join(" ")).toMatch(/HRV: 7-day average/);
+  });
+
   it("returns gently after a break (D)", () => {
     const p = proposeAdaptations({ ...input, runs: runs.filter((r) => r.date <= "2026-11-04") });
     const d = p.find((x) => x.rule === "D")!;
