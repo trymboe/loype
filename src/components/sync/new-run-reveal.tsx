@@ -28,15 +28,11 @@ export interface RevealRun {
 
 const HIGHLIGHT_ICON = { longest: Trophy, fastest: Flame, week: Timer, plan: CalendarCheck } as const;
 
-/** 0→1 over `ms` once `start` is true (easeOutCubic). Jumps to 1 when reduced motion is on. */
+/** 0→1 over `ms` once `start` is true (easeOutCubic). */
 function useProgress(start: boolean, ms: number) {
   const [p, setP] = useState(0);
   useEffect(() => {
     if (!start) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setP(1);
-      return;
-    }
     let raf = 0;
     const t0 = performance.now();
     const tick = (now: number) => {
@@ -90,9 +86,12 @@ function RevealBody({ run, onNext, onClose, isLast, position }: { run: RevealRun
   const drawMs = Math.min(3000, Math.max(1700, coords.length * 6));
   const [drawn, setDrawn] = useState(!hasRoute);
   const onDrawn = useCallback(() => setDrawn(true), []);
+  // with a route, the numbers count up while the line draws; without one, shortly after opening
   const [statsGo, setStatsGo] = useState(false);
+  const onStart = useCallback(() => setStatsGo(true), []);
   useEffect(() => {
-    const t = setTimeout(() => setStatsGo(true), hasRoute ? 700 : 350);
+    if (hasRoute) return;
+    const t = setTimeout(() => setStatsGo(true), 350);
     return () => clearTimeout(t);
   }, [hasRoute]);
   const p = useProgress(statsGo, hasRoute ? drawMs : 1400);
@@ -115,7 +114,7 @@ function RevealBody({ run, onNext, onClose, isLast, position }: { run: RevealRun
       </div>
 
       <div className="reveal-map relative mt-4 h-[42dvh] min-h-64 overflow-hidden rounded-[1.75rem] bg-[#111316] ring-1 ring-white/8">
-        {hasRoute ? <RevealMap coords={coords} durationMs={drawMs} onDrawn={onDrawn} /> : <IndoorRing progress={p} />}
+        {hasRoute ? <RevealMap coords={coords} durationMs={drawMs} onStart={onStart} onDrawn={onDrawn} /> : <IndoorRing progress={p} />}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0a0b0d] to-transparent" />
         {drawn && <Burst />}
         <div className="absolute inset-x-5 bottom-4">

@@ -37,29 +37,39 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
 
 /**
  * Dark map that draws the run's route from start to finish, with the camera slowly tilting in.
- * Falls back to an SVG drawing when tiles or WebGL aren't available. Calls onDrawn once the line is complete.
+ * The drawing starts once the map has loaded (onStart), so it is never missed while tiles load.
+ * Falls back to an SVG drawing when the map style or WebGL isn't available. Calls onDrawn once the line is complete.
  */
-export function RevealMap({ coords, durationMs, onDrawn }: { coords: Coord[]; durationMs: number; onDrawn: () => void }) {
+export function RevealMap({ coords, durationMs, onStart, onDrawn }: { coords: Coord[]; durationMs: number; onStart: () => void; onDrawn: () => void }) {
   const el = useRef<HTMLDivElement>(null);
   const [fallback, setFallback] = useState(false);
-  const drawn = useRef(false);
-  const done = useRef(onDrawn);
-  done.current = onDrawn;
+  const [waiting, setWaiting] = useState(true);
+  const cbs = useRef({ onStart, onDrawn });
+  useEffect(() => {
+    cbs.current = { onStart, onDrawn };
+  });
+  const flags = useRef({ started: false, drawn: false });
+  const start = useCallback(() => {
+    setWaiting(false);
+    if (flags.current.started) return;
+    flags.current.started = true;
+    cbs.current.onStart();
+  }, []);
   const finish = useCallback(() => {
-    if (drawn.current) return;
-    drawn.current = true;
-    done.current();
+    if (flags.current.drawn) return;
+    flags.current.drawn = true;
+    cbs.current.onDrawn();
   }, []);
 
   useEffect(() => {
-    if (!el.current || coords.length < 2) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (fallback || !el.current || coords.length < 2) return;
+    // Reduced motion: keep the line drawing (no large movement) but hold the camera still.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let map: MlMap | null = null;
     let raf = 0;
     let cancelled = false;
     let loaded = false;
-    // Don't make the reveal wait on slow tiles: draw the SVG version instead.
-    const giveUp = setTimeout(() => !loaded && !cancelled && setFallback(true), 3500);
+    const giveUp = setTimeout(() => !loaded && !cancelled && setFallback(true), 10_000);
     (async () => {
       try {
         const maplibre = await import("maplibre-gl");
@@ -67,49 +77,49 @@ export function RevealMap({ coords, durationMs, onDrawn }: { coords: Coord[]; du
         maplibre.setWorkerUrl(`/maplibre-gl-worker.mjs?v=${maplibre.getVersion()}`);
         const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff6b3d";
         const bounds = coords.reduce((b, c) => b.extend(c), new maplibre.LngLatBounds(coords[0], coords[0]));
-        map = new maplibre.Map({
+        const m = new maplibre.Map({
           container: el.current,
           style: STYLE_DARK,
           bounds,
-          fitBoundsOptions: { padding: 56 },
+          fitBoundsOptions: { padding: { top: 48, bottom: 96, left: 40, right: 40 } },
           attributionControl: { compact: true },
           interactive: false,
-          fadeDuration: 0,
         });
-        map.on("error", () => {
-          if (!loaded) setFallback(true);
+        map = m;
+        // a single failed tile isn't fatal; only give up if the style itself never loads
+        m.on("error", () => {
+          if (!loaded && !m.isStyleLoaded()) setFallback(true);
         });
-        map.on("load", () => {
-          if (cancelled || !map) return;
+        m.on("load", () => {
+          if (cancelled) return;
           loaded = true;
           clearTimeout(giveUp);
+          m.resize(); // the card was mid scale-in animation when the map measured itself
           const empty: GeoJSON.Feature<GeoJSON.LineString> = { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } };
-          map.addSource("trail", { type: "geojson", data: empty });
-          map.addLayer({ id: "trail-glow", type: "line", source: "trail", paint: { "line-color": accent, "line-width": 14, "line-opacity": 0.28, "line-blur": 8 }, layout: { "line-join": "round", "line-cap": "round" } });
-          map.addLayer({ id: "trail", type: "line", source: "trail", paint: { "line-color": accent, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
-          map.addSource("head", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-          map.addLayer({ id: "head-halo", type: "circle", source: "head", paint: { "circle-radius": 13, "circle-color": accent, "circle-opacity": 0.3, "circle-blur": 0.6 } });
-          map.addLayer({ id: "head", type: "circle", source: "head", paint: { "circle-radius": 6, "circle-color": "#fff", "circle-stroke-color": accent, "circle-stroke-width": 3 } });
-          map.addSource("start", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: coords[0] } } });
-          map.addLayer({ id: "start", type: "circle", source: "start", paint: { "circle-radius": 5, "circle-color": "#0a0b0d", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+          m.addSource("trail", { type: "geojson", data: empty });
+          m.addLayer({ id: "trail-glow", type: "line", source: "trail", paint: { "line-color": accent, "line-width": 14, "line-opacity": 0.28, "line-blur": 8 }, layout: { "line-join": "round", "line-cap": "round" } });
+          m.addLayer({ id: "trail", type: "line", source: "trail", paint: { "line-color": accent, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
+          m.addSource("head", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+          m.addLayer({ id: "head-halo", type: "circle", source: "head", paint: { "circle-radius": 13, "circle-color": accent, "circle-opacity": 0.3, "circle-blur": 0.6 } });
+          m.addLayer({ id: "head", type: "circle", source: "head", paint: { "circle-radius": 6, "circle-color": "#fff", "circle-stroke-color": accent, "circle-stroke-width": 3 } });
+          m.addSource("start", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: coords[0] } } });
+          m.addLayer({ id: "start", type: "circle", source: "start", paint: { "circle-radius": 5, "circle-color": "#0a0b0d", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
 
-          const trail = map.getSource("trail") as GeoJSONSource;
-          const head = map.getSource("head") as GeoJSONSource;
+          const trail = m.getSource("trail") as GeoJSONSource;
+          const head = m.getSource("head") as GeoJSONSource;
           const cum = cumulative(coords);
           const draw = (p: number) => {
             const part = sliceRoute(coords, cum, p);
             trail.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: part } });
             head.setData({ type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: part[part.length - 1] } }] });
           };
-          if (reduced) {
-            draw(1);
-            finish();
-            return;
-          }
+          start();
           // tilt and turn slowly while the line draws, like a flyover
-          const cam = map.cameraForBounds(bounds, { padding: { top: 70, bottom: 90, left: 48, right: 48 } });
-          if (cam) map.easeTo({ ...cam, pitch: 42, bearing: -18, duration: durationMs + 900, easing: (t) => t * (2 - t) });
-          const t0 = performance.now() + 250;
+          if (!still) {
+            const cam = m.cameraForBounds(bounds, { padding: { top: 70, bottom: 110, left: 48, right: 48 } });
+            if (cam) m.easeTo({ ...cam, pitch: 42, bearing: -18, duration: durationMs + 900, easing: (t) => t * (2 - t) });
+          }
+          const t0 = performance.now() + 200;
           const tick = (now: number) => {
             const p = Math.min(1, Math.max(0, (now - t0) / durationMs));
             draw(ease(p));
@@ -128,17 +138,26 @@ export function RevealMap({ coords, durationMs, onDrawn }: { coords: Coord[]; du
       cancelAnimationFrame(raf);
       map?.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coords, durationMs]);
+  }, [coords, durationMs, fallback, start, finish]);
 
-  if (fallback) return <SvgDraw coords={coords} durationMs={durationMs} onDrawn={finish} />;
-  return <div ref={el} className="absolute inset-0" />;
+  if (fallback) return <SvgDraw coords={coords} durationMs={durationMs} onStart={start} onDrawn={finish} />;
+  return (
+    <>
+      {/* MapLibre's own CSS makes its container position: relative, so it can't be the absolute layer itself */}
+      <div className="absolute inset-0">
+        <div ref={el} className="h-full w-full" />
+      </div>
+      {waiting && <div className="skeleton pointer-events-none absolute inset-0 rounded-none opacity-40" />}
+    </>
+  );
 }
 
-/** Route drawn with stroke-dashoffset on a dotted grid, for when the map can't load. */
-function SvgDraw({ coords, durationMs, onDrawn }: { coords: Coord[]; durationMs: number; onDrawn: () => void }) {
+/** Route drawn stroke by stroke on a dotted grid, for when the map can't load. */
+function SvgDraw({ coords, durationMs, onStart, onDrawn }: { coords: Coord[]; durationMs: number; onStart: () => void; onDrawn: () => void }) {
   const W = 400;
   const H = 400;
+  const glow = useRef<SVGPathElement>(null);
+  const line = useRef<SVGPathElement>(null);
   const d = useMemo(() => {
     const lats = coords.map((c) => c[1]);
     const lngs = coords.map((c) => c[0]);
@@ -152,15 +171,31 @@ function SvgDraw({ coords, durationMs, onDrawn }: { coords: Coord[]; durationMs:
     const oy = (H - h * scale) / 2;
     return coords.map((c, i) => `${i ? "L" : "M"}${(ox + (c[0] * kx - minX) * scale).toFixed(1)},${(oy + (maxY - c[1]) * scale).toFixed(1)}`).join("");
   }, [coords]);
+  // Measured length + rAF instead of CSS pathLength, which older WebKit ignores for dashes.
   useEffect(() => {
-    const t = setTimeout(onDrawn, durationMs + 250);
-    return () => clearTimeout(t);
-  }, [durationMs, onDrawn]);
+    const paths = [glow.current, line.current].filter((x): x is SVGPathElement => !!x);
+    const len = line.current?.getTotalLength() ?? 0;
+    for (const p of paths) {
+      p.style.strokeDasharray = `${len}`;
+      p.style.strokeDashoffset = `${len}`;
+    }
+    onStart();
+    let raf = 0;
+    const t0 = performance.now() + 200;
+    const tick = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - t0) / durationMs));
+      for (const p of paths) p.style.strokeDashoffset = `${len * (1 - ease(t))}`;
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else onDrawn();
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [d, durationMs, onStart, onDrawn]);
   return (
     <div className="absolute inset-0 pb-20" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full" aria-hidden>
-        <path d={d} pathLength={1} fill="none" stroke="var(--accent)" strokeOpacity={0.3} strokeWidth={12} strokeLinejoin="round" strokeLinecap="round" className="reveal-draw" style={{ animationDuration: `${durationMs}ms` }} />
-        <path d={d} pathLength={1} fill="none" stroke="var(--accent)" strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" className="reveal-draw" style={{ animationDuration: `${durationMs}ms` }} />
+        <path ref={glow} d={d} fill="none" stroke="var(--accent)" strokeOpacity={0.3} strokeWidth={12} strokeLinejoin="round" strokeLinecap="round" />
+        <path ref={line} d={d} fill="none" stroke="var(--accent)" strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     </div>
   );
