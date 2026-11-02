@@ -104,6 +104,7 @@ export async function decideProposalAction(form: FormData) {
   await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only);
   revalidatePath("/plan", "layout");
   revalidatePath("/");
+  revalidatePath("/coach");
 }
 
 export async function undoProposalAction(form: FormData) {
@@ -112,6 +113,7 @@ export async function undoProposalAction(form: FormData) {
   await undoProposal(createAdminClient(), user.id, id);
   revalidatePath("/plan", "layout");
   revalidatePath("/");
+  revalidatePath("/coach");
 }
 
 export async function restoreVersionAction(form: FormData) {

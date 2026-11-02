@@ -17,7 +17,7 @@ import { isHard, WORKOUT_LABEL, type Baseline, type Goal, type Step, type Workou
 import { SIGNAL_THRESHOLD, wellnessSignals, type WellnessPoint } from "./wellness-signals";
 import { buildWorkout, stepsDistance, stepsDuration, target, type TargetContext } from "./workouts";
 
-export type Rule = "A" | "B" | "C" | "D";
+export type Rule = "A" | "B" | "C" | "D" | "coach";
 
 export interface AdaptWorkout {
   id: string;
@@ -57,6 +57,8 @@ export interface WorkoutFields {
 export interface Change {
   workoutId: string;
   date: string;
+  /** set when the change moves the workout to another day (coach proposals) */
+  toDate?: string;
   before: WorkoutFields;
   after: WorkoutFields;
 }
@@ -285,5 +287,11 @@ export const RULE_DETAIL: Record<Rule, { looksAt: string; why: string; evidence:
     why: "After about two weeks off, aerobic fitness has dipped slightly, and tendons and bones adapt more slowly than heart and lungs, so they are the first to complain when you restart at full load.",
     evidence: "Detraining studies show measurable VO2max loss within 2–4 weeks (Mujika & Padilla 2000). A shorter week without intensity lets you restart without a load spike.",
     ifKept: "The plan carries on as if you hadn't stopped. That is fine after a short planned break, but more risky after illness or injury.",
+  },
+  coach: {
+    looksAt: "What you told the coach, together with your recent runs, feedback and plan. The coach can only make a session easier, shorter or rest, or move it by up to a week.",
+    why: "Plans have to fit your life and how you feel. Swapping or moving a session when you're tired or busy usually costs little, while forcing it can cost more.",
+    evidence: "The coach names the observations it used above. The new workout is built by the planner from your current paces, and moves get the same schedule checks as when you move a workout yourself.",
+    ifKept: "Nothing changes. You can always ask the coach again or edit the workout yourself.",
   },
 };

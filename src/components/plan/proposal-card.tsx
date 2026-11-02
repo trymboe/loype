@@ -63,7 +63,13 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
                       {p.changes.length > 1 && <input type="checkbox" name="only" value={c.workoutId} defaultChecked className="mt-0.5" />}
                       <span>
                         <span className="text-muted">{formatDay(c.date)}:</span> {c.before.title}
-                        {c.before.title !== c.after.title ? <> → <span className="font-semibold">{c.after.title}</span></> : <span className="text-muted"> (new targets)</span>}
+                        {c.toDate ? (
+                          <> → moved to <span className="font-semibold">{formatDay(c.toDate)}</span></>
+                        ) : c.before.title !== c.after.title ? (
+                          <> → <span className="font-semibold">{c.after.title}</span></>
+                        ) : (
+                          <span className="text-muted"> (new targets)</span>
+                        )}
                       </span>
                     </label>
                   </li>
@@ -95,7 +101,13 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
               {p.changes.map((c) => (
                 <li key={c.workoutId} className="text-xs">
                   <span className="text-muted">{formatDay(c.date)}:</span> {c.before.title}
-                  {c.before.title !== c.after.title ? <> → <span className="font-semibold">{c.after.title}</span></> : <span className="text-muted"> (new targets)</span>}
+                  {c.toDate ? (
+                          <> → moved to <span className="font-semibold">{formatDay(c.toDate)}</span></>
+                        ) : c.before.title !== c.after.title ? (
+                          <> → <span className="font-semibold">{c.after.title}</span></>
+                        ) : (
+                          <span className="text-muted"> (new targets)</span>
+                        )}
                 </li>
               ))}
             </ul>
