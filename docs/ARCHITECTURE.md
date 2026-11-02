@@ -89,7 +89,7 @@ Later phases add the rest via new migrations; the shapes below are the plan.
 - `adaptation_proposals` — trigger evidence, proposed diff, explanation, status (`pending/accepted/rejected/modified/undone`), resulting plan_version.
 
 **Outbound + extras (Phase 4–5)**
-- `external_workout_syncs` — planned_workout_id, provider, external_id (stable `loype-<uuid>`), payload hash, remote id, state (`pending/sent/confirmed_on_provider/failed`), last checked.
+- `external_workout_syncs` — planned_workout_id, provider, external_id (stable `loype-<uuid>`), payload hash, remote id, state (`pending/sent/parsed/mismatch/on_watch/failed/removed`), parse check, last checked (migration 0005, see `docs/WATCH.md`).
 - `routes` (GeoJSON LineString, distance, elevation, favorite), `coach_messages` (role, content, tool calls, referenced data), `calendar_feeds`.
 
 Units: SI everywhere in the DB (metres, seconds, m/s, bpm, steps/min, °C). Timestamps are `timestamptz` (UTC); local date stored separately for calendar logic.

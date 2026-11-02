@@ -34,7 +34,12 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ Adaptation proposals (fitness change / outperforming, missed sessions, fatigue, return after a break) with accept / keep / undo; goal change regenerates and keeps history
 - ⏳ Validate against a few weeks of real training
 
-## Phase 4 — Intervals.icu export · Phase 5 — Coach, routes, polish
-- ⏳ See `docs/ARCHITECTURE.md` §4
-- ⛔ Phase 4 end-to-end needs an Intervals.icu API key and the vívoactive 5 for validation
+## Phase 4 — Workout export (see `docs/WATCH.md`)
+- ✅ Intervals.icu text encoder, idempotent bulk upsert by `loype-<id>`, delete on skip/rest/removal, resend on change
+- ✅ Per-workout sync state with Intervals.icu parse check; "on your watch" only by athlete confirmation
+- ✅ FIT workout file download per workout (manual fallback)
+- ✅ Runs on every sync, the scheduled job and "Send" buttons; independent of Garmin import
+- ⛔ End-to-end on the vívoactive 5: needs Trym's Intervals.icu account + watch (checklist in `docs/WATCH.md`)
+
+## Phase 5 — Coach, routes, polish
 - ⛔ Phase 5 coach needs an LLM API key
