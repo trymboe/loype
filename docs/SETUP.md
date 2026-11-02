@@ -8,9 +8,10 @@ project, run the files in `supabase/migrations/` in order (SQL editor or `supaba
 
 Auth settings (Dashboard → Authentication):
 1. **Sign In / Providers → Email**: enabled (magic link). You may disable "Allow new users to sign up" *after* your first sign-in.
+1. After the first sign-in by email link, set a password under **More → Password**. Password sign-in needs no email, so it works on new browsers and in the iPhone home-screen app (which has its own storage, separate from Safari, and never receives magic links).
 2. **URL Configuration**: Site URL = your Vercel production URL; add `https://<your-app>.vercel.app/auth/callback` (and `http://localhost:3000/auth/callback` for local dev) to Redirect URLs.
 
-3. **Emails → Magic Link** template: replace the body with the following, so each email has both a code (works on any device) and a link that doesn't depend on the browser that requested it:
+3. *(Optional, requires custom SMTP: Supabase only allows template edits with your own mail server.)* **Emails → Magic Link** template: replace the body with the following, so each email has both a code (works on any device) and a link that doesn't depend on the browser that requested it:
 
 ```html
 <h2>Sign in to Løype</h2>
