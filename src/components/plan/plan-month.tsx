@@ -44,11 +44,9 @@ function chipClass(w: MonthWorkout) {
   return "bg-surface-2 text-fg-2";
 }
 
-const short = (w: MonthWorkout) => {
-  const m = Math.round(w.duration_s / 60);
-  const t = w.type === "progressive_long" ? "long" : w.type === "race_pace" ? "race pace" : w.type === "vo2max" ? "VO2" : w.type;
-  return w.type === "race" ? "Race" : `${t} ${m}′`;
-};
+const CODE: Record<string, string> = { easy: "E", recovery: "R", strides: "E", long: "L", progressive_long: "L", threshold: "T", tempo: "T", vo2max: "I", repetitions: "Rep", hills: "H", race_pace: "RP" };
+/** compact label that fits a phone-width day cell: type code + minutes */
+const short = (w: MonthWorkout) => (w.type === "race" ? "Race" : `${CODE[w.type] ?? ""} ${Math.round(w.duration_s / 60)}′`.trim());
 
 /**
  * Month calendar of the plan. Drag a planned session onto another day to move
@@ -99,6 +97,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
 
   const onPointerDown = (e: React.PointerEvent, w: MonthWorkout) => {
     if (w.status !== "planned" || w.date < today || busy) return;
+    if (e.pointerType === "mouse") e.preventDefault(); // no text selection while dragging
     const isTouch = e.pointerType === "touch";
     hold.current = { timer: null, id: w.id, x: e.clientX, y: e.clientY, moved: false };
     const begin = () => setDrag({ id: w.id, x: hold.current!.x, y: hold.current!.y, over: w.date });
@@ -155,7 +154,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
           <div key={d}>{d}</div>
         ))}
       </div>
-      <div className={clsx("mt-1 grid grid-cols-7 gap-1", drag && "touch-none select-none")}>
+      <div className={clsx("mt-1 grid grid-cols-7 gap-1 select-none", drag && "touch-none")}>
         {days.slice(0, rows * 7).map((day) => {
           const inMonth = day.slice(0, 7) === month.slice(0, 7);
           const items = byDate.get(day) ?? [];
@@ -213,7 +212,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
           {short(dragged)}
         </div>
       )}
-      <p className="mt-3 text-xs leading-relaxed text-muted">Drag a planned session to another day to move it (press and hold on a phone). Tap it to open.</p>
+      <p className="mt-3 text-xs leading-relaxed text-muted">E easy, L long, T threshold/tempo, I intervals, RP race pace, H hills, with minutes. Drag a planned session to another day to move it (press and hold on a phone). Tap it to open.</p>
       {busy && <p className="mt-2 text-xs text-muted">Moving…</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       {pendingMove && (

@@ -27,7 +27,7 @@ export function IntervalReps({ a }: { a: IntervalAnalysis }) {
           <div key={r.index} className="relative flex items-center gap-2 text-xs">
             <span className="tabular w-8 shrink-0 text-muted">#{r.index}</span>
             <div className="h-4 min-w-0 flex-1">
-              <div className={clsx("h-full rounded-sm", r.onTarget === false ? "bg-warn" : "bg-intervals")} style={{ width: w(r.paceSPerKm) }} />
+              <div className={clsx("h-full rounded-sm", r.onTarget === false ? "bg-warn" : "bg-good")} style={{ width: w(r.paceSPerKm) }} />
             </div>
             <span className="tabular w-12 shrink-0 text-right font-semibold">{formatPace(r.paceSPerKm)}</span>
             <span className="tabular w-[4.5rem] shrink-0 text-right text-muted">
