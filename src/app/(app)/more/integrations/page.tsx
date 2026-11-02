@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { Badge, PageHeader } from "@/components/ui";
+import { Send, Watch } from "lucide-react";
+import { Badge, IconTile, PageHeader, type Tone } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { getIntegrationStatus } from "@/lib/db/queries";
 import { userTimezone } from "@/lib/user-tz";
@@ -10,8 +9,8 @@ import { SyncPanel } from "./sync-panel";
 export const metadata = { title: "Integrations" };
 export const dynamic = "force-dynamic";
 
-const STATUS: Record<string, { label: string; tone: "accent" | "warn" | "hr" | "muted" }> = {
-  connected: { label: "Connected", tone: "accent" },
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  connected: { label: "Connected", tone: "good" },
   needs_reauth: { label: "Key rejected", tone: "hr" },
   error: { label: "Error", tone: "warn" },
   not_configured: { label: "Not connected", tone: "muted" },
@@ -31,29 +30,31 @@ export default async function IntegrationsPage() {
 
   return (
     <>
-      <Link href="/more" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
-        <ChevronLeft size={16} /> More
-      </Link>
-      <PageHeader title="Integrations" />
+      <PageHeader back={{ href: "/more", label: "More" }} title="Integrations" />
 
-      <section className="card mb-4 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="font-display text-2xl font-semibold">Garmin Connect</p>
-            <p className="text-sm text-muted">Imports runs and wellness data through Garmin&apos;s official Personal API (read-only).</p>
+      <section className="card mb-3 p-5">
+        <div className="mb-4 flex items-start gap-3.5">
+          <IconTile color="var(--pace)">
+            <Watch size={18} />
+          </IconTile>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Garmin Connect</p>
+              <Badge tone={status.tone}>{status.label}</Badge>
+            </div>
+            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Imports runs and wellness data through Garmin&apos;s official Personal API (read-only).</p>
           </div>
-          <Badge tone={status.tone}>{status.label}</Badge>
         </div>
         {integration?.last_success_at && (
           <p className="mb-3 text-xs text-muted">Last successful sync: {new Date(integration.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
         )}
-        {integration?.last_error && integration.status !== "connected" && <p className="mb-3 text-sm text-hr">{integration.last_error}</p>}
+        {integration?.last_error && integration.status !== "connected" && <p className="mb-3 text-sm text-danger">{integration.last_error}</p>}
         <details open={!connected} className="group">
           <summary className="mb-3 cursor-pointer text-sm font-semibold text-accent">{connected ? "Replace API key" : "How to connect"}</summary>
-          <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm text-muted">
+          <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
             <li>
               Open{" "}
-              <a className="text-accent underline" href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer">
+              <a className="font-medium text-accent underline underline-offset-2" href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer">
                 Garmin Connect → Personal API key
               </a>
               .
@@ -68,17 +69,22 @@ export default async function IntegrationsPage() {
       {connected && <SyncPanel initialJobs={jobs ?? []} />}
 
       {connected && wellnessErrors.length > 0 && (
-        <p className="mt-4 text-xs text-muted">
+        <p className="mt-3 px-1 text-xs text-muted">
           Some wellness data couldn&apos;t be fetched last time ({wellnessErrors.map((e) => e.source).join(", ")}). Runs are unaffected.
         </p>
       )}
 
-      <section className="card mt-4 p-5 opacity-80">
-        <div className="flex items-center justify-between">
-          <p className="font-display text-2xl font-semibold">Intervals.icu</p>
-          <Badge>Not built yet</Badge>
+      <section className="card mt-3 flex items-start gap-3.5 p-5">
+        <IconTile>
+          <Send size={18} />
+        </IconTile>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[1.0625rem] font-semibold tracking-[-0.01em] text-fg-2">Intervals.icu</p>
+            <Badge>Not built yet</Badge>
+          </div>
+          <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Will send structured workouts to your watch via Garmin Connect once training plans exist.</p>
         </div>
-        <p className="mt-1 text-sm text-muted">Will send structured workouts to your watch via Garmin Connect once training plans exist.</p>
       </section>
     </>
   );

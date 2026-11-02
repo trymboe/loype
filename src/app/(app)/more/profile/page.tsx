@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { getFitnessState } from "@/lib/db/queries";
@@ -21,10 +19,7 @@ export default async function ProfilePage() {
   };
   return (
     <>
-      <Link href="/more" className="mb-2 inline-flex items-center gap-1 text-sm text-muted">
-        <ChevronLeft size={16} /> More
-      </Link>
-      <PageHeader title="Athlete profile" subtitle="Corrections here override what Løype detects" />
+      <PageHeader back={{ href: "/more", label: "More" }} title="Athlete profile" subtitle="Corrections here override what Løype detects" />
       <div className="card p-5">
         <ProfileForm
           initial={{
@@ -37,7 +32,7 @@ export default async function ProfilePage() {
           detected={detected}
         />
       </div>
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-4 px-1 text-xs leading-relaxed text-muted">
         Max heart rate matters most: zones, training load and the fitness estimate all scale with it. If you know it from an all-out effort or a lab test, enter it.
       </p>
     </>

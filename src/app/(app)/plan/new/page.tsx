@@ -17,8 +17,8 @@ export default async function NewPlanPage() {
   const [baseline, defaults, plan] = await Promise.all([loadBaseline(db, user.id, today), defaultsFor(user.id, today), activePlan(db, user.id)]);
   return (
     <>
-      <PageHeader title={plan ? "Change goal" : "New plan"} subtitle={plan ? "Builds a new plan from today. The current plan and its history are kept under History." : undefined} />
-      <div className="space-y-4">
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title={plan ? "Change goal" : "New plan"} subtitle={plan ? "Builds a new plan from today. The current plan and its history are kept under History." : undefined} />
+      <div className="stagger space-y-3">
         <BaselineCard b={baseline} />
         <Card>
           <PlanForm defaults={defaults} replacing={!!plan} />

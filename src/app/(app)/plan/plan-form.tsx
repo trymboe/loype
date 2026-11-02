@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import clsx from "clsx";
 import { createPlanAction, type PlanFormState } from "./actions";
 
-const input = "w-full rounded-xl border border-border bg-surface-2 px-4 py-3 outline-none focus:border-accent";
+const input = "input";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const GOALS: { kind: string; label: string; hint: string }[] = [
@@ -33,16 +33,22 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
   const isRace = ["5k", "10k", "half", "marathon", "race"].includes(kind);
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={action} className="space-y-7">
       {replacing && <input type="hidden" name="replacing" value="1" />}
       <section>
-        <h2 className="mb-2 font-semibold">What are you training for?</h2>
+        <h2 className="section-title mb-3">What are you training for?</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {GOALS.map((g) => (
-            <label key={g.kind} className={clsx("cursor-pointer rounded-xl border p-3 transition-colors", kind === g.kind ? "border-accent bg-accent/10" : "border-border bg-surface-2")}>
+            <label
+              key={g.kind}
+              className={clsx(
+                "cursor-pointer rounded-2xl p-3.5 ring-inset transition-all active:scale-[0.98]",
+                kind === g.kind ? "bg-accent/10 ring-2 ring-accent" : "bg-surface-2 ring-1 ring-transparent hover:bg-surface-3",
+              )}
+            >
               <input type="radio" name="kind" value={g.kind} checked={kind === g.kind} onChange={() => setKind(g.kind)} className="sr-only" />
               <span className="block text-sm font-semibold">{g.label}</span>
-              <span className="block text-xs text-muted">{g.hint}</span>
+              <span className="mt-0.5 block text-xs leading-snug text-muted">{g.hint}</span>
             </label>
           ))}
         </div>
@@ -77,10 +83,16 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
       )}
 
       <section className="space-y-3">
-        <h2 className="font-semibold">When can you run?</h2>
+        <h2 className="section-title">When can you run?</h2>
         <div className="grid grid-cols-7 gap-1.5">
           {DAYS.map((d, i) => (
-            <label key={d} className={clsx("cursor-pointer rounded-lg border py-2 text-center text-xs font-semibold", runDays.includes(i) ? "border-accent bg-accent/10 text-accent" : "border-border bg-surface-2 text-muted")}>
+            <label
+              key={d}
+              className={clsx(
+                "cursor-pointer rounded-xl py-2.5 text-center text-xs font-semibold transition-colors",
+                runDays.includes(i) ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-fg",
+              )}
+            >
               <input
                 type="checkbox"
                 name="run_days"
@@ -108,12 +120,12 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
           </Field>
         </div>
         <details className="text-sm">
-          <summary className="cursor-pointer text-muted">Days you can never run (optional)</summary>
+          <summary className="cursor-pointer font-medium text-accent">Days you can never run (optional)</summary>
           <p className="mt-2 text-xs text-muted">You will get a warning if you move a workout onto one of these days.</p>
           <div className="mt-2 grid grid-cols-7 gap-1.5">
             {DAYS.map((d, i) => (
               <label key={d} className="flex flex-col items-center gap-1 text-xs">
-                <input type="checkbox" name="unavailable_days" value={i} />
+                <input type="checkbox" name="unavailable_days" value={i} className="size-5 accent-[var(--accent)]" />
                 {d}
               </label>
             ))}
@@ -136,14 +148,14 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
         </Field>
       </section>
 
-      <section className="space-y-2 text-sm">
+      <section className="divide-hairline overflow-hidden rounded-2xl bg-surface-2 text-[0.9375rem]">
         <Toggle name="intervals" label="Include interval sessions" />
         <Toggle name="long_runs" label="Include long runs" />
         <Toggle name="strides" label="Include strides on easy days" />
       </section>
 
-      {state.error && <p className="text-sm text-hr">{state.error}</p>}
-      <button disabled={pending} className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-fg disabled:opacity-60">
+      {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
+      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Building your plan…" : replacing ? "Build new plan" : "Build my plan"}
       </button>
     </form>
@@ -152,9 +164,9 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
 
 function Toggle({ name, label }: { name: string; label: string }) {
   return (
-    <label className="flex items-center justify-between rounded-xl border border-border bg-surface-2 px-4 py-3">
+    <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 bg-surface-2 px-4 py-3">
       {label}
-      <input type="checkbox" name={name} defaultChecked className="h-5 w-5 accent-[var(--accent)]" />
+      <input type="checkbox" name={name} defaultChecked className="switch" />
     </label>
   );
 }
@@ -162,9 +174,9 @@ function Toggle({ name, label }: { name: string; label: string }) {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-semibold">{label}</span>
+      <span className="mb-1.5 block text-sm font-semibold">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
     </label>
   );
 }

@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Barlow_Condensed } from "next/font/google";
+import { Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
-const display = Barlow_Condensed({ variable: "--font-display", subsets: ["latin"], weight: ["500", "600", "700"] });
+// Instrument Sans: compact, crisp figures that stay tight with tabular-nums, and a warm text face.
+const sans = Instrument_Sans({ variable: "--font-sans", subsets: ["latin", "latin-ext"], display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Løype", template: "%s · Løype" },
@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0b0d0c" },
-    { media: "(prefers-color-scheme: light)", color: "#f5f6f4" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0b0d" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f3ef" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${display.variable} antialiased`}>{children}</body>
+      <body className={`${sans.variable} antialiased`}>{children}</body>
     </html>
   );
 }

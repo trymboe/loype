@@ -1,3 +1,4 @@
+import { LineChart } from "lucide-react";
 import { ButtonLink, Card, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { VolumeChart } from "@/components/volume-chart";
 import { weeklyVolume } from "@/lib/analytics/volume";
@@ -20,7 +21,7 @@ export default async function ProgressPage() {
     return (
       <>
         <PageHeader title="Progress" />
-        <EmptyState title="Nothing to chart yet" action={<ButtonLink href="/more/integrations">Import history</ButtonLink>}>
+        <EmptyState icon={<LineChart size={22} />} title="Nothing to chart yet" action={<ButtonLink href="/more/integrations">Import history</ButtonLink>}>
           Progress is built from your imported runs. Import at least a few months to see trends.
         </EmptyState>
       </>
@@ -48,13 +49,25 @@ export default async function ProgressPage() {
   return (
     <>
       <PageHeader title="Progress" subtitle="Training volume and consistency, calculated from your imported runs." />
-      <div className="space-y-4">
+      <div className="stagger space-y-3">
         <Card>
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
             <Stat
               label="Avg weekly km"
               value={formatKm(kmNow, 1)}
-              hint={prev4.length ? `${kmNow >= kmPrev ? "+" : "−"}${formatKm(Math.abs(kmNow - kmPrev), 1)} vs prior 4 wks` : "last 4 weeks"}
+              unit="km"
+              hint={
+                prev4.length ? (
+                  <span>
+                    <span className={kmNow >= kmPrev ? "font-semibold text-good" : "font-semibold text-warn"}>
+                      {kmNow >= kmPrev ? "↑" : "↓"} {formatKm(Math.abs(kmNow - kmPrev), 1)}
+                    </span>{" "}
+                    vs prior 4 wks
+                  </span>
+                ) : (
+                  "last 4 weeks"
+                )
+              }
             />
             <Stat label="Runs / week" value={(sum(last4, "runs") / Math.max(1, last4.length)).toFixed(1)} hint={`last ${last4.length} weeks`} />
             <Stat label="Longest run" value={formatKm(longest, 1)} unit="km" hint="last 4 weeks" />
@@ -62,14 +75,14 @@ export default async function ProgressPage() {
           </div>
         </Card>
         <Card>
-          <div className="label mb-3">Weekly distance</div>
+          <h2 className="section-title mb-4">Weekly distance</h2>
           <VolumeChart weeks={weeks} />
         </Card>
         {fitness ? (
           <FitnessSection out={fitness.output} history={history} computedAt={fitness.computed_at} />
         ) : (
           <Card>
-            <div className="label">Fitness estimates</div>
+            <h2 className="section-title">Fitness estimates</h2>
             <p className="mt-2 text-sm text-muted">Your fitness model has not been computed yet. It runs after each sync; reload in a minute.</p>
           </Card>
         )}

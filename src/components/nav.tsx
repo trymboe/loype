@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, CalendarDays, LineChart, MessageCircle, Menu, Sun } from "lucide-react";
+import { Activity, CalendarDays, LineChart, MessageCircle, Ellipsis, Sun } from "lucide-react";
 import clsx from "clsx";
+import { LogoMark, Wordmark } from "./logo";
 
 const ITEMS = [
   { href: "/", label: "Today", icon: Sun },
@@ -11,7 +12,7 @@ const ITEMS = [
   { href: "/progress", label: "Progress", icon: LineChart },
   { href: "/activities", label: "Activities", icon: Activity },
   { href: "/coach", label: "Coach", icon: MessageCircle },
-  { href: "/more", label: "More", icon: Menu },
+  { href: "/more", label: "More", icon: Ellipsis },
 ];
 
 function isActive(path: string, href: string) {
@@ -21,20 +22,24 @@ function isActive(path: string, href: string) {
 export function BottomNav() {
   const path = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
-      <ul className="mx-auto grid max-w-lg grid-cols-6">
+    <nav
+      aria-label="Main"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-bg/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 md:hidden"
+    >
+      <ul className="mx-auto grid max-w-lg grid-cols-6 px-1">
         {ITEMS.map(({ href, label, icon: Icon }) => {
           const active = isActive(path, href);
           return (
             <li key={href}>
               <Link
                 href={href}
+                aria-current={active ? "page" : undefined}
                 className={clsx(
-                  "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
-                  active ? "text-accent" : "text-muted",
+                  "flex flex-col items-center gap-[3px] pt-2 pb-1.5 text-[0.625rem] font-medium tracking-[0.01em] transition-colors",
+                  active ? "text-fg" : "text-subtle",
                 )}
               >
-                <Icon size={21} strokeWidth={active ? 2.4 : 1.8} />
+                <Icon size={23} strokeWidth={active ? 2.1 : 1.7} className={active ? "text-accent" : undefined} />
                 {label}
               </Link>
             </li>
@@ -48,9 +53,10 @@ export function BottomNav() {
 export function SideNav() {
   const path = usePathname();
   return (
-    <nav className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r border-border px-3 py-6 md:flex">
-      <Link href="/" className="mb-6 px-3 font-display text-3xl font-bold tracking-tight">
-        Løype
+    <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-0.5 border-r border-[var(--hairline)] px-3 py-6 md:flex">
+      <Link href="/" className="mb-7 flex items-center gap-2.5 px-3">
+        <LogoMark size={28} />
+        <Wordmark />
       </Link>
       {ITEMS.map(({ href, label, icon: Icon }) => {
         const active = isActive(path, href);
@@ -58,12 +64,13 @@ export function SideNav() {
           <Link
             key={href}
             href={href}
+            aria-current={active ? "page" : undefined}
             className={clsx(
-              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-              active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
+              "flex min-h-10 items-center gap-3 rounded-xl px-3 text-[0.9375rem] font-medium transition-colors",
+              active ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg",
             )}
           >
-            <Icon size={18} className={active ? "text-accent" : undefined} />
+            <Icon size={19} strokeWidth={active ? 2.1 : 1.8} className={active ? "text-accent" : undefined} />
             {label}
           </Link>
         );

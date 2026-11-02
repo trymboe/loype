@@ -1,4 +1,4 @@
-import { Card, Stat } from "@/components/ui";
+import { Card, CardHeader, Stat } from "@/components/ui";
 import { addDaysIso } from "@/lib/dates";
 import { createAdminClient } from "@/lib/db/server";
 import type { Baseline } from "@/lib/planning/types";
@@ -33,15 +33,15 @@ export function BaselineCard({ b }: { b: Baseline }) {
   const t = b.paceZones?.find((z) => z.key === "threshold");
   return (
     <Card>
-      <div className="label">Starting point</div>
-      <div className="mt-3 grid grid-cols-2 gap-5 sm:grid-cols-4">
+      <CardHeader title="Starting point" aside="Last 4–8 weeks" />
+      <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
         <Stat label="Weekly time" value={b.weeklyMinutes} unit="min" size="md" hint="avg last 4 weeks" />
         <Stat label="Runs / week" value={b.runsPerWeek.toFixed(1)} size="md" hint={`${Math.round(b.consistency * 8)} of 8 weeks with runs`} />
         <Stat label="Longest run" value={b.longestRunMinutes} unit="min" size="md" hint="last 8 weeks" />
         <Stat label="Fitness" value={b.vdot ? b.vdot.toFixed(1) : "–"} size="md" hint={b.vdot ? `VDOT, ${b.vdotConfidence} confidence` : "no estimate yet"} />
       </div>
       {t && (
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-4 text-xs leading-relaxed text-muted">
           Sessions will use your zones, e.g. threshold {formatPace(t.fastSPerKm)}–{formatPace(t.slowSPerKm)}/km. They update as your fitness changes.
         </p>
       )}

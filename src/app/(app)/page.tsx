@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SyncBanner } from "@/components/sync-banner";
 import { NextWorkout } from "@/components/plan/next-workout";
-import { ButtonLink, Card, EmptyState, Stat } from "@/components/ui";
+import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
 import { addDaysIso, formatDay, localTime, relativeDay, relativeTime, todayIn, weekStart } from "@/lib/dates";
 import { isRun, weeklyVolume } from "@/lib/analytics/volume";
@@ -34,45 +34,55 @@ export default async function TodayPage() {
 
   return (
     <>
-      <header className="mb-6 flex items-end justify-between gap-3">
-        <div>
-          <p className="label">{formatDay(today, { weekday: "long", day: "numeric", month: "long" })}</p>
-          <h1 className="font-display text-4xl font-bold tracking-tight">Today</h1>
-        </div>
-        {connected && integration.last_success_at && (
-          <Link href="/more/integrations" className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs text-muted hover:text-fg">
-            <RefreshCw size={12} />
-            Synced {relativeTime(integration.last_success_at)}
-          </Link>
-        )}
-      </header>
+      <PageHeader
+        eyebrow={formatDay(today, { weekday: "long", day: "numeric", month: "long" })}
+        title="Today"
+        action={
+          connected && integration.last_success_at ? (
+            <Link href="/more/integrations" className="mb-1 inline-flex h-8 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-xs font-medium text-muted hover:text-fg">
+              <span className="size-1.5 rounded-full bg-good" />
+              Synced {relativeTime(integration.last_success_at)}
+            </Link>
+          ) : undefined
+        }
+      />
       <SyncBanner integration={integration} />
 
       {!connected && acts.length === 0 ? (
-        <EmptyState title="Let's get your training history in" action={<ButtonLink href="/more/integrations">Connect Garmin</ButtonLink>}>
+        <EmptyState
+          icon={<Watch size={22} />}
+          title="Let's get your training history in"
+          action={<ButtonLink href="/more/integrations">Connect Garmin</ButtonLink>}
+        >
           Løype builds everything from your real runs. Connect your Garmin account with a Personal API key and import at least 3–6 months of history to establish
           a baseline.
         </EmptyState>
       ) : (
-        <div className="space-y-4">
+        <div className="stagger space-y-3">
           <NextWorkout today={today} />
           {latest ? (
-            <Link href={`/activities/${latest.id}`} className="card rise block p-5 transition-colors hover:border-muted/50">
-              <div className="flex items-start justify-between gap-3">
+            <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
+              <div className="flex items-start justify-between gap-4 p-5 pb-0">
                 <div className="min-w-0">
-                  <div className="label">Latest run · {relativeDay(latest.local_date, today)}</div>
-                  <p className="mt-1 truncate font-display text-2xl font-semibold">{latest.name ?? "Run"}</p>
-                  <p className="text-xs text-muted">
+                  <p className="eyebrow">Latest run · {relativeDay(latest.local_date, today)}</p>
+                  <p className="mt-1 truncate text-[1.375rem] leading-tight font-semibold tracking-[-0.02em]">{latest.name ?? "Run"}</p>
+                  <p className="mt-0.5 text-[0.8125rem] text-muted">
                     {formatDay(latest.local_date)} · {localTime(latest.start_time, latest.utc_offset_s, tz)}
                   </p>
                 </div>
-                <RouteThumb points={latest.route_preview} size={64} />
+                <RouteThumb points={latest.route_preview} size={68} />
               </div>
-              <div className="mt-4 grid grid-cols-[1fr_1fr_1.4fr_0.8fr] gap-3">
-                <Stat size="md" label="Km" value={formatKm(latest.distance_m, 1)} />
-                <Stat size="md" label="Pace" value={formatPaceFromSpeed(latest.avg_speed_moving)} />
-                <Stat size="md" label="Time" value={formatDuration(latest.moving_s)} />
-                <Stat size="md" label="HR" value={latest.avg_hr ? Math.round(latest.avg_hr) : "–"} />
+              <div className="mt-5 grid grid-cols-[1.05fr_1fr_1.3fr_0.8fr] border-t border-[var(--hairline)]">
+                {[
+                  { label: "Distance", value: formatKm(latest.distance_m, 1), unit: "km" },
+                  { label: "Pace", value: formatPaceFromSpeed(latest.avg_speed_moving), unit: "/km" },
+                  { label: "Time", value: formatDuration(latest.moving_s) },
+                  { label: "Avg HR", value: latest.avg_hr ? Math.round(latest.avg_hr) : "–" },
+                ].map((s, i) => (
+                  <div key={s.label} className={i ? "border-l border-[var(--hairline)] px-3 py-4" : "py-4 pr-3 pl-5"}>
+                    <Stat size="sm" label={s.label} value={s.value} unit={s.unit} />
+                  </div>
+                ))}
               </div>
             </Link>
           ) : (
@@ -80,43 +90,53 @@ export default async function TodayPage() {
           )}
 
           <Card>
-            <div className="flex items-end justify-between">
-              <div className="label">This week</div>
-              <span className="text-xs text-muted">Mon–Sun</span>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-4">
-              <Stat label="Distance" value={formatKm(current.distanceM, 1)} unit="km" />
-              <Stat label="Runs" value={current.runs} />
-              <Stat label="Time" value={formatDuration(current.movingS)} />
+            <CardHeader title="This week" aside={priorAvg > 0 ? `${formatKm(priorAvg, 1)} km avg` : "Mon–Sun"} />
+            <div className="mt-4 flex items-end justify-between gap-4">
+              <div>
+                <span className="display text-[2.75rem]">{formatKm(current.distanceM, 1)}</span>
+                <span className="ml-1 text-sm font-medium text-muted">km</span>
+              </div>
+              <div className="flex gap-5 pb-1 text-right">
+                <Stat size="sm" label="Runs" value={current.runs} />
+                <Stat size="sm" label="Time" value={formatDuration(current.movingS)} />
+              </div>
             </div>
             {prior.length > 0 && priorAvg > 0 && (
               <div className="mt-4">
                 <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full bg-accent" style={{ width: `${weekPct}%` }} />
+                  <div className="h-full rounded-full bg-accent transition-[width] duration-700" style={{ width: `${Math.max(weekPct, current.distanceM > 0 ? 2 : 0)}%` }} />
                 </div>
-                <p className="mt-1.5 text-xs text-muted">
-                  {formatKm(current.distanceM, 1)} of your {formatKm(priorAvg, 1)} km 4-week average
-                </p>
+                <p className="mt-2 text-xs text-muted">{Math.round(weekPct)}% of your 4-week average</p>
               </div>
             )}
-            <div className="mt-5 grid grid-cols-7 items-end gap-2">
+            <div className="mt-5 grid grid-cols-7 gap-2">
               {days.map((d) => {
                 const dist = dayDist.get(d) ?? 0;
                 const isToday = d === today;
                 const future = d > today;
                 return (
-                  <div key={d} className="flex flex-col items-center gap-1.5">
-                    <span className="tabular h-3 text-[10px] text-muted">{dist ? formatKm(dist, 0) : ""}</span>
-                    <div className="flex h-14 w-full items-end">
-                      <div
-                        className={dist ? "w-full rounded-md bg-accent" : future ? "w-full rounded-md border border-dashed border-border" : "w-full rounded-md bg-surface-2"}
-                        style={{ height: dist ? `${Math.max(12, (dist / maxDay) * 100)}%` : "6px" }}
-                        title={dist ? `${formatKm(dist, 1)} km` : future ? undefined : "Rest"}
-                      />
+                  <div key={d} className="flex flex-col items-center gap-2">
+                    <div className="flex h-11 w-full items-end justify-center">
+                      {dist ? (
+                        <div
+                          className="w-full max-w-7 rounded-[5px] bg-accent"
+                          style={{ height: `${Math.max(18, (dist / maxDay) * 100)}%` }}
+                          title={`${formatKm(dist, 1)} km`}
+                        />
+                      ) : (
+                        <div className={future ? "size-1 rounded-full bg-surface-3" : "h-1 w-full max-w-7 rounded-full bg-surface-2"} title={future ? undefined : "Rest"} />
+                      )}
                     </div>
-                    <span className={isToday ? "flex h-5 w-5 items-center justify-center rounded-full bg-fg text-[11px] font-bold text-bg" : "flex h-5 w-5 items-center justify-center text-[11px] text-muted"}>
+                    <span
+                      className={
+                        isToday
+                          ? "flex size-6 items-center justify-center rounded-full bg-fg text-[0.6875rem] font-semibold text-bg"
+                          : "flex size-6 items-center justify-center text-[0.6875rem] font-medium text-muted"
+                      }
+                    >
                       {formatDay(d, { weekday: "narrow" })}
                     </span>
+                    <span className="tabular -mt-1 h-3 text-[0.625rem] text-muted">{dist ? formatKm(dist, 0) : ""}</span>
                   </div>
                 );
               })}
@@ -124,35 +144,31 @@ export default async function TodayPage() {
           </Card>
 
           <Card href="/progress">
-            <div className="flex items-end justify-between">
-              <div className="label">Weekly volume · 8 weeks</div>
-              <span className="text-xs font-semibold text-accent">Progress →</span>
+            <CardHeader
+              title="Weekly volume"
+              aside={
+                <span className="inline-flex items-center gap-0.5 font-medium text-accent">
+                  Progress <ChevronRight size={14} />
+                </span>
+              }
+            />
+            <p className="mt-0.5 text-xs text-muted">Last 8 weeks</p>
+            <div className="mt-4 flex h-24 items-end gap-2">
+              {weeks.map((w) => {
+                const isCurrent = w.weekStart === thisWeek;
+                return (
+                  <div key={w.weekStart} className="flex h-full flex-1 flex-col items-center justify-end" title={`Week of ${formatDay(w.weekStart, { day: "numeric", month: "short" })}: ${formatKm(w.distanceM, 1)} km`}>
+                    <div className={isCurrent ? "w-full rounded-[5px] bg-accent" : "w-full rounded-[5px] bg-[var(--chart-bar)]"} style={{ height: `${Math.max(4, (w.distanceM / maxWeek) * 100)}%` }} />
+                  </div>
+                );
+              })}
             </div>
-            <div className="mt-4 flex h-24 items-end gap-1.5">
-              {weeks.map((w) => (
-                <div key={w.weekStart} className="flex h-full flex-1 flex-col items-center justify-end" title={`Week of ${formatDay(w.weekStart, { day: "numeric", month: "short" })}: ${formatKm(w.distanceM, 1)} km`}>
-                  <div
-                    className={w.weekStart === thisWeek ? "w-full rounded-md bg-accent" : "w-full rounded-md bg-accent/40"}
-                    style={{ height: `${Math.max(3, (w.distanceM / maxWeek) * 100)}%` }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="mt-1.5 flex justify-between text-[10px] text-muted">
+            <div className="mt-2 flex justify-between text-[0.6875rem] text-muted">
               <span>{formatDay(weeks[0].weekStart, { day: "numeric", month: "short" })}</span>
               <span>This week</span>
             </div>
           </Card>
 
-          <Link href="/plan" className="card flex items-center gap-3 p-4 text-sm transition-colors hover:border-muted/50">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">No training plan yet</p>
-              <p className="text-xs text-muted">
-                Plans and adaptive workouts come next. Løype is building your baseline from {runs.length} run{runs.length === 1 ? "" : "s"} in the last 8 weeks.
-              </p>
-            </div>
-            <ChevronRight size={18} className="shrink-0 text-muted" />
-          </Link>
         </div>
       )}
     </>

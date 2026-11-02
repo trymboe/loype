@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { saveProfile, type ProfileState } from "./actions";
 
-const input = "w-full rounded-xl border border-border bg-surface-2 px-4 py-3 outline-none focus:border-accent";
+const input = "input";
 
 interface Initial {
   max_hr: number | null;
@@ -16,7 +16,7 @@ interface Initial {
 export function ProfileForm({ initial, detected }: { initial: Initial; detected: { maxHr: string | null; restHr: string | null } }) {
   const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-5">
       <Field label="Max heart rate" hint={detected.maxHr ? `Leave empty to use what Løype detects: ${detected.maxHr}` : "Leave empty to detect it from your runs"}>
         <input name="max_hr" type="number" inputMode="numeric" min={100} max={240} defaultValue={initial.max_hr ?? ""} placeholder="bpm" className={input} />
       </Field>
@@ -39,9 +39,9 @@ export function ProfileForm({ initial, detected }: { initial: Initial; detected:
           <option value="other">Other</option>
         </select>
       </Field>
-      {state.error && <p className="text-sm text-hr">{state.error}</p>}
-      {state.ok && <p className="text-sm text-accent">Saved. Zones, load and estimates were recalculated.</p>}
-      <button disabled={pending} className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-fg disabled:opacity-60">
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
+      {state.ok && <p className="text-sm text-good">Saved. Zones, load and estimates were recalculated.</p>}
+      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Saving…" : "Save"}
       </button>
     </form>
@@ -51,9 +51,9 @@ export function ProfileForm({ initial, detected }: { initial: Initial; detected:
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-semibold">{label}</span>
+      <span className="mb-1.5 block text-sm font-semibold">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
     </label>
   );
 }

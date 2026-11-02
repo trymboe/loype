@@ -10,10 +10,10 @@ import {
   type PasswordState,
 } from "./actions";
 
-const input = "w-full rounded-xl border border-border bg-surface-2 px-4 py-3 outline-none focus:border-accent";
-const button = "w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-fg disabled:opacity-60";
+const input = "input";
+const button = "btn btn-primary btn-block min-h-12";
 
-const linkButton = "w-full text-center text-sm text-muted underline underline-offset-4";
+const linkButton = "w-full py-2 text-center text-sm font-medium text-muted transition-colors hover:text-fg";
 
 export function LoginForm() {
   const [mode, setMode] = useState<"password" | "email">("password");
@@ -40,7 +40,7 @@ function PasswordForm() {
     <form action={action} className="space-y-3">
       <input name="email" type="email" autoComplete="username" required placeholder="you@example.com" className={input} />
       <input name="password" type="password" autoComplete="current-password" required placeholder="Password" className={input} />
-      {state.error && <p className="text-sm text-hr">{state.error}</p>}
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
       <button disabled={pending} className={button}>
         {pending ? "Signing in…" : "Sign in"}
       </button>
@@ -54,7 +54,7 @@ function EmailLinkForm() {
   return (
     <form action={action} className="space-y-3">
       <input name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={input} />
-      {state.error && <p className="text-sm text-hr">{state.error}</p>}
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
       <button disabled={pending} className={button}>
         {pending ? "Sending…" : "Email me a sign-in link"}
       </button>
@@ -78,7 +78,7 @@ function CodeForm({ email }: { email: string }) {
         placeholder="Code (optional)"
         className={`${input} tabular text-center text-2xl tracking-[0.4em]`}
       />
-      {state.error && <p className="text-sm text-hr">{state.error}</p>}
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
       <button disabled={pending} className={button}>
         {pending ? "Signing in…" : "Sign in"}
       </button>

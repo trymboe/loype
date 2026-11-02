@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { restoreVersionAction } from "../actions";
 import { createUserClient } from "@/lib/db/server";
@@ -23,28 +22,25 @@ export default async function PlanHistoryPage() {
   ]);
   return (
     <>
-      <PageHeader title="Plan history" subtitle="Every change to your plan, who made it and why. Restore any earlier version." />
-      <div className="space-y-4">
-        <Link href="/plan" className="text-sm text-accent">
-          ← Back to plan
-        </Link>
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Plan history" subtitle="Every change to your plan, who made it and why. Restore any earlier version." />
+      <div className="stagger space-y-3">
         {(plans ?? []).map((p: any) => (
           <Card key={p.id}>
             <div className="flex items-center justify-between gap-2">
-              <div className="font-semibold">{p.goal?.kind === "race" && p.goal?.name ? p.goal.name : GOAL_LABEL[p.goal?.kind as keyof typeof GOAL_LABEL]}</div>
-              <Badge tone={p.status === "active" ? "accent" : "muted"}>{p.status}</Badge>
+              <div className="section-title">{p.goal?.kind === "race" && p.goal?.name ? p.goal.name : GOAL_LABEL[p.goal?.kind as keyof typeof GOAL_LABEL]}</div>
+              <Badge tone={p.status === "active" ? "good" : "muted"}>{p.status.charAt(0).toUpperCase() + p.status.slice(1)}</Badge>
             </div>
-            <div className="text-xs text-muted">Created {formatDay(p.created_at.slice(0, 10))}</div>
-            <ul className="mt-3 divide-y divide-border">
+            <div className="mt-0.5 text-xs text-muted">Created {formatDay(p.created_at.slice(0, 10))}</div>
+            <ul className="divide-hairline mt-3">
               {(versions ?? [])
                 .filter((v: any) => v.plan_id === p.id)
                 .map((v: any) => (
-                  <li key={v.version} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <li key={v.version} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                     <div className="min-w-0">
                       <div>
-                        <span className="text-muted">v{v.version}</span> {v.reason}
+                        <span className="tabular mr-1 inline-flex h-5 items-center rounded-md bg-surface-2 px-1.5 text-[0.6875rem] font-semibold text-muted">v{v.version}</span> {v.reason}
                       </div>
-                      <div className="text-xs text-muted">
+                      <div className="mt-0.5 text-xs text-muted">
                         {BY[v.created_by]} · {new Date(v.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
                       </div>
                     </div>
@@ -52,7 +48,7 @@ export default async function PlanHistoryPage() {
                       <form action={restoreVersionAction}>
                         <input type="hidden" name="planId" value={p.id} />
                         <input type="hidden" name="version" value={v.version} />
-                        <button className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-semibold">Restore</button>
+                        <button className="btn btn-secondary btn-sm">Restore</button>
                       </form>
                     )}
                   </li>
@@ -60,8 +56,8 @@ export default async function PlanHistoryPage() {
             </ul>
             {(proposals ?? []).some((x: any) => x.plan_id === p.id) && (
               <details className="mt-3 text-sm">
-                <summary className="cursor-pointer text-muted">Adaptation suggestions</summary>
-                <ul className="mt-2 space-y-1 text-xs">
+                <summary className="cursor-pointer font-medium text-accent">Adaptation suggestions</summary>
+                <ul className="mt-2 space-y-1.5 text-xs leading-snug">
                   {(proposals ?? [])
                     .filter((x: any) => x.plan_id === p.id)
                     .map((x: any, i: number) => (

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { Check, ChevronRight, Lock, Minus, X } from "lucide-react";
-import { Badge, Card, PageHeader, Stat } from "@/components/ui";
+import { Check, ChevronDown, ChevronRight, History, Lock, Minus, Target, X } from "lucide-react";
+import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";
 import { ProposalCard, type ProposalRow } from "@/components/plan/proposal-card";
 import { PlanForm } from "./plan-form";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
@@ -61,26 +61,26 @@ export default async function PlanPage() {
   return (
     <>
       <PageHeader
+        eyebrow={title}
         title="Plan"
-        subtitle={title}
         action={
-          <div className="flex gap-2 text-xs">
-            <Link href="/plan/history" className="rounded-full bg-surface-2 px-3 py-1.5 text-muted hover:text-fg">
-              History
+          <div className="mb-1 flex gap-1.5">
+            <Link href="/plan/history" className="chip" aria-label="Plan history">
+              <History size={14} /> History
             </Link>
-            <Link href="/plan/new" className="rounded-full bg-surface-2 px-3 py-1.5 text-muted hover:text-fg">
-              Change goal
+            <Link href="/plan/new" className="chip" aria-label="Change goal">
+              <Target size={14} /> Goal
             </Link>
           </div>
         }
       />
-      <div className="space-y-4">
+      <div className="stagger space-y-3">
         {pending.map((p: any) => (
           <ProposalCard key={p.id} p={p as ProposalRow} />
         ))}
 
         <Card>
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
             {goal.race_date ? (
               <Stat label="Race day" value={daysBetween(today, goal.race_date)} unit="days" hint={formatDay(goal.race_date)} />
             ) : (
@@ -90,9 +90,9 @@ export default async function PlanPage() {
             {goal.target_time_s && <Stat label="Target" value={fmtTime(goal.target_time_s)} size="md" hint={d ? `${formatPace(goal.target_time_s / (d / 1000))}/km` : undefined} />}
             {plan.race_pace && <Stat label="Training race pace" value={formatPace(plan.race_pace)} unit="/km" size="md" />}
           </div>
-          <details className="mt-4 text-sm">
-            <summary className="cursor-pointer text-muted">How this plan was built</summary>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+          <details className="mt-5 border-t border-[var(--hairline)] pt-4 text-sm">
+            <summary className="cursor-pointer font-medium text-accent">How this plan was built</summary>
+            <ul className="mt-3 list-disc space-y-1.5 pl-5 leading-snug text-muted marker:text-subtle">
               {(plan.summary as string[]).map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
@@ -105,7 +105,7 @@ export default async function PlanPage() {
           {(plan.warnings as string[]).length > 0 && (
             <ul className="mt-3 space-y-1">
               {(plan.warnings as string[]).map((w, i) => (
-                <li key={i} className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">
+                <li key={i} className="rounded-xl bg-warn/10 px-3 py-2 text-xs leading-snug text-warn">
                   {w}
                 </li>
               ))}
@@ -115,7 +115,7 @@ export default async function PlanPage() {
 
         {todays.length > 0 && (
           <Card>
-            <div className="label">Today</div>
+            <CardHeader title="Today" className="mb-1" />
             {todays.map((w) => (
               <WorkoutRow key={w.id} w={w} today={today} big />
             ))}
@@ -132,24 +132,37 @@ export default async function PlanPage() {
           const planned = items.filter((w) => w.status !== "skipped").reduce((a, w) => a + w.duration_s / 60, 0);
           const ran = ranBy.get(wk.start) ?? 0;
           return (
-            <details key={wk.start} open={isCurrent || (wk.start > thisWeek && wk.start <= addDaysIso(thisWeek, 7))} className={clsx("card rise p-4", isCurrent && "border-accent/60")}>
+            <details
+              key={wk.start}
+              open={isCurrent || (wk.start > thisWeek && wk.start <= addDaysIso(thisWeek, 7))}
+              className={clsx("card group/week relative overflow-hidden px-4 py-3.5", past && !isCurrent && "opacity-75")}
+            >
+              {isCurrent && <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />}
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">
-                    Week {wk.index + 1} · {formatDay(wk.start, { day: "numeric", month: "short" })}
-                    {isCurrent && <span className="ml-2 text-accent">this week</span>}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-[0.9375rem] font-semibold whitespace-nowrap">
+                    Week {wk.index + 1}
+                    <span className="font-normal text-muted">{formatDay(wk.start, { day: "numeric", month: "short" })}</span>
+                    {isCurrent && <Badge tone="accent">This week</Badge>}
                   </div>
-                  <div className="text-xs text-muted">{wk.note || PHASE_LABEL[wk.phase]}</div>
+                  <div className="mt-0.5 truncate text-xs text-muted">{wk.note || PHASE_LABEL[wk.phase]}</div>
                 </div>
-                <div className="flex items-center gap-2 text-right">
-                  <Badge tone={wk.phase === "recovery" || wk.phase === "taper" ? "muted" : wk.phase === "race" ? "hr" : "accent"}>{PHASE_LABEL[wk.phase]}</Badge>
-                  <div className="tabular w-20 text-xs text-muted">
-                    {past || isCurrent ? `${Math.round(ran)} / ` : ""}
-                    {Math.round(planned)} min
+                <div className="flex shrink-0 items-center gap-2.5 text-right">
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted" title={PHASE_LABEL[wk.phase]}>
+                    <span className="size-2 rounded-full" style={{ background: PHASE_COLOR[wk.phase] }} />
+                    <span className="hidden sm:inline">{PHASE_LABEL[wk.phase]}</span>
+                  </span>
+                  <div className="tabular w-[4.5rem] text-xs">
+                    {past || isCurrent ? <span className="font-semibold text-fg">{Math.round(ran)}</span> : null}
+                    <span className="text-muted">
+                      {past || isCurrent ? " / " : ""}
+                      {Math.round(planned)} min
+                    </span>
                   </div>
+                  <ChevronDown size={16} className="text-subtle transition-transform group-open/week:rotate-180" />
                 </div>
               </summary>
-              <ul className="mt-3 divide-y divide-border">
+              <ul className="divide-hairline mt-3 border-t border-[var(--hairline)]">
                 {items.map((w) => (
                   <li key={w.id}>
                     <WorkoutRow w={w} today={today} />
@@ -161,7 +174,7 @@ export default async function PlanPage() {
         })}
         {applied.length > 0 && (
           <div className="space-y-3">
-            <div className="label">Recently applied</div>
+            <h2 className="section-title px-1 pt-3">Recently applied</h2>
             {applied.map((p: any) => (
               <ProposalCard key={p.id} p={p as ProposalRow} />
             ))}
@@ -173,55 +186,81 @@ export default async function PlanPage() {
 }
 
 function StatusIcon({ status, past }: { status: string; past: boolean }) {
-  if (status === "completed") return <Check size={16} className="text-accent" />;
-  if (status === "missed") return <X size={16} className="text-hr" />;
-  if (status === "skipped") return <Minus size={16} className="text-muted" />;
-  return <span className={clsx("block h-2.5 w-2.5 rounded-full", past ? "bg-muted/40" : "bg-border")} />;
+  if (status === "completed")
+    return (
+      <span className="flex size-5 items-center justify-center rounded-full bg-good text-bg">
+        <Check size={12} strokeWidth={3} />
+      </span>
+    );
+  if (status === "missed")
+    return (
+      <span className="flex size-5 items-center justify-center rounded-full bg-danger/15 text-danger">
+        <X size={12} strokeWidth={3} />
+      </span>
+    );
+  if (status === "skipped")
+    return (
+      <span className="flex size-5 items-center justify-center rounded-full bg-surface-2 text-muted">
+        <Minus size={12} strokeWidth={3} />
+      </span>
+    );
+  return <span className={clsx("block size-5 rounded-full border-2", past ? "border-subtle" : "border-surface-3")} />;
 }
 
 function WorkoutRow({ w, today, big }: { w: any; today: string; big?: boolean }) {
   const hard = isHard(w.type);
   return (
-    <Link href={`/plan/workouts/${w.id}`} className="flex items-center gap-3 py-2.5">
-      <div className="w-10 shrink-0 text-xs text-muted">{formatDay(w.date, { weekday: "short" })}</div>
-      <div className="flex w-4 justify-center">
+    <Link href={`/plan/workouts/${w.id}`} className={clsx("-mx-1 flex items-center gap-3 rounded-xl px-1 transition-colors hover:bg-surface-2/50", big ? "py-3" : "py-2.5")}>
+      <div className={clsx("w-9 shrink-0 text-xs", w.date === today ? "font-semibold text-accent" : "text-muted")}>{formatDay(w.date, { weekday: "short" })}</div>
+      <div className="flex w-5 justify-center">
         <StatusIcon status={w.status} past={w.date < today} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className={clsx("truncate", big ? "font-display text-xl font-semibold" : "text-sm", w.status === "skipped" && "text-muted line-through")}>
+        <div className={clsx("truncate", big ? "text-lg font-semibold tracking-[-0.01em]" : "text-sm font-medium", w.status === "skipped" && "text-muted line-through")}>
           {w.title}
           {w.locked && <Lock size={12} className="ml-1 inline text-muted" />}
         </div>
-        {w.execution?.verdict && w.execution.verdict !== "as_planned" && <div className="text-xs text-muted">{w.execution.notes?.[0]}</div>}
+        {w.execution?.verdict && w.execution.verdict !== "as_planned" && <div className="mt-0.5 truncate text-xs text-muted">{w.execution.notes?.[0]}</div>}
       </div>
       <div className="flex items-center gap-1.5">
-        {hard && <span className="h-2 w-2 rounded-full bg-hr" title="Hard session" />}
+        {hard && <span className="size-1.5 rounded-full bg-intervals" title="Hard session" />}
         <span className="tabular text-xs text-muted">{Math.round(w.duration_s / 60)} min</span>
-        <ChevronRight size={14} className="text-muted" />
+        <ChevronRight size={14} className="text-subtle" />
       </div>
     </Link>
   );
 }
 
+const PHASE_COLOR: Record<Phase, string> = {
+  base: "color-mix(in srgb, var(--accent) 35%, var(--surface-3))",
+  build: "color-mix(in srgb, var(--accent) 65%, var(--surface-3))",
+  specific: "var(--accent)",
+  recovery: "var(--surface-3)",
+  taper: "var(--tempo)",
+  race: "var(--intervals)",
+};
+
 function PhaseBar({ weeks, current }: { weeks: PlanWeek[]; current: string }) {
-  const color: Record<Phase, string> = { base: "bg-accent/40", build: "bg-accent/70", specific: "bg-accent", recovery: "bg-surface-2", taper: "bg-warn/50", race: "bg-hr" };
   const max = Math.max(...weeks.map((w) => w.targetMinutes), 1);
   return (
     <Card>
-      <div className="label mb-3">Phases and weekly time</div>
-      <div className="flex h-24 items-end gap-0.5">
+      <CardHeader title="Phases and weekly time" className="mb-4" />
+      <div className="flex h-24 items-end gap-[3px]">
         {weeks.map((w) => (
-          <div key={w.start} className="flex flex-1 flex-col items-center justify-end" title={`Week ${w.index + 1}: ${PHASE_LABEL[w.phase]}, ${w.targetMinutes} min`}>
-            <div className={clsx("w-full rounded-t", color[w.phase], w.start === current && "ring-2 ring-fg")} style={{ height: `${Math.max(6, (w.targetMinutes / max) * 100)}%` }} />
+          <div key={w.start} className="flex h-full flex-1 flex-col items-center justify-end" title={`Week ${w.index + 1}: ${PHASE_LABEL[w.phase]}, ${w.targetMinutes} min`}>
+            <div
+              className={clsx("w-full rounded-[3px]", w.start === current && "ring-2 ring-fg ring-offset-2 ring-offset-[var(--surface)]")}
+              style={{ height: `${Math.max(6, (w.targetMinutes / max) * 100)}%`, background: PHASE_COLOR[w.phase] }}
+            />
           </div>
         ))}
       </div>
-      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted">
+      <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-1 text-[0.6875rem] text-muted">
         {(["base", "build", "specific", "recovery", "taper", "race"] as Phase[])
           .filter((p) => weeks.some((w) => w.phase === p))
           .map((p) => (
             <span key={p} className="inline-flex items-center gap-1">
-              <span className={clsx("h-2 w-2 rounded-sm", color[p])} />
+              <span className="size-2 rounded-[2px]" style={{ background: PHASE_COLOR[p] }} />
               {PHASE_LABEL[p]}
             </span>
           ))}
@@ -235,7 +274,7 @@ async function NoPlan({ userId, today }: { userId: string; today: string }) {
   return (
     <>
       <PageHeader title="Plan" subtitle="Set a goal and Løype builds a plan from your actual training." />
-      <div className="space-y-4">
+      <div className="stagger space-y-3">
         <BaselineCard b={baseline} />
         <Card>
           <PlanForm defaults={defaults} />

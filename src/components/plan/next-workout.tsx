@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CalendarDays, ChevronRight } from "lucide-react";
+import { IconTile } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { daysBetween, formatDay } from "@/lib/dates";
 import { Steps } from "./steps";
@@ -9,9 +11,15 @@ export async function NextWorkout({ today }: { today: string }) {
   const { data: plan } = await db.from("training_plans").select("id").eq("status", "active").maybeSingle();
   if (!plan) {
     return (
-      <Link href="/plan" className="card rise block p-5 transition-colors hover:border-muted/50">
-        <div className="label">Plan</div>
-        <p className="mt-1 text-sm">No training plan yet. Set a goal and get a plan built from your runs →</p>
+      <Link href="/plan" className="card flex items-center gap-3.5 p-4 hover:bg-surface-2/40">
+        <IconTile color="var(--accent)">
+          <CalendarDays size={18} />
+        </IconTile>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.9375rem] font-semibold">No training plan yet</p>
+          <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Set a goal and get a plan built from your runs.</p>
+        </div>
+        <ChevronRight size={18} className="shrink-0 text-subtle" />
       </Link>
     );
   }
@@ -28,12 +36,16 @@ export async function NextWorkout({ today }: { today: string }) {
   if (!w) return null;
   const isToday = w.date === today;
   return (
-    <Link href={`/plan/workouts/${w.id}`} className="card rise block border-accent/50 p-5 transition-colors hover:border-accent">
-      <div className="label">{isToday ? "Today's workout" : `Next workout · ${formatDay(w.date)}`}</div>
-      <p className="mt-1 font-display text-2xl font-semibold">{w.title}</p>
-      {!isToday && <p className="text-xs text-muted">{daysBetween(today, w.date) === 1 ? "tomorrow" : `in ${daysBetween(today, w.date)} days`}</p>}
+    <Link href={`/plan/workouts/${w.id}`} className="card relative block overflow-hidden p-5 hover:bg-surface-2/40">
+      <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
+      <div className="flex items-center justify-between gap-3">
+        <p className="eyebrow">{isToday ? "Today's workout" : `Next workout · ${formatDay(w.date)}`}</p>
+        <ChevronRight size={18} className="shrink-0 text-subtle" />
+      </div>
+      <p className="mt-1 text-[1.375rem] leading-tight font-semibold tracking-[-0.02em]">{w.title}</p>
+      {!isToday && <p className="mt-0.5 text-[0.8125rem] text-muted">{daysBetween(today, w.date) === 1 ? "Tomorrow" : `In ${daysBetween(today, w.date)} days`}</p>}
       {isToday && (
-        <div className="mt-3">
+        <div className="mt-4">
           <Steps steps={w.steps} />
         </div>
       )}
