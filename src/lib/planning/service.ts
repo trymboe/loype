@@ -202,6 +202,7 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     runs: runs.map((r: any) => ({ date: r.local_date, movingS: r.moving_s, classification: classOf(r), rpe: feedback.get(r.id)?.rpe ?? null, legs: feedback.get(r.id)?.legs ?? null })),
     fitness: est && !est.withheld ? { vdot: est.vdot, confidence: est.confidence } : null,
     existingKeys: new Set((existing ?? []).map((p: any) => p.key)),
+    wellness: await loadWellness(db, userId, today),
   });
   if (proposals.length) {
     await check(
@@ -466,6 +467,17 @@ async function single(q: PromiseLike<{ data: any; error: { message: string } | n
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error("Not found");
   return row;
+}
+
+async function loadWellness(db: SupabaseClient, userId: string, today: string) {
+  const { data } = await db
+    .from("wellness_daily")
+    .select("calendar_date, metric, value")
+    .eq("user_id", userId)
+    .in("metric", ["hrv_overnight_avg", "resting_hr", "sleep_avg_hr", "sleep_seconds", "body_battery_high"])
+    .gte("calendar_date", addDaysIso(today, -60))
+    .lte("calendar_date", today);
+  return (data ?? []).map((r: any) => ({ date: r.calendar_date as string, metric: r.metric as string, value: r.value as number | null }));
 }
 
 /** Checks an edited workout against the planner's safety rules before saving. */
