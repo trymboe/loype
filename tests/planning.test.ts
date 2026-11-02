@@ -139,12 +139,23 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
   });
 
   it("grows when you run more than planned (re-anchored on your actual weeks)", () => {
-    const quiet = generatePlan(tenK, all, base({ ...low, recentWeeks: [50, 50, 50, 50], maxRecentRuns: 2 }));
-    const keen = generatePlan(tenK, all, base({ ...low, weeklyMinutes: 120, recentWeeks: [100, 110, 125, 140], maxRecentRuns: 4, runsPerWeek: 3.5 }));
+    const quiet = generatePlan(tenK, all, base({ ...low, recentWeeks: [50, 50, 50, 50], recentRunCounts: [2, 2, 2, 2] }));
+    const keen = generatePlan(tenK, all, base({ ...low, weeklyMinutes: 120, recentWeeks: [100, 110, 125, 140], recentRunCounts: [3, 4, 4, 4], runsPerWeek: 3.75 }));
     expect(keen.weeks[0].targetMinutes).toBeGreaterThan(quiet.weeks[0].targetMinutes * 1.8);
     expect(keen.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(140, 119 * ACWR_MAX) + 20);
     const n = (p: typeof keen) => p.workouts.filter((x) => x.date <= addDaysIso(p.weeks[0].start, 6)).length;
     expect(n(keen)).toBeGreaterThan(n(quiet));
+  });
+
+  it("takes run frequency and length from your history, not a default", () => {
+    const firstWeek = (pl: ReturnType<typeof generatePlan>) => pl.workouts.filter((x) => x.date <= addDaysIso(pl.weeks[0].start, 6)).length;
+    const sixDay = generatePlan(tenK, all, base({ weeklyMinutes: 270, runsPerWeek: 6, consistency: 1, longestRunMinutes: 90, recentWeeks: [265, 270, 275, 270], recentRunCounts: [6, 6, 6, 6], habitualRunMinutes: 45 }));
+    expect(firstWeek(sixDay)).toBeGreaterThanOrEqual(5);
+    expect(firstWeek(sixDay)).toBeLessThanOrEqual(7);
+    expect(sixDay.weeks[0].targetMinutes).toBeGreaterThan(250);
+    const nothing = generatePlan(tenK, all, base({ weeklyMinutes: 0, runsPerWeek: 0, consistency: 0, longestRunMinutes: 0, recentWeeks: [0, 0, 0, 0], recentRunCounts: [0, 0, 0, 0], habitualRunMinutes: null }));
+    expect(firstWeek(nothing)).toBe(2);
+    expect(nothing.weeks[0].targetMinutes).toBeLessThanOrEqual(60);
   });
 
   it("keeps the original phases when the rest of the plan is recalculated", () => {

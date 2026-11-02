@@ -20,7 +20,7 @@ export async function defaultsFor(userId: string, today: string, b: Baseline) {
     longest[dow] = Math.max(longest[dow], a.moving_s ?? 0);
   }
   const longRunDay = longest.some((x) => x > 0) ? longest.indexOf(Math.max(...longest)) : 6;
-  return { runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay, today, recentRuns: b.maxRecentRuns ?? Math.ceil(b.runsPerWeek) };
+  return { runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay, today, recentRuns: b.runsPerWeek, runMinutes: b.habitualRunMinutes ?? null };
 }
 
 export function BaselineCard({ b }: { b: Baseline }) {

@@ -24,8 +24,10 @@ export interface PlanFormDefaults {
   runDays: number[];
   longRunDay: number;
   today: string;
-  /** most runs in a week over the last 4 weeks */
+  /** average runs per week over the last 4 weeks */
   recentRuns: number;
+  /** your usual run length (median, last 8 weeks), if any */
+  runMinutes: number | null;
 }
 
 export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; replacing?: boolean }) {
@@ -123,8 +125,8 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
           </Field>
         </div>
         <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-          How many of these days you run comes from your training load, not a fixed number. You have done up to {defaults.recentRuns} runs in a week lately, so the plan starts there
-          (plus at most one) and adds runs only as your weekly time grows. Each week the plan is recalculated from what you actually ran.
+          How often you run is measured from your history, not set here. You have averaged {defaults.recentRuns} runs a week lately{defaults.runMinutes ? `, usually about ${defaults.runMinutes} min each` : ""}, so the plan starts from that and only adds time and runs as fast as is considered
+          safe (about 10 % a week, and never more than 1.3× your last four weeks). Each week it is recalculated from what you actually ran, so it grows if you do more.
         </p>
       </section>
 

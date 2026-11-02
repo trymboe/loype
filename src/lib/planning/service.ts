@@ -247,7 +247,8 @@ export async function refreshFutureWeeks(db: SupabaseClient, userId: string, pla
     consistency: fresh.consistency,
     longestRunMinutes: fresh.longestRunMinutes,
     recentWeeks: fresh.recentWeeks,
-    maxRecentRuns: fresh.maxRecentRuns,
+    recentRunCounts: fresh.recentRunCounts,
+    habitualRunMinutes: fresh.habitualRunMinutes,
   };
   const goal = goalFromRow(plan.goal);
   const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase) };

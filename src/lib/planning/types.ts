@@ -67,8 +67,10 @@ export interface Baseline {
   longestRunMinutes: number;
   /** running minutes in each of the last 4 complete calendar weeks, oldest first */
   recentWeeks?: number[];
-  /** most runs (≥ 10 min) in any of those weeks */
-  maxRecentRuns?: number;
+  /** runs (≥ 10 min) in each of those weeks, oldest first */
+  recentRunCounts?: number[];
+  /** median length of your runs over the last 8 weeks, minutes */
+  habitualRunMinutes?: number | null;
   /** race-time predictions by distance (m → s) at the current estimate */
   predictions: { distanceM: number; timeS: number }[];
 }
