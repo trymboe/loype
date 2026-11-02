@@ -323,14 +323,18 @@ const fieldsToRow = (f: Change["after"]) => ({
 const same = (row: any, f: Change["after"]) => row.type === f.type && row.title === f.title && JSON.stringify(row.steps) === JSON.stringify(f.steps);
 
 /** Accept: apply each change whose workout hasn't been edited since; reject: just record it. */
-export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean) {
+export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean, only?: string[]) {
   const p = await single(db.from("adaptation_proposals").select("*").eq("id", id).eq("user_id", userId));
   if (p.status !== "pending") return;
+  const all = p.changes as Change[];
+  const chosen = only ? all.filter((c) => only.includes(c.workoutId)) : all;
+  if (accept && chosen.length === 0) accept = false;
   if (!accept) {
     await check(db.from("adaptation_proposals").update({ status: "rejected", decided_at: new Date().toISOString() }).eq("id", id));
     return;
   }
-  const changes = p.changes as Change[];
+  const changes = chosen;
+  const modified = changes.length < all.length;
   const { data: rows } = await db.from("planned_workouts").select("*").in("id", changes.map((c) => c.workoutId));
   let applied = 0;
   for (const c of changes) {
@@ -350,8 +354,14 @@ export async function decideProposal(db: SupabaseClient, userId: string, id: str
         .eq("id", p.plan_id),
     );
   }
-  const version = await snapshot(db, userId, p.plan_id, `Accepted: ${p.title} (${applied} workout${applied === 1 ? "" : "s"} changed)`, "adaptation");
-  await check(db.from("adaptation_proposals").update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch }).eq("id", id));
+  const version = await snapshot(db, userId, p.plan_id, `Accepted${modified ? " with changes" : ""}: ${p.title} (${applied} workout${applied === 1 ? "" : "s"} changed)`, "adaptation");
+  // a modified acceptance keeps only the chosen changes, so undo reverts exactly those
+  await check(
+    db
+      .from("adaptation_proposals")
+      .update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch, ...(modified ? { changes, title: `${p.title} (${changes.length} of ${all.length} workouts)` } : {}) })
+      .eq("id", id),
+  );
 }
 
 export async function undoProposal(db: SupabaseClient, userId: string, id: string) {

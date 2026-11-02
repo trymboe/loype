@@ -98,7 +98,10 @@ async function userOrThrow() {
 export async function decideProposalAction(form: FormData) {
   const user = await userOrThrow();
   const id = z.string().uuid().parse(form.get("id"));
-  await decideProposal(createAdminClient(), user.id, id, form.get("decision") === "accept");
+  // "modify": accept only the workouts left ticked
+  const decision = form.get("decision");
+  const only = decision === "modify" ? form.getAll("only").map(String).filter((x) => z.string().uuid().safeParse(x).success) : undefined;
+  await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only);
   revalidatePath("/plan", "layout");
   revalidatePath("/");
 }

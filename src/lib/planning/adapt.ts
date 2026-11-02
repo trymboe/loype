@@ -243,3 +243,31 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
   }
   return out;
 }
+
+/** "Explain further": what each rule looks at, why, the evidence behind it, and what happens if you keep your plan. */
+export const RULE_DETAIL: Record<Rule, { looksAt: string; why: string; evidence: string; ifKept: string }> = {
+  A: {
+    looksAt: "Your fitness estimate (VDOT) compared with the one your paces were set from, or two to three recent quality sessions run clearly faster than target without feeling very hard.",
+    why: "Training paces only do their job when they match your current fitness. Too slow and the session under-loads the system it targets; too fast and threshold work turns into VO2max work and needs more recovery.",
+    evidence: "Paces follow Daniels' VDOT tables. A change is only proposed when the estimate moves by at least 1 VDOT with medium or high confidence, which is about the size of a real fitness change rather than day-to-day noise.",
+    ifKept: "Your sessions keep their current paces. The plan's structure is the same either way, and the suggestion is not repeated for the same estimate.",
+  },
+  B: {
+    looksAt: "Two or more missed sessions in the last 10 days, and how much you actually ran in the last 7 compared with what is planned for the next 7.",
+    why: "After missed days your recent load is lower than the plan assumed. Going straight back to the planned week is a sudden jump relative to what your body has just done.",
+    evidence: "Large jumps in load and single runs well above your recent longest are linked to more running injuries (Nielsen et al. 2014; Frandsen et al. 2025). Missed sessions are not made up, because stacking them creates exactly that kind of spike.",
+    ifKept: "The week stays as planned. That is reasonable if the missed days were short and you feel fresh, but watch for niggles in the first runs back.",
+  },
+  C: {
+    looksAt: "An easy run you rated 8/10 or harder in the last 3 days, or legs logged as heavy or sore at least twice in the last week.",
+    why: "When easy running feels hard, you are usually carrying fatigue. A hard session on top of that tends to be run below target and adds stress without much benefit.",
+    evidence: "Perceived exertion is a well-validated marker of internal load (session-RPE, Foster et al. 2001), and a rising RPE at the same easy pace is a common early sign of incomplete recovery.",
+    ifKept: "The hard session stays. If you do it, start conservatively and stop the reps early if the target pace feels much harder than usual.",
+  },
+  D: {
+    looksAt: "Twelve or more days since your last recorded run.",
+    why: "After about two weeks off, aerobic fitness has dipped slightly, and tendons and bones adapt more slowly than heart and lungs, so they are the first to complain when you restart at full load.",
+    evidence: "Detraining studies show measurable VO2max loss within 2–4 weeks (Mujika & Padilla 2000). A shorter week without intensity lets you restart without a load spike.",
+    ifKept: "The plan carries on as if you hadn't stopped. That is fine after a short planned break, but more risky after illness or injury.",
+  },
+};
