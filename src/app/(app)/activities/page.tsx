@@ -4,6 +4,7 @@ import { ButtonLink, EmptyState, PageHeader } from "@/components/ui";
 import { listActivities } from "@/lib/db/queries";
 import { formatDay, weekStart } from "@/lib/dates";
 import { formatKm } from "@/lib/units";
+import { userTimezone } from "@/lib/user-tz";
 
 export const metadata = { title: "Activities" };
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ const PAGE = 40;
 
 export default async function ActivitiesPage({ searchParams }: { searchParams: Promise<{ before?: string }> }) {
   const { before } = await searchParams;
-  const acts = await listActivities(PAGE, before);
+  const [acts, tz] = await Promise.all([listActivities(PAGE, before), userTimezone()]);
   if (acts.length === 0 && !before) {
     return (
       <>
@@ -42,7 +43,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
             </div>
             <div className="card divide-y divide-border px-2">
               {list.map((a) => (
-                <ActivityRow key={a.id} a={a} />
+                <ActivityRow key={a.id} a={a} tz={tz} />
               ))}
             </div>
           </section>

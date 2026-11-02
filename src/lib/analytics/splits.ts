@@ -2,7 +2,7 @@ import type { ActivityStreams } from "../fit/types";
 import type { MotionSummary } from "./motion";
 
 /**
- * splits@1 — fixed-distance splits (default 1 km) computed from the
+ * splits@2 — fixed-distance splits (default 1 km) computed from the
  * cumulative distance stream.
  *
  * Each sample interval is apportioned to splits by distance, so a boundary
@@ -96,7 +96,10 @@ export function computeSplits(
 
   const out: Split[] = [];
   acc.forEach((a, index) => {
-    const partial = a.dist < splitM - 1;
+    // Only the final split can be partial. The first one can be a few metres
+    // short because the watch's first sample is already past 0 m; that must
+    // not turn "km 1" into a "0.99 km partial" split.
+    const partial = index === count - 1 && a.dist < splitM - 1;
     if (partial && a.dist < minPartialM) return;
     let gain: number | null = null;
     let loss: number | null = null;

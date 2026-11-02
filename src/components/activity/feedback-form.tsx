@@ -9,10 +9,10 @@ const RPE_LABELS: Record<number, string> = {
   6: "Moderately hard", 7: "Hard", 8: "Very hard", 9: "Extremely hard", 10: "Max effort",
 };
 
-export function FeedbackForm({ activityId, initial }: { activityId: string; initial?: { rpe: number | null; legs: string | null; notes: string | null } | null }) {
+export function FeedbackForm({ activityId, initial }: { activityId: string; initial?: { rpe: number | null; legs: string | null; notes: string | null; discomfort?: string | null } | null }) {
   const [rpe, setRpe] = useState<number | null>(initial?.rpe ?? null);
   const [legs, setLegs] = useState<string | null>(initial?.legs ?? null);
-  const [more, setMore] = useState(Boolean(initial?.notes));
+  const [more, setMore] = useState(Boolean(initial?.notes || initial?.discomfort));
   const [saved, setSaved] = useState(Boolean(initial?.rpe));
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +79,8 @@ export function FeedbackForm({ activityId, initial }: { activityId: string; init
       </div>
       {more && (
         <div className="mt-3 space-y-2">
-          <input name="discomfort" placeholder="Any unusual discomfort?" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
-          <textarea name="notes" defaultValue={initial?.notes ?? ""} rows={2} placeholder="Notes" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
+          <input name="discomfort" defaultValue={initial?.discomfort ?? ""} onChange={() => setSaved(false)} maxLength={500} placeholder="Any unusual discomfort?" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
+          <textarea name="notes" defaultValue={initial?.notes ?? ""} onChange={() => setSaved(false)} maxLength={2000} rows={2} placeholder="Notes" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
         </div>
       )}
       {error && <p className="mt-2 text-xs text-hr">{error}</p>}

@@ -104,7 +104,7 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
                 {hasAlt && <span className="text-muted">{hover.alt != null ? `${Math.round(hover.alt)} m` : "–"}</span>}
               </>
             ) : (
-              <span className="text-muted">Touch or hover the charts to inspect</span>
+              <span className="text-muted">Touch or hover to inspect</span>
             )}
           </div>
           <div className="flex rounded-lg bg-surface-2 p-0.5 text-xs">
@@ -188,6 +188,14 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
                 <tr
                   key={l.index}
                   onClick={() => setLap(lap === l.index ? null : l.index)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setLap(lap === l.index ? null : l.index);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-selected={lap === l.index}
                   className={clsx("cursor-pointer border-t border-border transition-colors", lap === l.index ? "bg-surface-2" : "hover:bg-surface-2/60")}
                 >
                   <td className="px-4 py-2.5 text-muted">

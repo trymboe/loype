@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Info } from "lucide-react";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
+import { AnalysisCard } from "@/components/activity/analysis-card";
 import { FeedbackForm } from "@/components/activity/feedback-form";
 import { Badge, Stat } from "@/components/ui";
 import { buildChartSeries } from "@/lib/analytics/series";
-import { getActivityDetail } from "@/lib/db/queries";
+import { getActivityDetail, getActivityFeatures, getActivityScore } from "@/lib/db/queries";
 import { formatDay, localTime } from "@/lib/dates";
 import { formatDuration, formatKm, formatPace, formatPaceFromSpeed } from "@/lib/units";
+import { userTimezone } from "@/lib/user-tz";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function ActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const detail = await getActivityDetail(id);
+  const [detail, tz, score, features] = await Promise.all([getActivityDetail(id), userTimezone(), getActivityScore(id), getActivityFeatures(id)]);
   if (!detail) notFound();
   const { activity: a, streams, laps, splits, feedback } = detail;
 
@@ -35,7 +37,9 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
   }));
   const flags: { code: string; severity: string; message: string }[] = a.quality?.flags ?? [];
   const prov: Record<string, string> = a.provenance ?? {};
-  const fastestSplit = Math.min(...splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km));
+  const fullPaces: number[] = splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km);
+  // runs shorter than 1 km have no full split: compare against the partial one instead of Infinity
+  const fastestSplit = fullPaces.length ? Math.min(...fullPaces) : (splits[0]?.pace_s_per_km ?? null);
 
   return (
     <>
@@ -44,7 +48,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       </Link>
       <header className="mb-5">
         <p className="label">
-          {formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {localTime(a.start_time, a.utc_offset_s)}
+          {formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {localTime(a.start_time, a.utc_offset_s, tz)}
         </p>
         <h1 className="font-display text-4xl font-bold tracking-tight">{a.name ?? "Run"}</h1>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -61,7 +65,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
         <Stat label="Avg HR" value={a.avg_hr ? Math.round(a.avg_hr) : "–"} unit="bpm" hint={a.max_hr ? `max ${Math.round(a.max_hr)}` : undefined} />
         <Stat label="Cadence" value={a.avg_cadence ? Math.round(a.avg_cadence) : "–"} unit="spm" />
         <Stat label="Elevation" value={a.elevation_gain_m != null ? Math.round(a.elevation_gain_m) : "–"} unit="m gain" />
-        <Stat label="Device" value={<span className="text-base">{a.device_product ?? a.device_manufacturer ?? "–"}</span>} />
+        <Stat label="Device" value={<span className="text-base capitalize">{deviceLabel(a.device_manufacturer, a.device_product)}</span>} />
         <Stat label="Data quality" value={a.quality_score != null ? `${Math.round(a.quality_score * 100)}` : "–"} unit="/ 100" />
       </section>
 
@@ -75,6 +79,8 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
           ))}
         </section>
       )}
+
+      {a.sport === "running" && <AnalysisCard activityId={a.id} score={score} features={features} override={a.classification_override ?? null} />}
 
       {points.length > 0 ? (
         <ActivityExplorer points={points} laps={lapViews} />
@@ -136,4 +142,10 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       </details>
     </>
   );
+}
+
+/** "vivoactive5" stays, a bare product number ("1") falls back to the manufacturer. */
+function deviceLabel(manufacturer: string | null, product: string | null): string {
+  if (product && !/^\d+$/.test(product)) return product.replace(/_/g, " ");
+  return manufacturer ?? product ?? "–";
 }

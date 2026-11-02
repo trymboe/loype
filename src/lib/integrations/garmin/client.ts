@@ -53,6 +53,12 @@ export interface GarminClientOptions {
   maxRetries?: number;
   /** Minimum spacing between requests, to stay well under undocumented rate limits. */
   minIntervalMs?: number;
+  /**
+   * Epoch ms. Backoff waits that would run past it are not taken: the request
+   * fails as retryable instead, so a serverless invocation finishes before its
+   * hard time limit and the item is retried by a later tick.
+   */
+  deadline?: number;
 }
 
 const TOKEN_MIN_REMAINING_MS = 60 * 60 * 1000;
@@ -167,8 +173,15 @@ export class GarminPersonalApiClient {
         throw new GarminError(`Network error contacting Garmin: ${String((err as Error)?.message ?? err)}`, undefined, true);
       }
       const retryAfter = Number(res?.headers.get("retry-after"));
-      const backoff = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt + Math.random() * 250;
-      await this.sleep(Math.min(backoff, 60_000));
+      const backoff = Math.min(
+        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt + Math.random() * 250,
+        60_000,
+      );
+      if (this.opts.deadline != null && Date.now() + backoff > this.opts.deadline) {
+        if (res) return res;
+        throw new GarminError(`Network error contacting Garmin: ${String((err as Error)?.message ?? err)}`, undefined, true);
+      }
+      await this.sleep(backoff);
       attempt++;
     }
   }

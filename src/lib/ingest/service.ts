@@ -1,11 +1,13 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { todayIn } from "../dates";
+import { recomputeFitness, type RecomputeResult } from "../fitness/service";
 import { decryptSecret, encryptSecret, fingerprint } from "../crypto/secretbox";
 import { env } from "../env";
 import { GarminAuthError, GarminPersonalApiClient, type TokenStore } from "../integrations/garmin/client";
 import { isoDate, runSyncTick, startHistoricalImport, type TickResult } from "./engine";
 import { SupabaseIngestRepo } from "./supabase-repo";
-import { syncWellness } from "./wellness";
+import { syncWellness, type WellnessResult } from "./wellness";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -74,14 +76,14 @@ function tokenStore(db: SupabaseClient, userId: string): TokenStore {
   };
 }
 
-export async function buildGarminClient(db: SupabaseClient, userId: string): Promise<GarminPersonalApiClient | null> {
+export async function buildGarminClient(db: SupabaseClient, userId: string, opts: { deadline?: number } = {}): Promise<GarminPersonalApiClient | null> {
   const row = await getGarminIntegration(db, userId);
   let apiKey: string | null = null;
   if (row?.api_key_ciphertext) apiKey = decryptSecret(row.api_key_ciphertext);
   apiKey ??= env.garminApiKey();
   if (!apiKey) return null;
   if (!row) await ensureIntegrationRow(db, userId);
-  return new GarminPersonalApiClient({ apiKey, tokenStore: tokenStore(db, userId), baseUrl: env.garminBaseUrl() });
+  return new GarminPersonalApiClient({ apiKey, tokenStore: tokenStore(db, userId), baseUrl: env.garminBaseUrl(), deadline: opts.deadline });
 }
 
 async function setIntegrationState(db: SupabaseClient, userId: string, patch: Record<string, unknown>) {
@@ -90,7 +92,8 @@ async function setIntegrationState(db: SupabaseClient, userId: string, patch: Re
 
 export interface UserTickOutcome extends Partial<TickResult> {
   configured: boolean;
-  wellness?: { stored: number; errors: { source: string; message: string }[] };
+  wellness?: WellnessResult;
+  fitness?: RecomputeResult | { error: string };
   error?: string;
 }
 
@@ -101,7 +104,8 @@ export async function syncTickForUser(
   opts: { budgetMs: number; createIncremental: boolean; historicalFrom?: string },
 ): Promise<UserTickOutcome> {
   const started = Date.now();
-  const garmin = await buildGarminClient(db, userId);
+  const deadline = started + opts.budgetMs * 0.8;
+  const garmin = await buildGarminClient(db, userId, { deadline });
   if (!garmin) return { configured: false };
   const { data: profile } = await db.from("athlete_profile").select("timezone").eq("user_id", userId).maybeSingle();
   const repo = new SupabaseIngestRepo(db, userId, profile?.timezone ?? "Europe/Oslo");
@@ -114,7 +118,7 @@ export async function syncTickForUser(
 
   let result: TickResult;
   try {
-    result = await runSyncTick({ repo, garmin, deadline: started + opts.budgetMs * 0.8 }, { createIncremental: opts.createIncremental });
+    result = await runSyncTick({ repo, garmin, deadline }, { createIncremental: opts.createIncremental });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await setIntegrationState(db, userId, { status: "error", last_error: msg, last_error_at: new Date().toISOString() });
@@ -137,14 +141,29 @@ export async function syncTickForUser(
     const from: string | null = settings.wellnessBackfillFrom ?? (Date.now() - last > WELLNESS_INTERVAL_MS ? isoDate(new Date(Date.now() - 7 * 86400_000)) : null);
     if (from) {
       try {
-        wellness = await syncWellness(garmin, repo, from, today);
+        wellness = await syncWellness(garmin, repo, from, today, deadline);
         await setIntegrationState(db, userId, {
-          settings: { ...settings, wellnessBackfillFrom: null, lastWellnessSyncAt: new Date().toISOString(), lastWellnessErrors: wellness.errors },
+          settings: {
+            ...settings,
+            // a partial backfill continues from where it stopped on the next tick
+            wellnessBackfillFrom: wellness.resumeFrom,
+            lastWellnessSyncAt: new Date().toISOString(),
+            lastWellnessErrors: wellness.errors,
+          },
         });
       } catch (e) {
         if (!(e instanceof GarminAuthError)) throw e;
       }
     }
   }
-  return { configured: true, ...result, wellness };
+  // Fitness model: cheap no-op when nothing changed, so run it whenever the queue is drained.
+  let fitness: UserTickOutcome["fitness"];
+  if (result.done && Date.now() < deadline) {
+    try {
+      fitness = await recomputeFitness(db, userId, todayIn(profile?.timezone ?? "Europe/Oslo"), deadline);
+    } catch (e) {
+      fitness = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { configured: true, ...result, wellness, fitness };
 }

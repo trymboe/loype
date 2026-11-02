@@ -55,7 +55,7 @@ export function assessQuality(a: NormalizedActivity, motion: MotionSummary): Qua
   const hrCoverage = n ? hrCount / n : 0;
 
   const indoor =
-    a.subSport === "treadmill" || a.subSport === "indoor_running" || a.subSport === "virtual_activity";
+    a.subSport === "treadmill" || a.subSport === "indoor_running" || a.subSport === "indoorRunning" || a.subSport === "virtual_activity";
   let paceReliable = true;
   let hrReliable = true;
 

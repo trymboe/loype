@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/db/server";
 import { env } from "@/lib/env";
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic";
  * (daily backstop) with `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(request: NextRequest) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret()}`) {
+  if (!process.env.CRON_SECRET) return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
+  if (!sameSecret(request.headers.get("authorization") ?? "", `Bearer ${env.cronSecret()}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const db = createAdminClient();
@@ -30,4 +32,10 @@ export async function GET(request: NextRequest) {
     });
   }
   return NextResponse.json({ ok: true, results });
+}
+
+/** Constant-time comparison (hashing first makes the lengths equal). */
+function sameSecret(a: string, b: string): boolean {
+  const h = (s: string) => createHash("sha256").update(s).digest();
+  return timingSafeEqual(h(a), h(b));
 }

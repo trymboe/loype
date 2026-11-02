@@ -12,13 +12,18 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ FIT parsing + moving time, splits, data-quality flags (unit tests on generated FIT files)
 - ✅ Wellness sync (resting HR, HRV, sleep, stress, Body Battery) — lenient field extraction, raw stored
 - ✅ Today (week strip, latest run, 8-week volume), Activities list, Activity detail (synced pace/HR/cadence/elevation charts, map with cursor + lap highlight, splits, laps, quality notes, provenance, RPE check-in), Progress (weekly volume + consistency), Integrations (connect, sync now, import with progress), data export
-- ⛔ Verify Personal API field names, data host and rate limits against a real key (needs Trym's key)
+- ✅ Verified against a real key: token endpoint needs `Accept: */*`; data host and Bearer header work; 433 activities imported
 - ⏳ pg_cron 30-min schedule (needs the deployed URL + CRON_SECRET)
 - ⏳ Manual FIT upload path (same pipeline, provider `upload`)
 - ⏳ Data deletion UI (export exists)
 
 ## Phase 2 — Fitness intelligence
-- ⏳ Activity classification, best efforts, threshold pace/HR, zones, race predictions with uncertainty, VO2max (withheld when unsupported), load trends, aerobic efficiency, fitness snapshots
+- ✅ Per-run features (`features@1`) and scores (`fitness@1`): TRIMP load, intensity (%HRR), efficiency factor, HR decoupling, HR-zone time, best efforts, classification with manual override
+- ✅ Max/resting HR detection with manual override (More → Athlete profile)
+- ✅ VO2max-equivalent (VDOT) with range + confidence, withheld when evidence is thin; race predictions with endurance correction; threshold pace/HR; pace and HR zones
+- ✅ Fitness/fatigue/form (CTL/ATL/TSB) incl. cross-training from Garmin summaries; aerobic-efficiency trend
+- ✅ Append-only snapshots (contemporaneous + weekly retrospective), recomputed after each sync
+- ⏳ Validate estimates against a race or time trial result
 
 ## Phase 3 — Planning · Phase 4 — Intervals.icu export · Phase 5 — Coach, routes, polish
 - ⏳ See `docs/ARCHITECTURE.md` §4

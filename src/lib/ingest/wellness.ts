@@ -1,4 +1,4 @@
-import type { GarminPersonalApiClient } from "../integrations/garmin/client";
+import { GarminAuthError, type GarminPersonalApiClient } from "../integrations/garmin/client";
 import type { IngestRepo, WellnessObservation } from "./types";
 
 /**
@@ -12,7 +12,7 @@ import type { IngestRepo, WellnessObservation } from "./types";
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Extractor = { metric: string; unit: string; paths: string[] };
+type Extractor = { metric: string; unit: string; paths: string[]; compute?: (day: any) => number | null };
 
 function get(obj: any, path: string): unknown {
   return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -34,13 +34,22 @@ function asList(payload: any, keys: string[]): any[] {
   return payload && typeof payload === "object" ? [payload] : [];
 }
 
+function batteryExtreme(day: any, pick: (...v: number[]) => number): number | null {
+  const arr = day?.bodyBatteryValuesArray;
+  if (Array.isArray(arr)) {
+    const v = arr.map((e: any) => (Array.isArray(e) ? e[1] : null)).filter((x: unknown): x is number => typeof x === "number");
+    if (v.length) return pick(...v);
+  }
+  return firstNumber(day, pick === Math.max ? ["bodyBatteryHighestValue", "highest"] : ["bodyBatteryLowestValue", "lowest"]);
+}
+
 export function extractDaily(payload: unknown, listKeys: string[], extractors: Extractor[]): WellnessObservation[] {
   const out: WellnessObservation[] = [];
   for (const day of asList(payload, listKeys)) {
     const date = dateOf(day);
     if (!date) continue;
     for (const ex of extractors) {
-      const value = firstNumber(day, ex.paths);
+      const value = ex.compute ? ex.compute(day) : firstNumber(day, ex.paths);
       out.push({ calendarDate: date, metric: ex.metric, value, unit: ex.unit, raw: day });
     }
   }
@@ -69,6 +78,7 @@ export const WELLNESS_SOURCES: {
     extractors: [
       { metric: "sleep_seconds", unit: "s", paths: ["sleepTimeSeconds", "dailySleepDTO.sleepTimeSeconds", "durationInSeconds"] },
       { metric: "sleep_score", unit: "score", paths: ["sleepScores.overall.value", "dailySleepDTO.sleepScores.overall.value", "overallSleepScore.value", "sleepScore"] },
+      { metric: "sleep_avg_hr", unit: "bpm", paths: ["avgHeartRate", "dailySleepDTO.avgHeartRate"] },
     ],
   },
   {
@@ -88,8 +98,9 @@ export const WELLNESS_SOURCES: {
     fetch: (c, s, e) => c.bodyBatteryDaily(s, e),
     listKeys: ["values", "bodyBatteryReports"],
     extractors: [
-      { metric: "body_battery_high", unit: "score", paths: ["charged", "bodyBatteryHighestValue", "highest"] },
-      { metric: "body_battery_low", unit: "score", paths: ["drained", "bodyBatteryLowestValue", "lowest"] },
+      // "charged"/"drained" are amounts gained/used, not levels: take the extremes of the values array
+      { metric: "body_battery_high", unit: "score", paths: ["bodyBatteryHighestValue", "highest"], compute: (d) => batteryExtreme(d, Math.max) },
+      { metric: "body_battery_low", unit: "score", paths: ["bodyBatteryLowestValue", "lowest"], compute: (d) => batteryExtreme(d, Math.min) },
     ],
   },
 ];
@@ -97,11 +108,24 @@ export const WELLNESS_SOURCES: {
 export interface WellnessResult {
   stored: number;
   errors: { source: string; message: string }[];
+  /** First date not yet synced when the deadline was reached, else null. */
+  resumeFrom: string | null;
 }
 
-/** Sync wellness for an inclusive date range (YYYY-MM-DD), in ≤28-day chunks. */
-export async function syncWellness(client: GarminPersonalApiClient, repo: IngestRepo, start: string, end: string): Promise<WellnessResult> {
-  const result: WellnessResult = { stored: 0, errors: [] };
+/**
+ * Sync wellness for an inclusive date range (YYYY-MM-DD), in ≤28-day chunks,
+ * oldest first. Stops starting new chunks after `deadline` (epoch ms) and
+ * reports where to resume, so a long backfill spans several invocations
+ * instead of being killed by the function time limit and restarting forever.
+ */
+export async function syncWellness(
+  client: GarminPersonalApiClient,
+  repo: IngestRepo,
+  start: string,
+  end: string,
+  deadline = Infinity,
+): Promise<WellnessResult> {
+  const result: WellnessResult = { stored: 0, errors: [], resumeFrom: null };
   const chunks: [string, string][] = [];
   let cur = new Date(`${start}T00:00:00Z`);
   const last = new Date(`${end}T00:00:00Z`);
@@ -110,15 +134,22 @@ export async function syncWellness(client: GarminPersonalApiClient, repo: Ingest
     chunks.push([cur.toISOString().slice(0, 10), chunkEnd.toISOString().slice(0, 10)]);
     cur = new Date(chunkEnd.getTime() + 86400_000);
   }
-  for (const src of WELLNESS_SOURCES) {
-    for (const [s, e] of chunks) {
+  const failed = new Set<string>();
+  for (const [s, e] of chunks) {
+    if (Date.now() >= deadline) {
+      result.resumeFrom = s;
+      break;
+    }
+    for (const src of WELLNESS_SOURCES) {
+      if (failed.has(src.name)) continue; // skip the rest of a failing source; others continue
       try {
         const payload = await src.fetch(client, s, e);
         const obs = extractDaily(payload, src.listKeys, src.extractors);
         result.stored += await repo.saveWellness(obs);
       } catch (err) {
+        if (err instanceof GarminAuthError) throw err;
+        failed.add(src.name);
         result.errors.push({ source: src.name, message: err instanceof Error ? err.message : String(err) });
-        break; // skip the rest of this source; others continue
       }
     }
   }

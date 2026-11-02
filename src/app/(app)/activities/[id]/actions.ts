@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createUserClient, getSessionUser } from "@/lib/db/server";
+import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
+import { todayIn } from "@/lib/dates";
+import { recomputeFitness } from "@/lib/fitness/service";
+import { userTimezone } from "@/lib/user-tz";
 
 const Feedback = z.object({
   activityId: z.string().uuid(),
@@ -15,25 +18,43 @@ const Feedback = z.object({
 export async function saveFeedback(form: FormData) {
   const user = await getSessionUser();
   if (!user) throw new Error("Not signed in");
+  // Fields that were not rendered (note inputs collapsed) are absent from the form
+  // and must keep their stored value rather than being wiped.
+  const opt = (k: string) => (form.has(k) ? String(form.get(k) ?? "").trim() : undefined);
   const parsed = Feedback.parse({
     activityId: form.get("activityId"),
     rpe: form.get("rpe"),
     legs: form.get("legs") || undefined,
-    discomfort: form.get("discomfort") || undefined,
-    notes: form.get("notes") || undefined,
+    discomfort: opt("discomfort"),
+    notes: opt("notes"),
   });
+  const row: Record<string, unknown> = {
+    activity_id: parsed.activityId,
+    user_id: user.id,
+    rpe: parsed.rpe,
+    legs: parsed.legs ?? null,
+  };
+  if (parsed.discomfort !== undefined) row.discomfort = parsed.discomfort || null;
+  if (parsed.notes !== undefined) row.notes = parsed.notes || null;
   const db = await createUserClient();
-  const { error } = await db.from("workout_feedback").upsert(
-    {
-      activity_id: parsed.activityId,
-      user_id: user.id,
-      rpe: parsed.rpe,
-      legs: parsed.legs ?? null,
-      discomfort: parsed.discomfort ?? null,
-      notes: parsed.notes ?? null,
-    },
-    { onConflict: "activity_id" },
-  );
+  const { error } = await db.from("workout_feedback").upsert(row, { onConflict: "activity_id" });
   if (error) throw new Error("Could not save your check-in");
   revalidatePath(`/activities/${parsed.activityId}`);
+}
+
+const CLASSES = ["recovery", "easy", "long", "steady", "threshold", "intervals", "race"] as const;
+
+/** Manual workout-type correction; "" clears it. The fitness model keeps it on every recompute. */
+export async function setClassification(form: FormData) {
+  const user = await getSessionUser();
+  if (!user) throw new Error("Not signed in");
+  const id = z.string().uuid().parse(form.get("activityId"));
+  const raw = String(form.get("classification") ?? "");
+  const value = raw === "" ? null : z.enum(CLASSES).parse(raw);
+  const db = createAdminClient();
+  const { error } = await db.from("activities").update({ classification_override: value }).eq("id", id).eq("user_id", user.id);
+  if (error) throw new Error("Could not save the workout type");
+  await recomputeFitness(db, user.id, todayIn(await userTimezone()));
+  revalidatePath(`/activities/${id}`);
+  revalidatePath("/progress");
 }

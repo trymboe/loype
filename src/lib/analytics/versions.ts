@@ -6,7 +6,9 @@
 export const VERSIONS = {
   fitParser: "fit-parser@1",
   movingTime: "moving-time@1",
-  splits: "splits@1",
+  splits: "splits@2",
   quality: "quality@1",
   dedupe: "dedupe@1",
+  features: "features@1",
+  fitness: "fitness@1",
 } as const;
