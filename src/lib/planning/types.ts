@@ -42,6 +42,8 @@ export interface PlanConfig {
   phases?: Phase[];
   /** Monday of the week the future weeks were last recalculated from your actual running */
   refreshedWeek?: string;
+  /** race-time projection made when the plan was created */
+  projection?: Projection | null;
   longRunDay: number | null;
   unavailableDays: number[];
   maxWeeklyMinutes: number | null;

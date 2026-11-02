@@ -61,7 +61,7 @@ export default async function PlanPage() {
   const todays = ws.filter((w) => w.date === today && w.type !== "rest");
 
   // projection: as stored at plan start, and re-projected from today's fitness
-  const startProj = (plan.projection ?? null) as Projection | null;
+  const startProj = ((plan.config as { projection?: Projection | null } | null)?.projection ?? null) as Projection | null;
   let liveProj: Projection | null = null;
   if (startProj) {
     const { data: fs } = await db.from("fitness_state").select("output").maybeSingle();
