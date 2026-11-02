@@ -16,6 +16,8 @@ import { fingerprint } from "../../crypto/secretbox";
 export const GARMIN_TOKEN_URL =
   "https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token";
 export const GARMIN_DEFAULT_BASE_URL = "https://personal.connectapi.garmin.com";
+const JSON_ACCEPT = "application/json";
+const ARCHIVE_ACCEPT = "application/zip, application/x-zip-compressed, application/octet-stream";
 
 export class GarminError extends Error {
   constructor(
@@ -123,7 +125,9 @@ export class GarminPersonalApiClient {
     const res = await this.withRetries(() =>
       this.fetch(GARMIN_TOKEN_URL, {
         method: "POST",
-        headers: { Authorization: `ApiKey ${this.opts.apiKey}`, Accept: "application/json" },
+        // Match Garmin's official client exactly: the endpoint answers with a plain-text JWT
+        // and returns HTTP 406 when Accept is narrowed to application/json.
+        headers: { Authorization: `ApiKey ${this.opts.apiKey}`, Accept: "*/*" },
       }),
     );
     const body = await res.text();
@@ -131,7 +135,10 @@ export class GarminPersonalApiClient {
       await this.opts.tokenStore.clear();
       throw new GarminAuthError("Garmin rejected the Personal API key (expired, deleted or invalid)", res.status);
     }
-    if (!res.ok) throw new GarminError(`Token request failed: HTTP ${res.status}`, res.status, res.status >= 500);
+    if (!res.ok) {
+      const detail = body.replace(/\s+/g, " ").trim().slice(0, 160);
+      throw new GarminError(`Token request failed: HTTP ${res.status}${detail ? ` (${detail})` : ""}`, res.status, res.status >= 500);
+    }
     const parsed = parseTokenResponse(body, this.now());
     this.token = { ...parsed, keyFingerprint: this.keyFp };
     await this.opts.tokenStore.save(this.token);
@@ -166,14 +173,18 @@ export class GarminPersonalApiClient {
     }
   }
 
-  private async request(path: string, params: Record<string, string | number | undefined> = {}): Promise<Response> {
+  private async request(
+    path: string,
+    params: Record<string, string | number | undefined> = {},
+    accept = JSON_ACCEPT,
+  ): Promise<Response> {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(params)) if (v !== undefined) url.searchParams.set(k, String(v));
     let reauthed = false;
     for (;;) {
       const token = await this.getAccessToken();
       const res = await this.withRetries(() =>
-        this.fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json, application/zip, */*" } }),
+        this.fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: accept } }),
       );
       if (res.status === 401 && !reauthed) {
         reauthed = true;
@@ -210,7 +221,7 @@ export class GarminPersonalApiClient {
 
   /** Downloads the original recording and returns the FIT bytes (the API wraps it in a ZIP). */
   async downloadOriginalFit(activityId: string): Promise<{ bytes: Uint8Array; filename: string }> {
-    const res = await this.request(`/download-service/files/activity/${encodeURIComponent(activityId)}`);
+    const res = await this.request(`/download-service/files/activity/${encodeURIComponent(activityId)}`, {}, ARCHIVE_ACCEPT);
     const buf = new Uint8Array(await res.arrayBuffer());
     return extractFit(buf, activityId);
   }

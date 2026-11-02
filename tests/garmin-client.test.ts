@@ -29,10 +29,11 @@ class MemTokenStore implements TokenStore {
 }
 
 function fakeFetch(handler: (url: string, init?: RequestInit) => Response) {
-  const log: { url: string; auth: string | null }[] = [];
+  const log: { url: string; auth: string | null; accept: string | null; method: string }[] = [];
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    log.push({ url, auth: new Headers(init?.headers).get("authorization") });
+    const h = new Headers(init?.headers);
+    log.push({ url, auth: h.get("authorization"), accept: h.get("accept"), method: init?.method ?? "GET" });
     return handler(url, init);
   }) as typeof fetch;
   return { f, log };
@@ -61,6 +62,19 @@ describe("Garmin token handling", () => {
     expect(log[0].auth).toBe("ApiKey test-key");
     expect(log[1].auth).toMatch(/^Bearer ey/);
     expect(log[1].url).toContain("/activitylist-service/activities/search/activities?start=0&limit=10");
+  });
+
+  it("sends the same headers as Garmin's official client (narrow Accept on the token call gives HTTP 406)", async () => {
+    const zip = zipSync({ "1.fit": buildFit({ segments: [{ durationS: 30, speedMs: 3, hr: 140 }] }) });
+    const { f, log } = fakeFetch((url) =>
+      url === GARMIN_TOKEN_URL ? new Response(jwt(nowS + 86400)) : url.includes("download-service") ? new Response(zip) : Response.json([]),
+    );
+    const c = new GarminPersonalApiClient(opts(f));
+    await c.listActivities({ start: 0, limit: 1 });
+    await c.downloadOriginalFit("1");
+    expect(log[0]).toMatchObject({ method: "POST", auth: "ApiKey test-key", accept: "*/*" });
+    expect(log[1].accept).toBe("application/json");
+    expect(log[2].accept).toContain("application/zip");
   });
 
   it("renews a token that has less than an hour left", async () => {
