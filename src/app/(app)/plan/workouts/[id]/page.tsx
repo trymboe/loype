@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat, type Tone } from "@/components/ui";
 import { Steps } from "@/components/plan/steps";
 import { WorkoutActions } from "./workout-actions";
+import { WatchCard } from "./watch-card";
 import { createUserClient } from "@/lib/db/server";
 import { formatDay, todayIn } from "@/lib/dates";
 import { WORKOUT_LABEL, type WorkoutType } from "@/lib/planning/types";
@@ -25,6 +26,11 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
   const { data: w } = await db.from("planned_workouts").select("*").eq("id", id).maybeSingle();
   if (!w) notFound();
   const today = todayIn(await userTimezone());
+  const [{ data: sync }, { data: intervals }] = await Promise.all([
+    db.from("external_workout_syncs").select("state, last_error, last_sent_at, target_mode, parse_check").eq("planned_workout_id", id).eq("provider", "intervals_icu").maybeSingle(),
+    db.from("integrations").select("status, settings").eq("provider", "intervals_icu").maybeSingle(),
+  ]);
+  const sendable = w.status === "planned" && w.type !== "rest" && Array.isArray(w.steps) && w.steps.length > 0 && w.date >= today;
   const ex = w.execution;
   const st = STATUS[w.status] ?? STATUS.planned;
   return (
@@ -76,6 +82,16 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
           <CardHeader title="Session" className="mb-4" />
           <Steps steps={w.steps} />
         </Card>
+
+        {w.type !== "rest" && Array.isArray(w.steps) && w.steps.length > 0 && (w.date >= today || sync) && (
+          <WatchCard
+            id={w.id}
+            sync={sync ?? null}
+            connected={Boolean(intervals && intervals.status !== "not_configured")}
+            sendable={sendable}
+            thresholdMissing={intervals?.settings?.run ? !intervals.settings.run.hasThresholdPace : false}
+          />
+        )}
 
         {w.status !== "completed" && <WorkoutActions id={w.id} date={w.date} today={today} locked={w.locked} status={w.status} type={w.type} />}
       </div>
