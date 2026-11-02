@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight, RefreshCw } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SyncBanner } from "@/components/sync-banner";
+import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, EmptyState, Stat } from "@/components/ui";
 import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
 import { addDaysIso, formatDay, localTime, relativeDay, relativeTime, todayIn, weekStart } from "@/lib/dates";
@@ -54,6 +55,7 @@ export default async function TodayPage() {
         </EmptyState>
       ) : (
         <div className="space-y-4">
+          <NextWorkout today={today} />
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card rise block p-5 transition-colors hover:border-muted/50">
               <div className="flex items-start justify-between gap-3">
