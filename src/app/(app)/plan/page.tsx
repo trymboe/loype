@@ -1,6 +1,6 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { Check, ChevronDown, ChevronRight, History, Lock, Minus, Target, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Flag, History, Lock, Minus, Target, X } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";
 import { ProposalCard, type ProposalRow } from "@/components/plan/proposal-card";
 import { PlanForm } from "./plan-form";
@@ -114,7 +114,14 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             {goal.target_time_s && <Stat label="Target" value={fmtTime(goal.target_time_s)} size="md" hint={d ? `${formatPace(goal.target_time_s / (d / 1000))}/km` : undefined} />}
             {plan.race_pace && <Stat label="Training race pace" value={formatPace(plan.race_pace)} unit="/km" size="md" />}
           </div>
-          <details className="mt-5 border-t border-[var(--hairline)] pt-4 text-sm">
+          {d && (
+            <Link href="/plan/race" className="-mx-1 mt-5 flex items-center gap-2 rounded-xl px-1 py-1 text-sm font-medium hover:bg-surface-2/50">
+              <Flag size={15} className="text-accent" />
+              <span className="flex-1">Race page: prediction, pacing plan and course</span>
+              <ChevronRight size={16} className="text-subtle" />
+            </Link>
+          )}
+          <details className="mt-4 border-t border-[var(--hairline)] pt-4 text-sm">
             <summary className="cursor-pointer font-medium text-accent">How this plan was built</summary>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 leading-snug text-muted marker:text-subtle">
               {(plan.summary as string[]).map((s, i) => (
