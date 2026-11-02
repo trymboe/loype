@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { CalendarDays, ChevronRight, Watch } from "lucide-react";
+import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SyncBanner } from "@/components/sync-banner";
-import { ButtonLink, Card, CardHeader, EmptyState, IconTile, PageHeader, Stat } from "@/components/ui";
+import { NextWorkout } from "@/components/plan/next-workout";
+import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
 import { addDaysIso, formatDay, localTime, relativeDay, relativeTime, todayIn, weekStart } from "@/lib/dates";
 import { isRun, weeklyVolume } from "@/lib/analytics/volume";
@@ -58,6 +59,7 @@ export default async function TodayPage() {
         </EmptyState>
       ) : (
         <div className="stagger space-y-3">
+          <NextWorkout today={today} />
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
               <div className="flex items-start justify-between gap-4 p-5 pb-0">
@@ -167,18 +169,6 @@ export default async function TodayPage() {
             </div>
           </Card>
 
-          <Link href="/plan" className="card flex items-center gap-3.5 p-4 hover:bg-surface-2/40">
-            <IconTile color="var(--accent)">
-              <CalendarDays size={18} />
-            </IconTile>
-            <div className="min-w-0 flex-1">
-              <p className="text-[0.9375rem] font-semibold">No training plan yet</p>
-              <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
-                Løype is building your baseline from {runs.length} run{runs.length === 1 ? "" : "s"} in the last 8 weeks.
-              </p>
-            </div>
-            <ChevronRight size={18} className="shrink-0 text-subtle" />
-          </Link>
         </div>
       )}
     </>

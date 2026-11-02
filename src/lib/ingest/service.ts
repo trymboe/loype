@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayIn } from "../dates";
 import { recomputeFitness, type RecomputeResult } from "../fitness/service";
+import { runPlanMaintenance } from "../planning/service";
 import { decryptSecret, encryptSecret, fingerprint } from "../crypto/secretbox";
 import { env } from "../env";
 import { GarminAuthError, GarminPersonalApiClient, type TokenStore } from "../integrations/garmin/client";
@@ -94,6 +95,7 @@ export interface UserTickOutcome extends Partial<TickResult> {
   configured: boolean;
   wellness?: WellnessResult;
   fitness?: RecomputeResult | { error: string };
+  plan?: Awaited<ReturnType<typeof runPlanMaintenance>> | { error: string };
   error?: string;
 }
 
@@ -165,5 +167,14 @@ export async function syncTickForUser(
       fitness = { error: e instanceof Error ? e.message : String(e) };
     }
   }
-  return { configured: true, ...result, wellness, fitness };
+  // Plan upkeep: link runs to planned workouts and propose adaptations (never applies them).
+  let plan: UserTickOutcome["plan"];
+  if (result.done && fitness && !("error" in fitness) && Date.now() < deadline) {
+    try {
+      plan = await runPlanMaintenance(db, userId, todayIn(profile?.timezone ?? "Europe/Oslo"));
+    } catch (e) {
+      plan = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { configured: true, ...result, wellness, fitness, plan };
 }

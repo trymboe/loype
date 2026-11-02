@@ -1,0 +1,182 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import clsx from "clsx";
+import { createPlanAction, type PlanFormState } from "./actions";
+
+const input = "input";
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const GOALS: { kind: string; label: string; hint: string }[] = [
+  { kind: "5k", label: "5 km", hint: "Get faster over 5 km" },
+  { kind: "10k", label: "10 km", hint: "Get faster over 10 km" },
+  { kind: "half", label: "Half marathon", hint: "21.1 km" },
+  { kind: "marathon", label: "Marathon", hint: "42.2 km" },
+  { kind: "race", label: "Other race", hint: "Any distance and date" },
+  { kind: "general", label: "General fitness", hint: "Fitter all round" },
+  { kind: "endurance", label: "Endurance", hint: "Run longer, comfortably" },
+  { kind: "consistency", label: "Consistency", hint: "Run regularly, mostly easy" },
+  { kind: "volume", label: "More volume", hint: "Build weekly km safely" },
+  { kind: "maintain", label: "Maintain", hint: "Keep what you have" },
+];
+
+export interface PlanFormDefaults {
+  runDays: number[];
+  longRunDay: number;
+  today: string;
+}
+
+export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; replacing?: boolean }) {
+  const [state, action, pending] = useActionState<PlanFormState, FormData>(createPlanAction, {});
+  const [kind, setKind] = useState("half");
+  const [runDays, setRunDays] = useState<number[]>(defaults.runDays);
+  const isRace = ["5k", "10k", "half", "marathon", "race"].includes(kind);
+
+  return (
+    <form action={action} className="space-y-7">
+      {replacing && <input type="hidden" name="replacing" value="1" />}
+      <section>
+        <h2 className="section-title mb-3">What are you training for?</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {GOALS.map((g) => (
+            <label
+              key={g.kind}
+              className={clsx(
+                "cursor-pointer rounded-2xl p-3.5 ring-inset transition-all active:scale-[0.98]",
+                kind === g.kind ? "bg-accent/10 ring-2 ring-accent" : "bg-surface-2 ring-1 ring-transparent hover:bg-surface-3",
+              )}
+            >
+              <input type="radio" name="kind" value={g.kind} checked={kind === g.kind} onChange={() => setKind(g.kind)} className="sr-only" />
+              <span className="block text-sm font-semibold">{g.label}</span>
+              <span className="mt-0.5 block text-xs leading-snug text-muted">{g.hint}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      {isRace && (
+        <section className="space-y-3">
+          {kind === "race" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Race name">
+                <input name="name" className={input} placeholder="e.g. Oslo 15K" />
+              </Field>
+              <Field label="Distance">
+                <input name="distance_km" inputMode="decimal" className={input} placeholder="km" />
+              </Field>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Race date" hint={kind === "race" ? undefined : "Optional. Without one, the plan ends with a time trial."}>
+              <input name="race_date" type="date" min={defaults.today} className={input} />
+            </Field>
+            <Field label="Target time" hint="Optional, h:mm:ss or mm:ss">
+              <input name="target_time" className={input} placeholder={kind === "5k" ? "24:00" : kind === "10k" ? "50:00" : kind === "half" ? "1:50:00" : "3:59:00"} />
+            </Field>
+          </div>
+        </section>
+      )}
+      {kind === "volume" && (
+        <Field label="Weekly distance to build to" hint="Optional">
+          <input name="target_weekly_km" inputMode="decimal" className={input} placeholder="km per week" />
+        </Field>
+      )}
+
+      <section className="space-y-3">
+        <h2 className="section-title">When can you run?</h2>
+        <div className="grid grid-cols-7 gap-1.5">
+          {DAYS.map((d, i) => (
+            <label
+              key={d}
+              className={clsx(
+                "cursor-pointer rounded-xl py-2.5 text-center text-xs font-semibold transition-colors",
+                runDays.includes(i) ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-fg",
+              )}
+            >
+              <input
+                type="checkbox"
+                name="run_days"
+                value={i}
+                checked={runDays.includes(i)}
+                onChange={(e) => setRunDays((r) => (e.target.checked ? [...r, i].sort() : r.filter((x) => x !== i)))}
+                className="sr-only"
+              />
+              {d}
+            </label>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Long run day">
+            <select name="long_run_day" defaultValue={defaults.longRunDay} className={input}>
+              {DAYS.map((d, i) => (
+                <option key={d} value={i}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Max hours per week" hint="Optional">
+            <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
+          </Field>
+        </div>
+        <details className="text-sm">
+          <summary className="cursor-pointer font-medium text-accent">Days you can never run (optional)</summary>
+          <p className="mt-2 text-xs text-muted">You will get a warning if you move a workout onto one of these days.</p>
+          <div className="mt-2 grid grid-cols-7 gap-1.5">
+            {DAYS.map((d, i) => (
+              <label key={d} className="flex flex-col items-center gap-1 text-xs">
+                <input type="checkbox" name="unavailable_days" value={i} className="size-5 accent-[var(--accent)]" />
+                {d}
+              </label>
+            ))}
+          </div>
+        </details>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <Field label="Start">
+          <input name="start_date" type="date" min={defaults.today} defaultValue={defaults.today} className={input} />
+        </Field>
+        <Field label="Length" hint="Used when there is no race date">
+          <select name="weeks" defaultValue="12" className={input}>
+            {[4, 6, 8, 10, 12, 16, 20, 24].map((w) => (
+              <option key={w} value={w}>
+                {w} weeks
+              </option>
+            ))}
+          </select>
+        </Field>
+      </section>
+
+      <section className="divide-hairline overflow-hidden rounded-2xl bg-surface-2 text-[0.9375rem]">
+        <Toggle name="intervals" label="Include interval sessions" />
+        <Toggle name="long_runs" label="Include long runs" />
+        <Toggle name="strides" label="Include strides on easy days" />
+      </section>
+
+      {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
+      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
+        {pending ? "Building your plan…" : replacing ? "Build new plan" : "Build my plan"}
+      </button>
+    </form>
+  );
+}
+
+function Toggle({ name, label }: { name: string; label: string }) {
+  return (
+    <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 bg-surface-2 px-4 py-3">
+      {label}
+      <input type="checkbox" name={name} defaultChecked className="switch" />
+    </label>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-semibold">{label}</span>
+      {children}
+      {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
+    </label>
+  );
+}

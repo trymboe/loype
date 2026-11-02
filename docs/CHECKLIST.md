@@ -25,7 +25,16 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ Append-only snapshots (contemporaneous + weekly retrospective), recomputed after each sync
 - ⏳ Validate estimates against a race or time trial result
 
-## Phase 3 — Planning · Phase 4 — Intervals.icu export · Phase 5 — Coach, routes, polish
+## Phase 3 — Planning (`planner@1`, see `docs/PLANNING.md`)
+- ✅ Goal setup (race distances, custom race, general/endurance/consistency/volume/maintain), availability, weekly time cap, session preferences
+- ✅ Deterministic generator: phases, recovery weeks, taper, volume from your last 4 weeks, long-run progression, structured workouts with pace + HR targets and a "why"
+- ✅ Plan page with phase chart, week calendar (planned vs run), workout detail, Today card
+- ✅ Edits: move (with schedule warnings), lock, skip, swap to easy/rest; every change versioned and restorable
+- ✅ Run ↔ workout matching, execution vs targets, missed sessions after a day of grace
+- ✅ Adaptation proposals (fitness change / outperforming, missed sessions, fatigue, return after a break) with accept / keep / undo; goal change regenerates and keeps history
+- ⏳ Validate against a few weeks of real training
+
+## Phase 4 — Intervals.icu export · Phase 5 — Coach, routes, polish
 - ⏳ See `docs/ARCHITECTURE.md` §4
 - ⛔ Phase 4 end-to-end needs an Intervals.icu API key and the vívoactive 5 for validation
 - ⛔ Phase 5 coach needs an LLM API key
