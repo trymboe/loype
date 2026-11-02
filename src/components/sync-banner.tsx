@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronRight } from "lucide-react";
 
 /** Surfaces integration problems wherever the user is, so failures are never silent. */
 export function SyncBanner({ integration }: { integration: { status: string; last_error?: string | null; api_key_expires_at?: string | null } | null }) {
@@ -13,10 +13,11 @@ export function SyncBanner({ integration }: { integration: { status: string; las
   }
   if (!msg) return null;
   return (
-    <Link href="/more/integrations" className="mb-4 flex items-start gap-3 rounded-2xl border border-warn/40 bg-warn/10 p-4 text-sm">
-      <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warn" />
-      <span>
-        {msg} <span className="font-semibold text-warn">Fix →</span>
+    <Link href="/more/integrations" className="rise mb-4 flex items-center gap-3 rounded-2xl bg-warn/10 p-4 text-sm ring-1 ring-warn/25 ring-inset">
+      <AlertTriangle size={18} className="shrink-0 text-warn" />
+      <span className="min-w-0 flex-1 leading-snug">{msg}</span>
+      <span className="inline-flex shrink-0 items-center font-semibold text-warn">
+        Fix <ChevronRight size={16} />
       </span>
     </Link>
   );

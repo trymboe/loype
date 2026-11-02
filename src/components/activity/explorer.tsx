@@ -78,23 +78,23 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
       type="number"
       domain={["dataMin", "dataMax"]}
       tickFormatter={xTick}
-      tick={{ fontSize: 10, fill: "var(--muted)" }}
+      tick={{ fontSize: 10, fill: "var(--subtle)" }}
       tickLine={false}
       axisLine={false}
       minTickGap={32}
     />
   );
-  const grid = <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />;
+  const grid = <CartesianGrid vertical={false} stroke="var(--grid)" />;
   const ref = lapRange ? <ReferenceArea x1={lapRange.x1} x2={lapRange.x2} fill="var(--fg)" fillOpacity={0.07} /> : null;
-  const tip = <Tooltip content={() => null} cursor={{ stroke: "var(--muted)", strokeWidth: 1 }} />;
+  const tip = <Tooltip content={() => null} cursor={{ stroke: "var(--fg-2)", strokeWidth: 1, strokeOpacity: 0.5 }} />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {coords.length > 1 && <RouteMap coords={coords} hover={hover?.lat != null ? [hover.lng!, hover.lat!] : null} highlight={lapRange?.coords ?? null} />}
 
-      <div className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="tabular flex gap-4 text-sm">
+      <div className="card p-4 sm:p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="tabular flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.8125rem] font-medium">
             {hover ? (
               <>
                 <span className="text-muted">{xMode === "distance" ? `${hover.d.toFixed(2)} km` : formatDuration(hover.t)}</span>
@@ -104,12 +104,12 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
                 {hasAlt && <span className="text-muted">{hover.alt != null ? `${Math.round(hover.alt)} m` : "–"}</span>}
               </>
             ) : (
-              <span className="text-muted">Touch or hover to inspect</span>
+              <span className="font-normal text-muted">Touch the charts to inspect</span>
             )}
           </div>
-          <div className="flex rounded-lg bg-surface-2 p-0.5 text-xs">
+          <div className="seg shrink-0">
             {(["distance", "time"] as const).map((m) => (
-              <button key={m} onClick={() => setXMode(m)} className={clsx("rounded-md px-2 py-1 capitalize", xMode === m ? "bg-surface font-semibold" : "text-muted")}>
+              <button key={m} type="button" aria-pressed={xMode === m} onClick={() => setXMode(m)} className="capitalize">
                 {m}
               </button>
             ))}
@@ -121,10 +121,10 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
             <LineChart {...common}>
               {grid}
               {xAxis}
-              <YAxis reversed domain={paceDomain} allowDataOverflow tickFormatter={(v) => formatPace(v)} width={40} tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
+              <YAxis reversed domain={paceDomain} allowDataOverflow tickFormatter={(v) => formatPace(v)} width={40} tick={{ fontSize: 10, fill: "var(--subtle)" }} tickLine={false} axisLine={false} />
               {ref}
               {tip}
-              <Line dataKey="pace" stroke="var(--pace)" strokeWidth={1.6} dot={false} isAnimationActive={false} connectNulls={false} />
+              <Line dataKey="pace" stroke="var(--pace)" strokeWidth={1.75} dot={false} isAnimationActive={false} connectNulls={false} />
             </LineChart>
           </ChartBlock>
         )}
@@ -133,10 +133,10 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
             <LineChart {...common}>
               {grid}
               {xAxis}
-              <YAxis domain={["dataMin - 5", "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
+              <YAxis domain={["dataMin - 5", "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--subtle)" }} tickLine={false} axisLine={false} />
               {ref}
               {tip}
-              <Line dataKey="hr" stroke="var(--hr)" strokeWidth={1.6} dot={false} isAnimationActive={false} />
+              <Line dataKey="hr" stroke="var(--hr)" strokeWidth={1.75} dot={false} isAnimationActive={false} />
             </LineChart>
           </ChartBlock>
         )}
@@ -145,7 +145,7 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
             <LineChart {...common}>
               {grid}
               {xAxis}
-              <YAxis domain={[(d: number) => Math.max(0, Math.floor(d / 10) * 10 - 10), "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
+              <YAxis domain={[(d: number) => Math.max(0, Math.floor(d / 10) * 10 - 10), "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--subtle)" }} tickLine={false} axisLine={false} />
               {ref}
               {tip}
               <Line dataKey="cad" stroke="var(--cadence)" strokeWidth={1.2} dot={false} isAnimationActive={false} />
@@ -157,10 +157,10 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
             <AreaChart {...common}>
               {grid}
               {xAxis}
-              <YAxis domain={["dataMin - 5", "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} tickFormatter={(v) => String(Math.round(v))} />
+              <YAxis domain={["dataMin - 5", "dataMax + 5"]} width={40} tick={{ fontSize: 10, fill: "var(--subtle)" }} tickLine={false} axisLine={false} tickFormatter={(v) => String(Math.round(v))} />
               {ref}
               {tip}
-              <Area dataKey="alt" stroke="var(--elev)" fill="var(--elev)" fillOpacity={0.25} strokeWidth={1.2} isAnimationActive={false} />
+              <Area dataKey="alt" stroke="var(--elev)" fill="var(--elev)" fillOpacity={0.18} strokeWidth={1.25} isAnimationActive={false} />
             </AreaChart>
           </ChartBlock>
         )}
@@ -168,19 +168,19 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
 
       {laps.length > 1 && (
         <div className="card overflow-hidden">
-          <div className="flex items-baseline justify-between px-4 pt-4">
-            <h2 className="label">Laps</h2>
+          <div className="flex items-baseline justify-between px-5 pt-5">
+            <h2 className="section-title">Laps</h2>
             <span className="text-xs text-muted">Tap a lap to highlight it</span>
           </div>
-          <table className="tabular mt-2 w-full text-sm">
-            <thead className="text-left text-[11px] text-muted">
+          <table className="tabular mt-3 w-full text-sm">
+            <thead className="text-left text-[0.6875rem] text-muted">
               <tr>
-                <th className="px-4 py-2 font-medium">#</th>
+                <th className="py-2 pl-5 font-medium">Lap</th>
                 <th className="py-2 font-medium">Dist</th>
                 <th className="py-2 font-medium">Time</th>
                 <th className="py-2 font-medium">Pace</th>
-                <th className="py-2 font-medium">HR</th>
-                <th className="hidden py-2 pr-4 font-medium sm:table-cell">Cad</th>
+                <th className="py-2 pr-5 text-right font-medium sm:pr-0">HR</th>
+                <th className="hidden py-2 pr-5 text-right font-medium sm:table-cell">Cad</th>
               </tr>
             </thead>
             <tbody>
@@ -196,17 +196,17 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
                   }}
                   tabIndex={0}
                   aria-selected={lap === l.index}
-                  className={clsx("cursor-pointer border-t border-border transition-colors", lap === l.index ? "bg-surface-2" : "hover:bg-surface-2/60")}
+                  className={clsx("cursor-pointer border-t border-[var(--hairline)] transition-colors", lap === l.index ? "bg-accent/10" : "hover:bg-surface-2/60")}
                 >
-                  <td className="px-4 py-2.5 text-muted">
+                  <td className={clsx("py-2.5 pl-5", lap === l.index ? "font-semibold text-accent" : "text-muted")}>
                     {l.index + 1}
                     {l.intensity && l.intensity !== "active" && <span className="ml-1 text-[10px] uppercase">{l.intensity}</span>}
                   </td>
                   <td>{l.distanceM != null ? (l.distanceM / 1000).toFixed(2) : "–"}</td>
                   <td>{formatDuration(l.timerS)}</td>
                   <td className="font-semibold">{formatPaceFromSpeed(l.avgSpeed)}</td>
-                  <td>{l.avgHr != null ? Math.round(l.avgHr) : "–"}</td>
-                  <td className="hidden pr-4 sm:table-cell">{l.avgCadence != null ? Math.round(l.avgCadence) : "–"}</td>
+                  <td className="pr-5 text-right sm:pr-0">{l.avgHr != null ? Math.round(l.avgHr) : "–"}</td>
+                  <td className="hidden pr-5 text-right sm:table-cell">{l.avgCadence != null ? Math.round(l.avgCadence) : "–"}</td>
                 </tr>
               ))}
             </tbody>
@@ -219,9 +219,9 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
 
 function ChartBlock({ label, unit, children }: { label: string; unit: string; children: React.ReactElement }) {
   return (
-    <div className="mt-2 first:mt-0">
-      <div className="flex items-baseline gap-1 text-[11px] text-muted">
-        <span className="font-semibold uppercase tracking-wider">{label}</span>
+    <div className="mt-4 first:mt-0">
+      <div className="flex items-baseline gap-1 text-[0.6875rem] text-muted">
+        <span className="font-semibold text-fg-2">{label}</span>
         <span>{unit}</span>
       </div>
       <div className="h-28 w-full">

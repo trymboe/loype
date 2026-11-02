@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
 import { AnalysisCard } from "@/components/activity/analysis-card";
 import { FeedbackForm } from "@/components/activity/feedback-form";
-import { Badge, Stat } from "@/components/ui";
+import { Badge, PageHeader, Stat } from "@/components/ui";
 import { buildChartSeries } from "@/lib/analytics/series";
 import { getActivityDetail, getActivityFeatures, getActivityScore } from "@/lib/db/queries";
 import { formatDay, localTime } from "@/lib/dates";
@@ -40,40 +39,48 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
   const fullPaces: number[] = splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km);
   // runs shorter than 1 km have no full split: compare against the partial one instead of Infinity
   const fastestSplit = fullPaces.length ? Math.min(...fullPaces) : (splits[0]?.pace_s_per_km ?? null);
+  const slowestSplit = fullPaces.length ? Math.max(...fullPaces) : fastestSplit;
+  // bar length: 35 % for the slowest full split up to 100 % for the fastest, so differences are visible
+  const splitBar = (pace: number | null) =>
+    !pace || !fastestSplit || !slowestSplit ? 0 : slowestSplit === fastestSplit ? 100 : Math.max(8, 35 + (65 * (slowestSplit - pace)) / (slowestSplit - fastestSplit));
 
   return (
     <>
-      <Link href="/activities" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
-        <ChevronLeft size={16} /> Activities
-      </Link>
-      <header className="mb-5">
-        <p className="label">
-          {formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {localTime(a.start_time, a.utc_offset_s, tz)}
-        </p>
-        <h1 className="font-display text-4xl font-bold tracking-tight">{a.name ?? "Run"}</h1>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {a.is_indoor && <Badge>Indoor</Badge>}
-          {a.sub_sport && a.sub_sport !== "generic" && <Badge>{a.sub_sport.replace(/_/g, " ")}</Badge>}
-          {!a.usable_for_fitness && <Badge tone="warn">Not used as fitness evidence</Badge>}
-        </div>
-      </header>
+      <PageHeader
+        back={{ href: "/activities", label: "Activities" }}
+        eyebrow={`${formatDay(a.local_date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · ${localTime(a.start_time, a.utc_offset_s, tz)}`}
+        title={a.name ?? "Run"}
+        subtitle={
+          a.is_indoor || (a.sub_sport && a.sub_sport !== "generic") || !a.usable_for_fitness ? (
+            <span className="mt-1 flex flex-wrap gap-1.5">
+              {a.is_indoor && <Badge>Indoor</Badge>}
+              {a.sub_sport && a.sub_sport !== "generic" && <Badge>{a.sub_sport.replace(/_/g, " ")}</Badge>}
+              {!a.usable_for_fitness && <Badge tone="warn">Not used as fitness evidence</Badge>}
+            </span>
+          ) : undefined
+        }
+      />
 
-      <section className="card rise mb-4 grid grid-cols-2 gap-x-4 gap-y-5 p-5 sm:grid-cols-4">
-        <Stat label="Distance" value={formatKm(a.distance_m)} unit="km" />
-        <Stat label="Moving time" value={formatDuration(a.moving_s)} hint={a.elapsed_s ? `${formatDuration(a.elapsed_s)} elapsed` : undefined} />
-        <Stat label="Avg pace" value={formatPaceFromSpeed(a.avg_speed_moving)} unit="/km" hint="moving time" />
-        <Stat label="Avg HR" value={a.avg_hr ? Math.round(a.avg_hr) : "–"} unit="bpm" hint={a.max_hr ? `max ${Math.round(a.max_hr)}` : undefined} />
-        <Stat label="Cadence" value={a.avg_cadence ? Math.round(a.avg_cadence) : "–"} unit="spm" />
-        <Stat label="Elevation" value={a.elevation_gain_m != null ? Math.round(a.elevation_gain_m) : "–"} unit="m gain" />
-        <Stat label="Device" value={<span className="text-base capitalize">{deviceLabel(a.device_manufacturer, a.device_product)}</span>} />
-        <Stat label="Data quality" value={a.quality_score != null ? `${Math.round(a.quality_score * 100)}` : "–"} unit="/ 100" />
+      <section className="card rise mb-3 overflow-hidden">
+        <div className="grid grid-cols-3 gap-4 p-5">
+          <Stat label="Distance" value={formatKm(a.distance_m)} unit="km" />
+          <Stat label="Moving time" value={formatDuration(a.moving_s)} hint={a.elapsed_s ? `${formatDuration(a.elapsed_s)} elapsed` : undefined} />
+          <Stat label="Avg pace" value={formatPaceFromSpeed(a.avg_speed_moving)} unit="/km" />
+        </div>
+        <div className="grid grid-cols-3 gap-x-4 gap-y-4 border-t border-[var(--hairline)] bg-surface-2/40 px-5 py-4 sm:grid-cols-5">
+          <Stat size="sm" label="Avg HR" value={a.avg_hr ? Math.round(a.avg_hr) : "–"} unit="bpm" hint={a.max_hr ? `max ${Math.round(a.max_hr)}` : undefined} />
+          <Stat size="sm" label="Cadence" value={a.avg_cadence ? Math.round(a.avg_cadence) : "–"} unit="spm" />
+          <Stat size="sm" label="Elevation" value={a.elevation_gain_m != null ? `+${Math.round(a.elevation_gain_m)}` : "–"} unit="m" />
+          <Stat size="sm" label="Data quality" value={a.quality_score != null ? `${Math.round(a.quality_score * 100)}` : "–"} unit="/ 100" />
+          <Stat size="sm" label="Device" value={<span className="text-[0.9375rem] font-semibold tracking-normal capitalize">{deviceLabel(a.device_manufacturer, a.device_product)}</span>} />
+        </div>
       </section>
 
       {flags.length > 0 && (
-        <section className="card mb-4 space-y-2 p-4">
+        <section className="card mb-3 space-y-2.5 p-4">
           {flags.map((f) => (
-            <p key={f.code} className="flex gap-2 text-sm">
-              <Info size={16} className={f.severity === "info" ? "mt-0.5 shrink-0 text-muted" : "mt-0.5 shrink-0 text-warn"} />
+            <p key={f.code} className="flex gap-2.5 text-[0.8125rem] leading-snug text-fg-2">
+              <Info size={16} className={f.severity === "info" ? "mt-px shrink-0 text-muted" : "mt-px shrink-0 text-warn"} />
               <span>{f.message}</span>
             </p>
           ))}
@@ -89,30 +96,32 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       )}
 
       {splits.length > 0 && (
-        <section className="card mt-4 overflow-hidden">
-          <h2 className="label px-4 pt-4">Splits · per km</h2>
-          <table className="tabular mt-2 w-full text-sm">
-            <thead className="text-left text-[11px] text-muted">
+        <section className="card mt-3 overflow-hidden">
+          <h2 className="section-title px-5 pt-5">Splits</h2>
+          <table className="tabular mt-3 w-full text-sm">
+            <thead className="text-left text-[0.6875rem] text-muted">
               <tr>
-                <th className="px-4 py-2 font-medium">Km</th>
+                <th className="py-2 pl-5 font-medium">Km</th>
                 <th className="py-2 font-medium">Pace</th>
-                <th className="w-1/3 py-2 font-medium" />
-                <th className="py-2 font-medium">HR</th>
-                <th className="py-2 pr-4 font-medium">Elev</th>
+                <th className="w-[38%] py-2 font-medium" />
+                <th className="py-2 text-right font-medium">HR</th>
+                <th className="py-2 pr-5 text-right font-medium">Elev</th>
               </tr>
             </thead>
             <tbody>
               {splits.map((s: any) => {
-                const rel = s.pace_s_per_km && fastestSplit ? fastestSplit / s.pace_s_per_km : 0;
                 return (
-                  <tr key={s.split_index} className="border-t border-border">
-                    <td className="px-4 py-2 text-muted">{s.partial ? (s.distance_m / 1000).toFixed(2) : s.split_index + 1}</td>
+                  <tr key={s.split_index} className="border-t border-[var(--hairline)]">
+                    <td className="py-2.5 pl-5 text-muted">{s.partial ? (s.distance_m / 1000).toFixed(2) : s.split_index + 1}</td>
                     <td className={s.pace_s_per_km === fastestSplit ? "font-semibold text-accent" : "font-semibold"}>{formatPace(s.pace_s_per_km)}</td>
-                    <td className="pr-3">
-                      <div className="h-1.5 rounded-full bg-accent/70" style={{ width: `${Math.max(4, rel * 100)}%` }} />
+                    <td className="pr-4">
+                      <div
+                        className={s.pace_s_per_km === fastestSplit ? "h-2 rounded-full bg-accent" : "h-2 rounded-full bg-pace/70"}
+                        style={{ width: `${Math.min(100, splitBar(s.pace_s_per_km))}%` }}
+                      />
                     </td>
-                    <td>{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
-                    <td className="pr-4 text-muted">
+                    <td className="text-right">{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
+                    <td className="pr-5 text-right text-muted">
                       {s.elevation_gain_m != null ? `+${Math.round(s.elevation_gain_m)}` : "–"}
                     </td>
                   </tr>
@@ -123,13 +132,15 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
         </section>
       )}
 
-      <div className="mt-4">
+      <div className="mt-3">
         <FeedbackForm activityId={a.id} initial={feedback} />
       </div>
 
-      <details className="mt-4 rounded-2xl px-1 text-xs text-muted">
-        <summary className="cursor-pointer">How these numbers were produced</summary>
-        <ul className="mt-2 space-y-1 pl-4">
+      <details className="group mt-6 px-1 text-xs leading-relaxed text-muted">
+        <summary className="inline-flex cursor-pointer items-center gap-1 font-medium">
+          <Info size={14} /> How these numbers were produced
+        </summary>
+        <ul className="mt-3 space-y-1.5 rounded-2xl bg-surface-2/60 p-4">
           {Object.entries(prov).map(([k, v]) => (
             <li key={k}>
               <span className="font-medium text-fg">{k}</span>: {v === "device" ? "measured by your watch" : "calculated by Løype from the recorded samples"}

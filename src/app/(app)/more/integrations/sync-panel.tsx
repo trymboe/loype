@@ -90,18 +90,14 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="card p-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="font-semibold">Sync now</p>
-            <p className="text-sm text-muted">Fetches new runs since your latest import. Runs automatically every 30 minutes.</p>
+            <p className="section-title">Sync now</p>
+            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Fetches new runs since your latest import. Runs automatically every 30 minutes.</p>
           </div>
-          <button
-            onClick={() => drive({ action: "sync" })}
-            disabled={busy}
-            className="flex items-center gap-2 rounded-xl bg-surface-2 px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
-          >
+          <button onClick={() => drive({ action: "sync" })} disabled={busy} className="btn btn-secondary shrink-0">
             <RefreshCw size={16} className={clsx(busy && "animate-spin")} />
             {busy ? "Syncing" : "Sync"}
           </button>
@@ -109,32 +105,32 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
       </div>
 
       <div className="card p-5">
-        <p className="font-semibold">Import history</p>
-        <p className="text-sm text-muted">
+        <p className="section-title">Import history</p>
+        <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
           Import at least 12–16 weeks; 6–12 months gives a much better baseline. Re-importing is safe: runs already imported are skipped.
         </p>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-4 flex gap-2">
           <input
             type="date"
             value={from}
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setFrom(e.target.value)}
-            className="flex-1 rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm outline-none focus:border-accent"
+            className="input min-w-0 flex-1"
           />
           <button
             onClick={() => drive({ action: "historical", from })}
             disabled={busy || !from}
-            className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg disabled:opacity-60"
+            className="btn btn-primary min-h-12 shrink-0"
           >
             Import
           </button>
         </div>
       </div>
 
-      {error && <p className="rounded-2xl border border-hr/40 bg-hr/10 p-4 text-sm">{error}</p>}
+      {error && <p className="rounded-2xl bg-danger/10 p-4 text-sm ring-1 ring-danger/25 ring-inset">{error}</p>}
 
       {jobs.length > 0 && (
-        <div className="card divide-y divide-border">
+        <div className="card divide-hairline overflow-hidden">
           {jobs.map((j) => {
             const pending = Math.max(0, j.discovered - j.processed - j.failed - j.unavailable - j.skipped);
             const pct = j.discovered ? Math.round(((j.discovered - pending) / j.discovered) * 100) : 0;
@@ -144,7 +140,7 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
                   <span className="font-semibold capitalize">
                     {j.kind} sync{j.range_start ? ` from ${j.range_start}` : ""}
                   </span>
-                  <span className={clsx("text-xs", ACTIVE.includes(j.status) ? "text-accent" : j.status === "failed" ? "text-hr" : "text-muted")}>
+                  <span className={clsx("text-xs font-medium capitalize", ACTIVE.includes(j.status) ? "text-accent" : j.status === "failed" ? "text-danger" : j.status === "done" ? "text-good" : "text-muted")}>
                     {j.status}
                   </span>
                 </div>
@@ -153,11 +149,11 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
                     <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${j.status === "discovering" ? 5 : pct}%` }} />
                   </div>
                 )}
-                <p className="tabular mt-2 text-xs text-muted">
+                <p className="tabular mt-1.5 text-xs leading-snug text-muted">
                   {j.discovered} found · {j.processed} imported · {j.skipped} skipped (not runs / duplicates) · {j.unavailable} unavailable · {j.failed} failed
                   {pending > 0 && ` · ${pending} pending`}
                 </p>
-                {j.last_error && <p className="mt-1 text-xs text-hr">{j.last_error}</p>}
+                {j.last_error && <p className="mt-1 text-xs text-danger">{j.last_error}</p>}
               </div>
             );
           })}

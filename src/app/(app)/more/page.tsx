@@ -1,50 +1,53 @@
 import Link from "next/link";
 import { ChevronRight, Download, HeartPulse, KeyRound, Link2, LogOut } from "lucide-react";
-import { PageHeader } from "@/components/ui";
+import { IconTile, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "More" };
 
 const ROWS = [
-  { href: "/more/integrations", icon: Link2, label: "Integrations", hint: "Garmin Connect, sync and history import" },
-  { href: "/more/profile", icon: HeartPulse, label: "Athlete profile", hint: "Max and resting heart rate, birth year, sex" },
-  { href: "/more/password", icon: KeyRound, label: "Password", hint: "Set a password to sign in on new browsers and the home-screen app" },
-  { href: "/api/export", icon: Download, label: "Export my data", hint: "Download activities, laps, splits, check-ins and wellness as JSON", download: true },
+  { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations", hint: "Garmin Connect, sync and history import" },
+  { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile", hint: "Max and resting heart rate, birth year, sex" },
+  { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password", hint: "Set a password to sign in on new browsers and the home-screen app" },
+  { href: "/api/export", icon: Download, color: "var(--cadence)", label: "Export my data", hint: "Download activities, laps, splits, check-ins and wellness as JSON", download: true },
 ];
 
 export default function MorePage() {
   return (
     <>
       <PageHeader title="More" />
-      <div className="card divide-y divide-border">
-        {ROWS.map(({ href, icon: Icon, label, hint, download }) => {
+      <div className="card rise divide-hairline overflow-hidden">
+        {ROWS.map(({ href, icon: Icon, color, label, hint, download }) => {
           const inner = (
             <>
-              <Icon size={20} className="text-muted" />
-              <div className="flex-1">
-                <p className="font-semibold">{label}</p>
-                <p className="text-xs text-muted">{hint}</p>
+              <IconTile color={color}>
+                <Icon size={18} />
+              </IconTile>
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.9375rem] font-semibold">{label}</p>
+                <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">{hint}</p>
               </div>
-              <ChevronRight size={18} className="text-muted" />
+              <ChevronRight size={18} className="shrink-0 text-subtle" />
             </>
           );
+          const cls = "flex items-center gap-3.5 px-4 py-3.5 transition-colors hover:bg-surface-2/50 active:bg-surface-2";
           return download ? (
-            <a key={href} href={href} className="flex items-center gap-4 p-4 hover:bg-surface-2">
+            <a key={href} href={href} className={cls}>
               {inner}
             </a>
           ) : (
-            <Link key={href} href={href} className="flex items-center gap-4 p-4 hover:bg-surface-2">
+            <Link key={href} href={href} className={cls}>
               {inner}
             </Link>
           );
         })}
-        <form action="/auth/signout" method="post">
-          <button className="flex w-full items-center gap-4 p-4 text-left hover:bg-surface-2">
-            <LogOut size={20} className="text-muted" />
-            <span className="font-semibold">Sign out</span>
-          </button>
-        </form>
       </div>
-      <p className="mt-6 text-center text-xs text-muted">Routes and more settings arrive in later phases.</p>
+      <form action="/auth/signout" method="post" className="mt-3">
+        <button className="card flex w-full items-center justify-center gap-2 px-4 py-3.5 text-[0.9375rem] font-semibold text-danger transition-colors hover:bg-surface-2/50">
+          <LogOut size={18} />
+          Sign out
+        </button>
+      </form>
+      <p className="mt-8 text-center text-xs text-subtle">Routes and more settings arrive in later phases.</p>
     </>
   );
 }

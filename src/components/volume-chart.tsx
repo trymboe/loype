@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import clsx from "clsx";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { WeekVolume } from "@/lib/analytics/volume";
 import { formatDuration } from "@/lib/units";
+
+const shortDate = (v: string) => new Date(`${v}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 const WINDOWS = [
   { key: 4, label: "4W" },
@@ -19,9 +20,9 @@ export function VolumeChart({ weeks }: { weeks: WeekVolume[] }) {
   const data = (win ? weeks.slice(-win) : weeks).map((w) => ({ ...w, km: Math.round(w.distanceM / 100) / 10, longKm: Math.round(w.longestM / 100) / 10 }));
   return (
     <div>
-      <div className="mb-3 flex gap-1">
+      <div className="seg mb-4 w-full">
         {WINDOWS.map((w) => (
-          <button key={w.key} onClick={() => setWin(w.key)} className={clsx("rounded-lg px-2.5 py-1 text-xs font-semibold", win === w.key ? "bg-fg text-bg" : "bg-surface-2 text-muted")}>
+          <button key={w.key} type="button" aria-pressed={win === w.key} onClick={() => setWin(w.key)} className="flex-1">
             {w.label}
           </button>
         ))}
@@ -29,24 +30,28 @@ export function VolumeChart({ weeks }: { weeks: WeekVolume[] }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 0, left: -18, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
-            <XAxis dataKey="weekStart" tickFormatter={(v: string) => v.slice(5).replace("-", "/")} tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} minTickGap={16} />
-            <YAxis tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
+            <CartesianGrid vertical={false} stroke="var(--grid)" />
+            <XAxis dataKey="weekStart" tickFormatter={shortDate} tick={{ fontSize: 11, fill: "var(--subtle)" }} tickLine={false} axisLine={false} minTickGap={16} />
+            <YAxis tick={{ fontSize: 11, fill: "var(--subtle)" }} tickLine={false} axisLine={false} />
             <Tooltip
-              cursor={{ fill: "var(--surface-2)" }}
+              cursor={{ fill: "var(--grid)" }}
               content={({ active, payload }) => {
                 const p = payload?.[0]?.payload as (WeekVolume & { km: number; longKm: number }) | undefined;
                 if (!active || !p) return null;
                 return (
-                  <div className="card tabular px-3 py-2 text-xs">
-                    <p className="font-semibold">Week of {p.weekStart}</p>
+                  <div className="chart-tip">
+                    <p className="mb-0.5 font-semibold">Week of {p.weekStart}</p>
                     <p>{p.km} km · {p.runs} runs · {formatDuration(p.movingS)}</p>
                     <p className="text-muted">Longest run {p.longKm} km</p>
                   </div>
                 );
               }}
             />
-            <Bar dataKey="km" fill="var(--accent)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="km" radius={[4, 4, 1, 1]} maxBarSize={28} isAnimationActive={false}>
+              {data.map((d, i) => (
+                <Cell key={d.weekStart} fill="var(--accent)" fillOpacity={i === data.length - 1 ? 0.35 : 0.9} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>

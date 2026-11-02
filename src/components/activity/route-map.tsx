@@ -103,7 +103,7 @@ export function RouteMap({
 
   if (coords.length < 2) return null;
   if (failed) return <RouteFallback coords={coords} highlight={highlight} />;
-  return <div ref={el} className="h-64 w-full overflow-hidden rounded-2xl bg-surface-2 md:h-80" />;
+  return <div ref={el} className="card h-64 w-full overflow-hidden md:h-80" />;
 }
 
 function line(c: Coord[]): GeoJSON.Feature<GeoJSON.LineString> {
@@ -135,14 +135,18 @@ function RouteFallback({ coords, highlight }: { coords: Coord[]; highlight: Coor
   }, [coords]);
   const path = (cs: Coord[]) => cs.map((c, i) => `${i ? "L" : "M"}${project(c)}`).join("");
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-surface-2">
+    <div
+      className="card relative overflow-hidden"
+      style={{ backgroundImage: "radial-gradient(var(--grid) 1px, transparent 1px)", backgroundSize: "16px 16px" }}
+    >
       <svg viewBox={`0 0 ${W} ${H}`} className="h-64 w-full md:h-80" role="img" aria-label="Route">
+        <path d={path(coords)} fill="none" stroke="var(--accent)" strokeOpacity={0.2} strokeWidth={12} strokeLinejoin="round" strokeLinecap="round" />
         <path d={path(coords)} fill="none" stroke="var(--accent)" strokeWidth={4} strokeLinejoin="round" strokeLinecap="round" />
         {highlight && highlight.length > 1 && (
           <path d={path(highlight)} fill="none" stroke="var(--fg)" strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
         )}
       </svg>
-      <span className="absolute bottom-2 left-3 text-[10px] text-muted">Map unavailable · route only</span>
+      <span className="absolute bottom-3 left-4 text-[0.6875rem] text-subtle">Map unavailable · route only</span>
     </div>
   );
 }

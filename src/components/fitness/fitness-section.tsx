@@ -6,13 +6,15 @@ import type { CompactOutput } from "@/lib/fitness/service";
 import { formatDay } from "@/lib/dates";
 import { formatDuration, formatPace } from "@/lib/units";
 
-const CONF_TONE = { high: "accent", medium: "warn", low: "muted" } as const;
+const CONF_TONE = { high: "good", medium: "warn", low: "muted" } as const;
+const ZONE_DOT: Record<number, string> = { 1: "var(--elev)", 2: "var(--easy)", 3: "var(--good)", 4: "var(--tempo)", 5: "var(--intervals)" };
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function Provenance({ confidence, children }: { confidence?: "high" | "medium" | "low" | null; children?: React.ReactNode }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-[0.6875rem] text-muted">
       <Badge tone="muted">Estimated</Badge>
-      {confidence && <Badge tone={CONF_TONE[confidence]}>{confidence} confidence</Badge>}
+      {confidence && <Badge tone={CONF_TONE[confidence]}>{cap(confidence)} confidence</Badge>}
       {children}
     </span>
   );
@@ -35,7 +37,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
     <>
       <Card>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="label">Fitness estimate</div>
+          <h2 className="section-title">Fitness estimate</h2>
           {!e.withheld && <Provenance confidence={e.confidence}>{e.method === "performance" ? "from hard efforts" : "from heart rate vs pace"}</Provenance>}
         </div>
         {e.withheld ? (
@@ -45,8 +47,8 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
           </div>
         ) : (
           <>
-            <div className="mt-3 grid grid-cols-2 gap-5 sm:grid-cols-3">
-              <Stat label="VO2max equivalent" value={e.vdot.toFixed(1)} hint={`likely ${e.lower.toFixed(1)}–${e.upper.toFixed(1)}`} />
+            <div className="mt-4 grid grid-cols-2 items-end gap-x-5 gap-y-6 sm:grid-cols-3">
+              <Stat size="xl" label="VO2max equivalent" value={e.vdot.toFixed(1)} hint={`likely ${e.lower.toFixed(1)}–${e.upper.toFixed(1)}`} />
               {out.threshold && (
                 <Stat
                   label="Threshold pace"
@@ -58,14 +60,14 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
               {out.threshold?.hr && <Stat label="Threshold HR" value={out.threshold.hr} unit="bpm" hint="88 % of HR reserve" />}
             </div>
             {e.notes.length > 0 && (
-              <ul className="mt-4 space-y-1 text-xs text-muted">
+              <ul className="mt-4 space-y-1.5 rounded-xl bg-surface-2 p-3 text-xs leading-snug text-muted">
                 {e.notes.map((n) => (
-                  <li key={n}>• {n}</li>
+                  <li key={n}>{n}</li>
                 ))}
               </ul>
             )}
             <details className="mt-3 text-xs">
-              <summary className="cursor-pointer text-muted">Evidence ({e.evidence.length})</summary>
+              <summary className="inline-flex cursor-pointer items-center gap-1 font-medium text-accent">Show evidence ({e.evidence.length})</summary>
               <ul className="mt-2 space-y-1">
                 {e.evidence.map((x) => (
                   <li key={x.activityId + x.kind} className="flex justify-between gap-3">
@@ -82,7 +84,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
             </details>
           </>
         )}
-        <p className="mt-3 text-[11px] text-muted">
+        <p className="mt-4 text-[0.6875rem] leading-relaxed text-subtle">
           Daniels VDOT scale (a performance-based VO2max). Only runs from the last 90 days with trustworthy GPS and heart rate count. Model fitness@1, updated {new Date(computedAt).toLocaleDateString("en-GB")}.
         </p>
       </Card>
@@ -90,19 +92,19 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
       {out.predictions && (
         <Card>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div className="label">Race predictions</div>
+            <h2 className="section-title">Race predictions</h2>
             <Provenance />
           </div>
           <table className="tabular mt-3 w-full text-sm">
             <tbody>
               {out.predictions.map((r) => (
-                <tr key={r.key} className="border-t border-border first:border-0">
-                  <td className="py-2.5">{r.label}</td>
-                  <td className="py-2.5 text-right font-semibold">{formatDuration(r.timeS)}</td>
-                  <td className="py-2.5 pl-3 text-right text-xs text-muted">
+                <tr key={r.key} className="border-t border-[var(--hairline)] first:border-0">
+                  <td className="py-3 font-medium">{r.label}</td>
+                  <td className="display py-3 text-right text-lg">{formatDuration(r.timeS)}</td>
+                  <td className="py-3 pl-4 text-right text-xs leading-snug text-muted">
                     {formatDuration(r.fastS)}–{formatDuration(r.slowS)}
                     <br />
-                    {r.confidence} confidence
+                    {cap(r.confidence)} confidence
                   </td>
                 </tr>
               ))}
@@ -118,25 +120,25 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
 
       {history.some((h) => h.value != null) && (
         <Card>
-          <div className="label mb-3">Fitness trend</div>
+          <h2 className="section-title mb-4">Fitness trend</h2>
           <FitnessTrendChart points={history} />
           <p className="mt-2 text-xs text-muted">Weekly, recomputed using only the data available at each date. The band is the likely range.</p>
         </Card>
       )}
 
       <Card>
-        <div className="label">Zones</div>
+        <h2 className="section-title">Zones</h2>
         <div className="mt-3 grid gap-6 sm:grid-cols-2">
           <div>
-            <p className="mb-2 text-xs font-semibold text-muted">Heart rate</p>
+            <p className="label mb-2">Heart rate</p>
             {out.hrZones ? (
               <table className="tabular w-full text-sm">
                 <tbody>
                   {out.hrZones.map((z) => (
-                    <tr key={z.zone} className="border-t border-border first:border-0">
-                      <td className="py-1.5 text-muted">Z{z.zone}</td>
-                      <td className="py-1.5">{z.label}</td>
-                      <td className="py-1.5 text-right">
+                    <tr key={z.zone} className="border-t border-[var(--hairline)] first:border-0">
+                      <td className="w-10 py-2"><span className="inline-block size-2 rounded-full" style={{ background: ZONE_DOT[z.zone] }} /> <span className="text-muted">{z.zone}</span></td>
+                      <td className="py-2">{z.label}</td>
+                      <td className="py-2 text-right font-medium">
                         {z.minBpm}–{z.maxBpm}
                       </td>
                     </tr>
@@ -146,19 +148,19 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
             ) : (
               <p className="text-sm text-muted">Needs max and resting HR.</p>
             )}
-            <p className="mt-2 text-[11px] text-muted">
+            <p className="mt-2 text-[0.6875rem] text-muted">
               Karvonen (heart-rate reserve). Max {p.maxHr?.value ?? "–"} ({p.maxHr?.source.replace("_", " ") ?? "unknown"}), resting {p.restHr?.value ?? "–"} (
               {p.restHr?.source.replace("_", " ") ?? "unknown"}). <Link href="/more/profile" className="underline">Change</Link>
             </p>
           </div>
           <div>
-            <p className="mb-2 text-xs font-semibold text-muted">Training paces</p>
+            <p className="label mb-2">Training paces</p>
             {out.paceZones ? (
               <table className="tabular w-full text-sm">
                 <tbody>
                   {out.paceZones.map((z) => (
-                    <tr key={z.key} className="border-t border-border first:border-0" title={z.purpose}>
-                      <td className="py-1.5">{z.label}</td>
+                    <tr key={z.key} className="border-t border-[var(--hairline)] first:border-0" title={z.purpose}>
+                      <td className="py-2">{z.label}</td>
                       <td className="py-1.5 text-right">
                         {formatPace(z.fastSPerKm)}–{formatPace(z.slowSPerKm)}
                       </td>
@@ -176,8 +178,8 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
       {last && (
         <Card>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div className="label">Training load</div>
-            <span className="text-[11px] text-muted">Calculated · TRIMP</span>
+            <h2 className="section-title">Training load</h2>
+            <Badge>Calculated · TRIMP</Badge>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-5">
             <Stat label="Fitness" value={last.ctl.toFixed(0)} hint="42-day load" />
@@ -196,8 +198,8 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
 
       <Card>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="label">Aerobic efficiency</div>
-          <span className="text-[11px] text-muted">Calculated</span>
+          <h2 className="section-title">Aerobic efficiency</h2>
+          <Badge>Calculated</Badge>
         </div>
         {efPoints.length >= 2 ? (
           <>
@@ -206,7 +208,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
                 <span className="text-muted">Not enough comparable runs yet to call a trend.</span>
               ) : (
                 <>
-                  <span className="font-semibold">
+                  <span className={out.efficiency.changePer30dPct >= 0 ? "font-semibold text-good" : "font-semibold text-warn"}>
                     {out.efficiency.changePer30dPct >= 0 ? "+" : ""}
                     {out.efficiency.changePer30dPct.toFixed(1)} % per month
                   </span>{" "}
@@ -226,9 +228,9 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
 
       {out.bestEfforts.allTime.length > 0 && (
         <Card>
-          <div className="label">Best efforts</div>
+          <h2 className="section-title">Best efforts</h2>
           <table className="tabular mt-3 w-full text-sm">
-            <thead className="text-left text-[11px] text-muted">
+            <thead className="text-left text-[0.6875rem] text-muted">
               <tr>
                 <th className="py-1 font-medium">Distance</th>
                 <th className="py-1 text-right font-medium">Last 90 days</th>
@@ -239,7 +241,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
               {out.bestEfforts.allTime.map((b) => {
                 const r = out.bestEfforts.last90.find((x) => x.distanceM === b.distanceM);
                 return (
-                  <tr key={b.distanceM} className="border-t border-border">
+                  <tr key={b.distanceM} className="border-t border-[var(--hairline)]">
                     <td className="py-2">{fmtDist(b.distanceM)}</td>
                     <td className="py-2 text-right">
                       {r ? (
@@ -254,7 +256,7 @@ export function FitnessSection({ out, history, computedAt }: { out: CompactOutpu
                       <Link href={`/activities/${b.activityId}`} className="underline-offset-2 hover:underline">
                         {formatDuration(b.timeS)}
                       </Link>
-                      <span className="block text-[11px] text-muted">{formatDay(b.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
+                      <span className="block text-[0.6875rem] text-muted">{formatDay(b.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
                     </td>
                   </tr>
                 );

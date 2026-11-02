@@ -34,10 +34,10 @@ export function FeedbackForm({ activityId, initial }: { activityId: string; init
       <input type="hidden" name="rpe" value={rpe ?? ""} />
       <input type="hidden" name="legs" value={legs ?? ""} />
       <div className="flex items-baseline justify-between">
-        <h2 className="label">How hard did that feel?</h2>
-        {saved && !pending && <span className="text-xs font-semibold text-accent">Saved</span>}
+        <h2 className="section-title">How hard did that feel?</h2>
+        {saved && !pending && <span className="text-xs font-semibold text-good">Saved</span>}
       </div>
-      <div className="mt-3 grid grid-cols-10 gap-1">
+      <div className="mt-4 grid grid-cols-10 gap-1">
         {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
           <button
             type="button"
@@ -47,17 +47,20 @@ export function FeedbackForm({ activityId, initial }: { activityId: string; init
               setSaved(false);
             }}
             className={clsx(
-              "tabular aspect-square rounded-lg text-sm font-semibold transition-colors",
-              rpe === v ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-fg",
+              "tabular aspect-square rounded-[0.625rem] text-sm font-semibold transition-all active:scale-95",
+              rpe === v ? "bg-accent text-accent-fg shadow-[0_4px_14px_-4px_var(--accent)]" : rpe != null && v < rpe ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted hover:text-fg",
             )}
           >
             {v}
           </button>
         ))}
       </div>
-      <p className="mt-2 h-4 text-xs text-muted">{rpe ? RPE_LABELS[rpe] : "RPE 1–10"}</p>
+      <div className="mt-2 flex h-4 justify-between text-xs text-muted">
+        <span className={rpe ? "font-medium text-fg-2" : undefined}>{rpe ? `${rpe} · ${RPE_LABELS[rpe]}` : "Easy"}</span>
+        {!rpe && <span>Max effort</span>}
+      </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {["fresh", "normal", "heavy", "sore"].map((l) => (
           <button
             type="button"
@@ -66,25 +69,26 @@ export function FeedbackForm({ activityId, initial }: { activityId: string; init
               setLegs(legs === l ? null : l);
               setSaved(false);
             }}
-            className={clsx("rounded-full px-3 py-1 text-xs capitalize", legs === l ? "bg-fg text-bg" : "bg-surface-2 text-muted")}
+            aria-pressed={legs === l}
+            className="chip capitalize"
           >
             {l} legs
           </button>
         ))}
         {!more && (
-          <button type="button" onClick={() => setMore(true)} className="rounded-full px-3 py-1 text-xs text-accent">
-            + note
+          <button type="button" onClick={() => setMore(true)} className="chip bg-transparent font-semibold text-accent">
+            + Add note
           </button>
         )}
       </div>
       {more && (
         <div className="mt-3 space-y-2">
-          <input name="discomfort" defaultValue={initial?.discomfort ?? ""} onChange={() => setSaved(false)} maxLength={500} placeholder="Any unusual discomfort?" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
-          <textarea name="notes" defaultValue={initial?.notes ?? ""} onChange={() => setSaved(false)} maxLength={2000} rows={2} placeholder="Notes" className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent" />
+          <input name="discomfort" defaultValue={initial?.discomfort ?? ""} onChange={() => setSaved(false)} maxLength={500} placeholder="Any unusual discomfort?" className="input" />
+          <textarea name="notes" defaultValue={initial?.notes ?? ""} onChange={() => setSaved(false)} maxLength={2000} rows={2} placeholder="Notes" className="input" />
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-hr">{error}</p>}
-      <button disabled={!rpe || pending || saved} className="mt-4 w-full rounded-xl bg-accent py-2.5 text-sm font-semibold text-accent-fg disabled:opacity-40">
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <button disabled={!rpe || pending || saved} className="btn btn-primary btn-block mt-5">
         {pending ? "Saving…" : saved ? "Check-in saved" : "Save check-in"}
       </button>
     </form>
