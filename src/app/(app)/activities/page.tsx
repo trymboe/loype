@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { ActivityRow } from "@/components/activity-row";
 import { ButtonLink, EmptyState, PageHeader } from "@/components/ui";
+import { SyncButton } from "@/components/sync/sync-button";
 import { listActivities } from "@/lib/db/queries";
 import { formatDay, weekStart } from "@/lib/dates";
 import { formatKm } from "@/lib/units";
@@ -32,7 +33,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   }
   return (
     <>
-      <PageHeader title="Activities" />
+      <PageHeader title="Activities" action={<SyncButton className="mb-1" />} />
       <div className="stagger space-y-7">
         {[...groups.entries()].map(([week, list]) => (
           <section key={week}>
