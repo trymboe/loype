@@ -5,7 +5,14 @@ import { SyncBanner } from "@/components/sync-banner";
 import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
-import { activitiesSince, getIntegrationStatus } from "@/lib/db/queries";
+import { FitnessSnapshotCard, InsightCard, RaceGoalCard } from "@/components/today/cards";
+import { activitiesSince, getFitnessState, getIntegrationStatus } from "@/lib/db/queries";
+import { createUserClient } from "@/lib/db/server";
+import { loadProgressMotivation } from "@/lib/progress/service";
+import { pickInsight } from "@/lib/progress/insight";
+import { raceGoalFromRow } from "@/lib/race/goal";
+import { raceStatus } from "@/lib/race/status";
+import type { PlanWeek } from "@/lib/planning/types";
 import { addDaysIso, formatDay, localTime, relativeDay, todayIn, weekStart } from "@/lib/dates";
 import { isRun, weeklyVolume } from "@/lib/analytics/volume";
 import { formatDuration, formatKm, formatPaceFromSpeed } from "@/lib/units";
@@ -18,7 +25,39 @@ export default async function TodayPage() {
   const today = todayIn(tz);
   const thisWeek = weekStart(today);
   const from = addDaysIso(thisWeek, -7 * 7);
-  const [acts, integration] = await Promise.all([activitiesSince(from), getIntegrationStatus()]);
+  const db = await createUserClient();
+  const [acts, integration, fitness, { data: plan }, { data: proposal }] = await Promise.all([
+    activitiesSince(from),
+    getIntegrationStatus(),
+    getFitnessState(),
+    db.from("training_plans").select("id, weeks, goal:goals(*)").eq("status", "active").maybeSingle(),
+    db.from("adaptation_proposals").select("title").eq("status", "pending").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const out = fitness?.output ?? null;
+  const est = out?.estimate && !out.estimate.withheld ? out.estimate : null;
+  const race = raceGoalFromRow((plan as { goal?: unknown } | null)?.goal);
+  const status = race
+    ? raceStatus({
+        goal: { name: race.name, distanceM: race.distanceM, raceDate: race.raceDate ?? today, targetTimeS: race.targetTimeS },
+        today,
+        estimate: est ? { vdot: est.vdot, lower: est.lower, upper: est.upper, confidence: est.confidence } : null,
+        longestRecentM: out?.longestRecentM ?? 0,
+      })
+    : null;
+  const planWeeks = ((plan as { weeks?: PlanWeek[] } | null)?.weeks ?? []) as PlanWeek[];
+  const wk = planWeeks.find((w) => w.start === weekStart(today));
+  const motivation = acts.length ? await loadProgressMotivation(today, fitness) : null;
+  const insight = motivation
+    ? pickInsight({
+        today,
+        pendingProposal: proposal ?? null,
+        milestones: motivation.milestones,
+        payoff: motivation.payoff,
+        load: out?.load?.length ? out.load[out.load.length - 1] : null,
+        rampRate: out?.rampRate ?? null,
+        race: race?.raceDate && status ? { name: race.name, daysToGo: status.daysToGo } : null,
+      })
+    : null;
   const runs = acts.filter((a) => isRun(a.sport));
   const weeks = weeklyVolume(acts, from, today);
   const current = weeks[weeks.length - 1];
@@ -54,6 +93,8 @@ export default async function TodayPage() {
       ) : (
         <div className="stagger space-y-3">
           <NextWorkout today={today} />
+          {insight && <InsightCard insight={insight} />}
+          {race && status && race.raceDate && <RaceGoalCard goal={race} status={status} week={wk ? { index: wk.index, total: planWeeks.length } : null} />}
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
               <div className="flex items-start justify-between gap-4 p-5 pb-0">
@@ -136,6 +177,8 @@ export default async function TodayPage() {
               })}
             </div>
           </Card>
+
+          {out && <FitnessSnapshotCard out={out} />}
 
           <Card href="/progress">
             <CardHeader
