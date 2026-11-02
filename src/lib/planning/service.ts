@@ -340,8 +340,8 @@ export async function decideProposal(db: SupabaseClient, userId: string, id: str
   let applied = 0;
   for (const c of changes) {
     const row = (rows ?? []).find((r: any) => r.id === c.workoutId);
-    if (!row || row.status !== "planned" || row.locked || !same(row, c.before)) continue;
-    await check(db.from("planned_workouts").update({ ...fieldsToRow(c.after), source: "adaptation" }).eq("id", c.workoutId));
+    if (!row || row.status !== "planned" || row.locked || !same(row, c.before) || (c.toDate && row.date !== c.date)) continue;
+    await check(db.from("planned_workouts").update({ ...fieldsToRow(c.after), ...(c.toDate ? { date: c.toDate } : {}), source: "adaptation" }).eq("id", c.workoutId));
     applied++;
   }
   let patch = p.baseline_patch;
@@ -372,8 +372,8 @@ export async function undoProposal(db: SupabaseClient, userId: string, id: strin
   const { data: rows } = await db.from("planned_workouts").select("*").in("id", changes.map((c) => c.workoutId));
   for (const c of changes) {
     const row = (rows ?? []).find((r: any) => r.id === c.workoutId);
-    if (!row || row.status !== "planned" || !same(row, c.after)) continue;
-    await check(db.from("planned_workouts").update({ ...fieldsToRow(c.before), source: "generator" }).eq("id", c.workoutId));
+    if (!row || row.status !== "planned" || !same(row, c.after) || (c.toDate && row.date !== c.toDate)) continue;
+    await check(db.from("planned_workouts").update({ ...fieldsToRow(c.before), ...(c.toDate ? { date: c.date } : {}), source: "generator" }).eq("id", c.workoutId));
   }
   if (p.baseline_patch?.prev) {
     const { data: plan } = await db.from("training_plans").select("baseline").eq("id", p.plan_id).single();

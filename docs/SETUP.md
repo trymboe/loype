@@ -38,6 +38,8 @@ See `.env.example`. Set them in Vercel (Project → Settings → Environment Var
 | `GARMIN_PERSONAL_API_KEY` | optional; normally pasted in the app instead | **yes** |
 | `GARMIN_API_BASE_URL` | optional override if Garmin's data host differs | no |
 | `ROUTING_VALHALLA_URL` | Valhalla server for the route planner (routing + elevation); defaults to the keyless FOSSGIS server `https://valhalla1.openstreetmap.de` | no |
+| `ANTHROPIC_API_KEY` | <https://console.anthropic.com/settings/keys>; turns on the Coach tab | **yes** |
+| `COACH_MODEL` | optional; Claude model for the coach (default `claude-sonnet-5-5`) | no |
 
 Changing `TOKEN_ENCRYPTION_KEY` makes stored Garmin secrets unreadable; just paste the Garmin key again.
 
