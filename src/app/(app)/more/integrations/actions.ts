@@ -31,8 +31,10 @@ export async function connectGarmin(_prev: KeyState, form: FormData): Promise<Ke
     const msg = e instanceof GarminAuthError ? "Garmin rejected this key. Check that you copied it completely." : "Saved, but Garmin couldn't be reached to verify it. Try syncing in a minute.";
     await db.from("integrations").update({ status: e instanceof GarminAuthError ? "needs_reauth" : "error", last_error: msg }).eq("user_id", user.id).eq("provider", "garmin");
     revalidatePath("/more/integrations");
+    revalidatePath("/welcome");
     return { error: msg };
   }
   revalidatePath("/more/integrations");
+  revalidatePath("/welcome");
   return { ok: true };
 }

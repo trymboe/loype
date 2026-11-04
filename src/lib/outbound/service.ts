@@ -73,6 +73,29 @@ export async function connectIntervals(db: SupabaseClient, userId: string, apiKe
   return athlete;
 }
 
+/** Løype's latest threshold pace (s/km) and HR estimates, from the fitness model. */
+export async function loypeThresholds(db: SupabaseClient, userId: string): Promise<{ paceSPerKm: number | null; hr: number | null }> {
+  const latest = async (metric: string) => {
+    const { data } = await db.from("fitness_snapshots").select("value").eq("user_id", userId).eq("metric", metric).eq("kind", "contemporaneous").order("as_of", { ascending: false }).limit(1).maybeSingle();
+    return typeof data?.value === "number" ? data.value : null;
+  };
+  const [paceSPerKm, hr] = await Promise.all([latest("threshold_pace"), latest("threshold_hr")]);
+  return { paceSPerKm, hr };
+}
+
+/** Writes Løype's threshold pace (and LTHR if missing) to Intervals.icu's Run settings, then resends the plan with pace targets. */
+export async function applyThresholdsToIntervals(db: SupabaseClient, userId: string, today: string, fetchImpl?: typeof fetch): Promise<{ paceSPerKm: number; push: PushResult }> {
+  const integration = await getIntervalsIntegration(db, userId);
+  const client = clientFor(integration, fetchImpl);
+  if (!client) throw new Error("Intervals.icu isn't connected");
+  const t = await loypeThresholds(db, userId);
+  if (!t.paceSPerKm) throw new Error("Løype has no threshold pace estimate yet");
+  const athlete = await client.setRunThresholds(t.paceSPerKm, t.hr);
+  await patchIntegration(db, userId, { settings: { ...(integration.settings ?? {}), run: athlete.run, runCheckedAt: new Date().toISOString() } });
+  const push = await pushPlannedWorkouts(db, userId, today, { force: true, fetchImpl });
+  return { paceSPerKm: t.paceSPerKm, push };
+}
+
 export async function disconnectIntervals(db: SupabaseClient, userId: string) {
   await patchIntegration(db, userId, { api_key_ciphertext: null, api_key_fingerprint: null, status: "not_configured", last_error: null });
 }
@@ -139,6 +162,9 @@ export async function pushPlannedWorkouts(db: SupabaseClient, userId: string, to
         workout_date: u.workout.date,
       };
       try {
+        // Intervals.icu only re-exports a workout to Garmin when the event is created, not when
+        // it's updated in place, so a changed workout is deleted and created again.
+        if (u.row && u.row.state !== "removed") await client.deleteEvents([u.event.external_id]);
         const [remote] = await client.upsertEvents([u.event]);
         const check = remote?.workout_doc !== undefined ? checkParsed(u.workout.steps, u.mode, run!, remote.workout_doc as any) : null;
         const contentChanged = u.row?.payload_hash !== u.hash;

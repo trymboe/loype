@@ -66,20 +66,12 @@ and Strava are de-duplicated by start time, duration and distance.
 
 ## 4. Scheduled sync
 
-- `vercel.json` registers a daily Vercel Cron (Hobby plans only allow daily).
-- For 30-minute syncs, schedule it from Supabase (Database → Extensions: enable `pg_cron` and `pg_net`), then in the SQL editor:
-
-```sql
-select vault.create_secret('<CRON_SECRET>', 'loype_cron_secret');
-select cron.schedule('loype-sync', '*/30 * * * *', $$
-  select net.http_get(
-    url := 'https://<your-app>.vercel.app/api/cron/sync',
-    headers := jsonb_build_object('Authorization', 'Bearer ' ||
-      (select decrypted_secret from vault.decrypted_secrets where name = 'loype_cron_secret')),
-    timeout_milliseconds := 60000
-  );
-$$);
-```
+- Every 30 minutes Supabase `pg_cron` calls `/api/cron/sync` through `pg_net` (migration `0008`). The migration generates the bearer token itself and keeps it in Supabase Vault (`loype_scheduler_token`); the app checks it with `verify_scheduler_token()`, so nothing has to be copied between Vercel and Supabase.
+- The target URL is the Vault secret `loype_app_url` (default `https://loype.vercel.app`). To change it:
+  `select vault.update_secret((select id from vault.secrets where name = 'loype_app_url'), 'https://…');`
+- If Vercel Deployment Protection ever blocks that URL, add a [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret with `select vault.create_secret('<bypass>', 'loype_vercel_bypass');` and the scheduler sends it.
+- `vercel.json` also registers a daily Vercel Cron (Hobby plans only allow daily) as a backstop, authenticated with `CRON_SECRET`.
+- Check it: `select * from cron.job_run_details order by start_time desc limit 5;` and `select status_code, created from net._http_response order by created desc limit 5;`. More → Integrations shows when the scheduler last ran.
 
 ## 5. Local development
 
@@ -95,4 +87,4 @@ npm run lint && npm run typecheck
 
 Vercel project **loype** (team "Trym Bø's projects", functions in `arn1` Stockholm, next to the database) is linked to `trymboe/loype`; every push deploys, `main` goes to production. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are already set. Add the secret variables from §2, redeploy, then set the Supabase Site URL / redirect URLs to the production domain.
 
-Vercel Deployment Protection (Vercel Authentication) is on by default for `*.vercel.app` URLs. Vercel Cron is unaffected, but the Supabase pg_cron call in §4 needs either a custom domain or a [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret added as an `x-vercel-protection-bypass` header.
+Vercel Deployment Protection (Vercel Authentication) is on by default for `*.vercel.app` URLs. Vercel Cron is unaffected, With Standard Protection the production domain `loype.vercel.app` stays reachable for the pg_cron call in §4; if that ever changes, §4 explains the bypass secret.
