@@ -30,7 +30,8 @@ export const isMapTiler = (id: MapStyleId) => Boolean(MAPTILER_KEY) && id !== "m
 const KEY = "loype.mapStyle";
 const EVENT = "loype:map-style";
 
-function read(): MapStyleId {
+/** The remembered choice, read synchronously (for maps that don't offer a switch). */
+export function currentMapStyle(): MapStyleId {
   try {
     const v = localStorage.getItem(KEY) as MapStyleId | null;
     if (v && availableMapStyles().includes(v)) return v;
@@ -44,8 +45,8 @@ function read(): MapStyleId {
 export function useMapStyle(): [MapStyleId, (id: MapStyleId) => void] {
   const [id, setId] = useState<MapStyleId>("map");
   useEffect(() => {
-    setId(read());
-    const on = () => setId(read());
+    setId(currentMapStyle());
+    const on = () => setId(currentMapStyle());
     window.addEventListener(EVENT, on);
     return () => window.removeEventListener(EVENT, on);
   }, []);
