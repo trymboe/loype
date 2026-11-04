@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, CalendarDays, LineChart, Ellipsis, Sun } from "lucide-react";
+import { Activity, CalendarDays, LineChart, Map as MapIcon, Ellipsis, Sun } from "lucide-react";
 import clsx from "clsx";
 import { LogoMark, Wordmark } from "./logo";
 import { SyncButton } from "./sync/sync-button";
@@ -12,6 +12,7 @@ const ITEMS = [
   { href: "/plan", label: "Plan", icon: CalendarDays },
   { href: "/progress", label: "Progress", icon: LineChart },
   { href: "/activities", label: "Activities", icon: Activity },
+  { href: "/routes", label: "Routes", icon: MapIcon },
   { href: "/more", label: "More", icon: Ellipsis },
 ];
 
@@ -26,7 +27,7 @@ export function BottomNav() {
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-bg/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 md:hidden"
     >
-      <ul className="mx-auto grid max-w-lg grid-cols-5 px-1">
+      <ul className="mx-auto grid max-w-lg grid-cols-6 px-1">
         {ITEMS.map(({ href, label, icon: Icon }) => {
           const active = isActive(path, href);
           return (
