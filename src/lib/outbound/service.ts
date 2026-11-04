@@ -88,6 +88,8 @@ export interface PushResult {
 }
 
 const RUN_RECHECK_MS = 6 * 3600_000;
+/** Without a threshold pace, workouts go out with HR targets: look again soon so pace targets follow quickly once it's set. */
+const RUN_RECHECK_NO_PACE_MS = 10 * 60_000;
 
 /**
  * Brings Intervals.icu in line with the upcoming plan. Cheap when nothing
@@ -103,7 +105,7 @@ export async function pushPlannedWorkouts(db: SupabaseClient, userId: string, to
   try {
     // Refresh threshold pace / max HR now and then: they decide how targets are encoded.
     let run = settings.run;
-    if (!run || !settings.runCheckedAt || Date.now() - Date.parse(settings.runCheckedAt) > RUN_RECHECK_MS || opts.force) {
+    if (!run || !settings.runCheckedAt || Date.now() - Date.parse(settings.runCheckedAt) > (run.hasThresholdPace ? RUN_RECHECK_MS : RUN_RECHECK_NO_PACE_MS) || opts.force) {
       const athlete = await client.getAthlete();
       run = athlete.run;
       settings.run = run;
