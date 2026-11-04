@@ -48,6 +48,22 @@ Changing `TOKEN_ENCRYPTION_KEY` makes stored Garmin secrets unreadable; just pas
 2. In Løype: **More → Integrations → Connect Garmin**, paste the key and optionally its expiry date (for reminders).
 3. Choose a history start date and press **Import**. Keep the page open for the fastest import; otherwise the scheduler continues it in the background.
 
+## 3b. Strava (Apple Watch and other watches)
+
+Strava is a second, free activity source. Apple Watch runs reach it through the Strava iPhone app
+(You → Settings → Applications, Services and Devices → Health). No environment variables are needed:
+
+1. Create an API app at https://www.strava.com/settings/api. Set **Authorization Callback Domain** to the
+   app's host (e.g. `loype.vercel.app`).
+2. In Løype → More → Integrations → Strava, paste the Client ID and Client Secret and approve access on Strava.
+
+On connect Løype registers a webhook (`/api/strava/webhook`) so new runs import within a minute; the
+30-minute sync covers for it if registration fails. Strava has no original files for Apple Watch runs, so the
+stored raw source is a JSON bundle (activity detail + streams, `strava/<id>/<sha>.json`) normalized by
+`src/lib/integrations/strava/normalize.ts` (cadence ×2 to steps/min, pauses from gaps in the time stream).
+Rate limits (100 requests / 15 min) pause the import; the next tick continues. Runs recorded by both Garmin
+and Strava are de-duplicated by start time, duration and distance.
+
 ## 4. Scheduled sync
 
 - Every 30 minutes Supabase `pg_cron` calls `/api/cron/sync` through `pg_net` (migration `0008`). The migration generates the bearer token itself and keeps it in Supabase Vault (`loype_scheduler_token`); the app checks it with `verify_scheduler_token()`, so nothing has to be copied between Vercel and Supabase.

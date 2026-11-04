@@ -20,17 +20,18 @@ export async function updatePreferences(db: SupabaseClient, userId: string, patc
 
 export async function loadOnboardingFacts(db: SupabaseClient, userId: string): Promise<OnboardingFacts & { runCount: number }> {
   const [integ, runs, jobs, plan, prefs] = await Promise.all([
-    db.from("integrations").select("status").eq("user_id", userId).eq("provider", "garmin").maybeSingle(),
+    db.from("integrations").select("status").eq("user_id", userId).in("provider", ["garmin", "strava"]),
     db.from("activities").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("sport", "running").is("duplicate_of", null),
     db.from("sync_jobs").select("status").eq("user_id", userId).eq("kind", "historical"),
     db.from("training_plans").select("id").eq("user_id", userId).eq("status", "active").maybeSingle(),
     loadPreferences(db, userId),
   ]);
-  const status = integ.data?.status ?? "not_configured";
+  const statuses = (integ.data ?? []).map((r: { status: string }) => r.status);
   const runCount = runs.count ?? 0;
   const hist = jobs.data ?? [];
   return {
-    garminConnected: status === "connected" || status === "error",
+    // Garmin or Strava: either one is a working activity source
+    garminConnected: statuses.some((st) => st === "connected" || st === "error"),
     historyImported: runCount > 0 || hist.some((j) => j.status === "completed"),
     importRunning: hist.some((j) => ["queued", "discovering", "processing"].includes(j.status)),
     hasPlan: !!plan.data,

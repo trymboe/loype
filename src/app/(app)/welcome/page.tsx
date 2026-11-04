@@ -96,6 +96,13 @@ async function body(step: StepKey | "done", c: Ctx) {
             <li>Paste it below.</li>
           </ol>
           <GarminKeyForm replacing={false} />
+          <p className="mt-4 text-sm text-muted">
+            Apple Watch or another watch?{" "}
+            <Link href="/more/integrations#strava" className="font-medium text-accent underline underline-offset-2">
+              Connect Strava instead
+            </Link>
+            .
+          </p>
         </Card>
       );
     case "import": {

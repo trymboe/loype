@@ -40,7 +40,7 @@ function store(key: string, value?: string): string | null {
 }
 
 /**
- * Owns Garmin syncing for the whole app: syncs when the app opens or regains focus,
+ * Owns activity syncing (Garmin, Strava) for the whole app: syncs when the app opens or regains focus,
  * offers pull-to-refresh, and reveals runs that arrived since the last visit.
  */
 export function SyncProvider({
@@ -83,7 +83,7 @@ export function SyncProvider({
         const r = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error ?? `Sync failed (HTTP ${r.status})`);
-        if (j.authError) throw new Error("Garmin rejected your API key");
+        if (j.authError) throw new Error(String(j.authError));
         if (j.error) throw new Error(j.error);
         imported += j.processed ?? 0;
         if (j.done) break;

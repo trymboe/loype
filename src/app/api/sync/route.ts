@@ -23,7 +23,7 @@ export async function GET() {
   const integration = await getGarminIntegration(db, user.id);
   const { data: jobs } = await db
     .from("sync_jobs")
-    .select("id, kind, status, range_start, range_end, discovered, processed, failed, unavailable, skipped, last_error, created_at, finished_at")
+    .select("id, kind, provider, status, range_start, range_end, discovered, processed, failed, unavailable, skipped, last_error, created_at, finished_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(5);
@@ -55,11 +55,11 @@ export async function POST(request: NextRequest) {
     createIncremental: body.action === "sync",
     historicalFrom: body.action === "historical" ? body.from : undefined,
   });
-  // Outbound workouts are independent of the Garmin import: run even if it failed, never let it fail the request.
+  // Outbound workouts are independent of the activity import: run even if it failed, never let it fail the request.
   if (body.action === "sync" || out.done) {
     await pushPlannedWorkouts(db, user.id, todayIn(await userTimezone())).catch(() => null);
   }
-  if (!out.configured) return NextResponse.json({ error: "Garmin is not connected" }, { status: 409 });
+  if (!out.configured) return NextResponse.json({ error: "Neither Garmin nor Strava is connected" }, { status: 409 });
   return NextResponse.json({
     done: out.done ?? false,
     processed: out.processedThisTick ?? 0,

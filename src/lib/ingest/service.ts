@@ -9,6 +9,7 @@ import { GarminAuthError, GarminPersonalApiClient, type TokenStore } from "../in
 import { isoDate, runSyncTick, startHistoricalImport, type TickResult } from "./engine";
 import { SupabaseIngestRepo } from "./supabase-repo";
 import { syncWellness, type WellnessResult } from "./wellness";
+import { stravaTick } from "./strava-service";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -99,18 +100,84 @@ export interface UserTickOutcome extends Partial<TickResult> {
   error?: string;
 }
 
-/** One bounded unit of sync work for a user: activities first, wellness with leftover time. */
+/** One bounded unit of sync work for a user: activities first (Garmin, then Strava), wellness with leftover time. */
 export async function syncTickForUser(
   db: SupabaseClient,
   userId: string,
-  opts: { budgetMs: number; createIncremental: boolean; historicalFrom?: string },
+  opts: { budgetMs: number; createIncremental: boolean; historicalFrom?: string; only?: "garmin" | "strava" },
 ): Promise<UserTickOutcome> {
   const started = Date.now();
   const deadline = started + opts.budgetMs * 0.8;
+  const { data: profile } = await db.from("athlete_profile").select("timezone").eq("user_id", userId).maybeSingle();
+  const tz = profile?.timezone ?? "Europe/Oslo";
+
+  const garminOut = opts.only === "strava" ? ({ configured: false } as UserTickOutcome) : await garminTick(db, userId, tz, { ...opts, started, deadline });
+  const stravaOut =
+    opts.only === "garmin"
+      ? { configured: false }
+      : await stravaTick(db, userId, tz, { deadline, createIncremental: opts.createIncremental, historicalFrom: opts.historicalFrom });
+  if (!garminOut.configured && !stravaOut.configured) return { configured: false };
+
+  const parts = [garminOut.configured ? garminOut : null, stravaOut.configured ? stravaOut : null].filter((x): x is UserTickOutcome => x != null);
+  const label = (o: UserTickOutcome) => (o === garminOut ? "Garmin" : "Strava");
+  const sumCounters = parts.every((p) => !p.counters)
+    ? null
+    : parts.reduce(
+        (acc, p) => {
+          for (const k of Object.keys(acc) as (keyof typeof acc)[]) acc[k] += p.counters?.[k] ?? 0;
+          return acc;
+        },
+        { discovered: 0, processed: 0, failed: 0, unavailable: 0, skipped: 0, pending: 0 },
+      );
+  const errors = parts.filter((p) => p.error).map((p) => `${label(p)}: ${p.error}`);
+  const authErrors = parts.filter((p) => p.authError).map((p) => `${label(p)}: ${p.authError}`);
+  // A provider that errored, needs a reconnect or is rate limited doesn't hold the other back.
+  const done = parts.every((p) => p.done || p.error || p.authError || p.paused);
+  const anyImportDone = parts.some((p) => p.done);
+  const result: UserTickOutcome = {
+    configured: true,
+    job: garminOut.job ?? stravaOut.job,
+    counters: sumCounters,
+    processedThisTick: parts.reduce((n, p) => n + (p.processedThisTick ?? 0), 0),
+    done,
+    authError: authErrors.length ? authErrors.join(" · ") : undefined,
+    error: errors.length && errors.length === parts.length ? errors.join(" · ") : undefined,
+    wellness: garminOut.wellness,
+  };
+  if (!anyImportDone || !done) return result;
+
+  // Fitness model: cheap no-op when nothing changed, so run it whenever the queue is drained.
+  let fitness: UserTickOutcome["fitness"];
+  if (Date.now() < deadline) {
+    try {
+      fitness = await recomputeFitness(db, userId, todayIn(tz), deadline);
+    } catch (e) {
+      fitness = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  // Plan upkeep: link runs to planned workouts and propose adaptations (never applies them).
+  let plan: UserTickOutcome["plan"];
+  if (fitness && !("error" in fitness) && Date.now() < deadline) {
+    try {
+      plan = await runPlanMaintenance(db, userId, todayIn(tz));
+    } catch (e) {
+      plan = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { ...result, fitness, plan };
+}
+
+/** Garmin activities + wellness. */
+async function garminTick(
+  db: SupabaseClient,
+  userId: string,
+  tz: string,
+  opts: { createIncremental: boolean; historicalFrom?: string; started: number; deadline: number; budgetMs: number },
+): Promise<UserTickOutcome> {
+  const { started, deadline } = opts;
   const garmin = await buildGarminClient(db, userId, { deadline });
   if (!garmin) return { configured: false };
-  const { data: profile } = await db.from("athlete_profile").select("timezone").eq("user_id", userId).maybeSingle();
-  const repo = new SupabaseIngestRepo(db, userId, profile?.timezone ?? "Europe/Oslo");
+  const repo = new SupabaseIngestRepo(db, userId, tz);
 
   if (opts.historicalFrom) {
     await startHistoricalImport(repo, opts.historicalFrom, new Date());
@@ -158,23 +225,5 @@ export async function syncTickForUser(
       }
     }
   }
-  // Fitness model: cheap no-op when nothing changed, so run it whenever the queue is drained.
-  let fitness: UserTickOutcome["fitness"];
-  if (result.done && Date.now() < deadline) {
-    try {
-      fitness = await recomputeFitness(db, userId, todayIn(profile?.timezone ?? "Europe/Oslo"), deadline);
-    } catch (e) {
-      fitness = { error: e instanceof Error ? e.message : String(e) };
-    }
-  }
-  // Plan upkeep: link runs to planned workouts and propose adaptations (never applies them).
-  let plan: UserTickOutcome["plan"];
-  if (result.done && fitness && !("error" in fitness) && Date.now() < deadline) {
-    try {
-      plan = await runPlanMaintenance(db, userId, todayIn(profile?.timezone ?? "Europe/Oslo"));
-    } catch (e) {
-      plan = { error: e instanceof Error ? e.message : String(e) };
-    }
-  }
-  return { configured: true, ...result, wellness, fitness, plan };
+  return { configured: true, ...result, wellness };
 }

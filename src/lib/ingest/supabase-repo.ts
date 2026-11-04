@@ -28,7 +28,7 @@ const toRaw = (r: any): RawSourceRow => ({
   externalId: r.external_id,
   activityType: r.activity_type,
   startTime: r.start_time ? new Date(r.start_time) : null,
-  name: r.summary?.activityName ?? null,
+  name: r.summary?.activityName ?? r.summary?.name ?? null,
   status: r.status,
   attempts: r.attempts,
   filePath: r.file_path,
@@ -60,7 +60,7 @@ export class SupabaseIngestRepo implements IngestRepo {
     private readonly db: SupabaseClient,
     private readonly userId: string,
     private readonly timezone = "Europe/Oslo",
-    private readonly provider: "garmin" | "upload" = "garmin",
+    private readonly provider: "garmin" | "upload" | "strava" = "garmin",
   ) {}
 
   async getActiveJob() {
@@ -69,6 +69,7 @@ export class SupabaseIngestRepo implements IngestRepo {
         .from("sync_jobs")
         .select("*")
         .eq("user_id", this.userId)
+        .eq("provider", this.provider)
         .in("status", ["queued", "discovering", "processing"])
         .order("created_at", { ascending: true })
         .limit(1),
@@ -78,7 +79,7 @@ export class SupabaseIngestRepo implements IngestRepo {
 
   async getLastJob(kind: JobKind) {
     const rows = check(
-      await this.db.from("sync_jobs").select("*").eq("user_id", this.userId).eq("kind", kind).order("created_at", { ascending: false }).limit(1),
+      await this.db.from("sync_jobs").select("*").eq("user_id", this.userId).eq("provider", this.provider).eq("kind", kind).order("created_at", { ascending: false }).limit(1),
     );
     return rows?.[0] ? toJob(rows[0]) : null;
   }
@@ -158,6 +159,7 @@ export class SupabaseIngestRepo implements IngestRepo {
         .from("raw_activity_sources")
         .select("*")
         .eq("user_id", this.userId)
+        .eq("provider", this.provider)
         .lte("next_attempt_at", now.toISOString())
         .or(`status.in.(discovered,downloaded),and(status.eq.failed,attempts.lt.${maxAttempts})`)
         .order("start_time", { ascending: false })

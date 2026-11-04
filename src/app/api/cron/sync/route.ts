@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
   if (!bySecret && !(await validSchedulerToken(db, auth))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const { data: rows, error } = await db.from("integrations").select("user_id").eq("provider", "garmin").neq("status", "not_configured");
+  const { data: rows, error } = await db.from("integrations").select("user_id").in("provider", ["garmin", "strava"]).neq("status", "not_configured");
   if (error) return NextResponse.json({ error: "database error" }, { status: 500 });
   const results = [];
-  for (const r of rows ?? []) {
-    const out = await syncTickForUser(db, r.user_id, { budgetMs: 50_000, createIncremental: true });
-    await markScheduledRun(db, r.user_id);
+  for (const userId of new Set((rows ?? []).map((r) => r.user_id as string))) {
+    const out = await syncTickForUser(db, userId, { budgetMs: 50_000, createIncremental: true });
+    await markScheduledRun(db, userId);
     results.push({
       configured: out.configured,
       done: out.done,

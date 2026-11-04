@@ -80,6 +80,16 @@ export async function getIntegrationStatus() {
   return data as any | null;
 }
 
+export async function getStravaStatus() {
+  const db = await createUserClient();
+  const { data } = await db
+    .from("integrations")
+    .select("status, last_success_at, last_error, last_error_at, settings")
+    .eq("provider", "strava")
+    .maybeSingle();
+  return data as any | null;
+}
+
 export async function getActiveJob() {
   const db = await createUserClient();
   const { data } = await db

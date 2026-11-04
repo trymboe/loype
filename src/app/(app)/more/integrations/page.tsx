@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Link from "next/link";
-import { Send, Watch } from "lucide-react";
+import { Activity, Send, Watch } from "lucide-react";
 import { Badge, IconTile, PageHeader, type Tone } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
-import { getIntegrationStatus } from "@/lib/db/queries";
+import { getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
 import { relativeTime } from "@/lib/dates";
+import { StravaAppForm, StravaControls } from "./strava-panel";
+import { headers } from "next/headers";
 import { userTimezone } from "@/lib/user-tz";
 import { GarminKeyForm } from "./garmin-key-form";
 import { SyncPanel } from "./sync-panel";
@@ -23,16 +25,27 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   not_configured: { label: "Not connected", tone: "muted" },
 };
 
-export default async function IntegrationsPage() {
-  const [integration, tz] = await Promise.all([getIntegrationStatus(), userTimezone()]);
+const STRAVA_STATUS: Record<string, { label: string; tone: Tone }> = {
+  ...STATUS,
+  needs_reauth: { label: "Needs reconnect", tone: "hr" },
+};
+
+export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const [integration, strava, tz, sp, h] = await Promise.all([getIntegrationStatus(), getStravaStatus(), userTimezone(), searchParams, headers()]);
+  const callbackDomain = (h.get("x-forwarded-host") ?? h.get("host") ?? "loype.vercel.app").split(":")[0];
+  const stravaFlash = typeof sp.strava === "string" ? sp.strava : null;
+  const stravaFlashError = typeof sp.strava_error === "string" ? sp.strava_error : null;
   const db = await createUserClient();
   const { data: jobs } = await db
     .from("sync_jobs")
-    .select("id, kind, status, range_start, discovered, processed, failed, unavailable, skipped, last_error, created_at, finished_at")
+    .select("id, kind, provider, status, range_start, discovered, processed, failed, unavailable, skipped, last_error, created_at, finished_at")
     .order("created_at", { ascending: false })
     .limit(5);
   const status = STATUS[integration?.status ?? "not_configured"] ?? STATUS.not_configured;
   const connected = integration?.status === "connected" || integration?.status === "error";
+  const sStatus = STRAVA_STATUS[strava?.status ?? "not_configured"] ?? STRAVA_STATUS.not_configured;
+  const sConnected = Boolean(strava && strava.status !== "not_configured");
+  const sSettings = (strava?.settings ?? {}) as { athleteName?: string | null; webhookId?: number | null; webhookError?: string };
   const today = todayIn(tz);
   const [{ data: intervals }, { data: syncs }] = await Promise.all([
     db.from("integrations").select("status, last_success_at, last_error, settings").eq("provider", "intervals_icu").maybeSingle(),
@@ -98,7 +111,64 @@ export default async function IntegrationsPage() {
         </details>
       </section>
 
-      {connected && <SyncPanel initialJobs={jobs ?? []} />}
+      <section id="strava" className="card mb-3 scroll-mt-6 p-5">
+        <div className="mb-4 flex items-start gap-3.5">
+          <IconTile color="var(--hr)">
+            <Activity size={18} />
+          </IconTile>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Strava</p>
+              <Badge tone={sStatus.tone}>{sStatus.label}</Badge>
+            </div>
+            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
+              Imports runs from Strava, free. Use this for an Apple Watch (or any watch that syncs to Strava): GPS, heart rate, pace, cadence and laps.
+            </p>
+          </div>
+        </div>
+        {stravaFlash && (
+          <p className="mb-3 rounded-xl bg-good/10 px-3 py-2 text-sm text-good">
+            {stravaFlash === "connected" ? "Strava connected. New runs arrive within a minute of reaching Strava." : "Strava connected. New runs are picked up by the 30-minute sync."}
+          </p>
+        )}
+        {stravaFlashError && <p className="mb-3 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{stravaFlashError}</p>}
+        {sConnected && (
+          <div className="mb-4 space-y-2">
+            {sSettings.athleteName && <p className="text-xs text-muted">Signed in as {sSettings.athleteName}.</p>}
+            {strava?.last_success_at && (
+              <p className="text-xs text-muted">Last successful sync: {new Date(strava.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
+            )}
+            <p className="text-xs text-muted">
+              {sSettings.webhookId ? "Instant sync is on: Strava tells Løype when a new run is uploaded." : "Instant sync is off, so runs arrive with the 30-minute sync."}
+            </p>
+            {strava?.last_error && strava.status !== "connected" && <p className="text-sm text-danger">{strava.last_error}</p>}
+            <StravaControls canReconnect />
+          </div>
+        )}
+        <details open={!sConnected} className="group">
+          <summary className="mb-3 cursor-pointer text-sm font-semibold text-accent">{sConnected ? "Use a different Strava app" : "How to connect"}</summary>
+          <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
+            <li>
+              Apple Watch: in the Strava iPhone app go to You → Settings → Applications, Services and Devices → Health, and connect it so workouts are uploaded
+              automatically.
+            </li>
+            <li>
+              Open{" "}
+              <a className="font-medium text-accent underline underline-offset-2" href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">
+                strava.com/settings/api
+              </a>{" "}
+              and create an app (any name and category, website {`https://${callbackDomain}`}).
+            </li>
+            <li>
+              Set <span className="font-medium text-fg-2">Authorization Callback Domain</span> to <span className="font-mono text-fg-2">{callbackDomain}</span>.
+            </li>
+            <li>Copy the Client ID and Client Secret below. Strava then asks you to approve read access.</li>
+          </ol>
+          <StravaAppForm replacing={sConnected} />
+        </details>
+      </section>
+
+      {(connected || sConnected) && <SyncPanel initialJobs={jobs ?? []} />}
 
       {connected && wellnessErrors.length > 0 && (
         <p className="mt-3 px-1 text-xs text-muted">

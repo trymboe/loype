@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { relativeTime } from "@/lib/dates";
 import { useSync } from "./sync-provider";
 
-/** Sync status pill: shows when Garmin last synced and syncs on tap. */
+/** Sync status pill: shows when runs last synced and syncs on tap. */
 export function SyncButton({ className }: { className?: string }) {
   const { phase, lastSyncedAt, connected, error, sync } = useSync();
   // re-render every half minute so "Synced 2m ago" stays true
@@ -24,7 +24,7 @@ export function SyncButton({ className }: { className?: string }) {
       type="button"
       onClick={sync}
       disabled={syncing}
-      title={failed && error ? error : "Sync with Garmin"}
+      title={failed && error ? error : "Sync runs"}
       className={clsx(
         "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 pr-3.5 pl-3 text-xs font-medium transition-colors active:scale-[0.97] disabled:opacity-100",
         failed ? "text-warn" : "text-muted hover:text-fg",

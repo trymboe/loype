@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface SyncJob {
   id: string;
   kind: string;
+  provider?: string | null;
   status: string;
   range_start: string | null;
   discovered: number;
