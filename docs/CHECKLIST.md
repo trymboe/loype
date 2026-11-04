@@ -15,7 +15,10 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ Verified against a real key: token endpoint needs `Accept: */*`; data host and Bearer header work; 433 activities imported
 - ⏳ pg_cron 30-min schedule (needs the deployed URL + CRON_SECRET)
 - ⏳ Manual FIT upload path (same pipeline, provider `upload`)
-- ⏳ Data deletion UI (export exists)
+- ✅ Data deletion (More → Delete my data): training data only, or everything; rows via `delete_user_data()`, original files from Storage
+- ✅ 30-minute background sync via Supabase pg_cron + pg_net (token in Vault)
+- ✅ Guided first-run setup (`/welcome`): Garmin → history import → baseline summary → experience, injuries, session preferences → goal and plan
+- ✅ Calendar subscription feed (iCalendar) with one-tap Google Calendar / webcal subscribe, optional timed events
 
 ## Phase 2 — Fitness intelligence
 - ✅ Per-run features (`features@1`) and scores (`fitness@1`): TRIMP load, intensity (%HRR), efficiency factor, HR decoupling, HR-zone time, best efforts, classification with manual override

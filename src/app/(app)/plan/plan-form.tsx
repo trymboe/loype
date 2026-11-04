@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import clsx from "clsx";
+import type { AthleteBackground } from "@/lib/onboarding/state";
 import { createPlanAction, type PlanFormState } from "./actions";
 import { DAYS, GOALS } from "./goal-options";
 
@@ -15,6 +16,8 @@ export interface PlanFormDefaults {
   recentRuns: number;
   /** your usual run length (median, last 8 weeks), if any */
   runMinutes: number | null;
+  /** what the athlete told us during setup */
+  background?: AthleteBackground;
 }
 
 export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
@@ -132,10 +135,16 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
       </section>
 
       <section className="divide-hairline overflow-hidden rounded-2xl bg-surface-2 text-[0.9375rem]">
-        <Toggle name="intervals" label="Include interval sessions" />
-        <Toggle name="long_runs" label="Include long runs" />
+        <Toggle name="intervals" label="Include interval sessions" defaultChecked={defaults.background?.intervals ?? true} />
+        <Toggle name="long_runs" label="Include long runs" defaultChecked={defaults.background?.longRuns ?? true} />
         <Toggle name="strides" label="Include strides on easy days" />
       </section>
+      {defaults.background?.injuryConcern && (
+        <p className="rounded-xl bg-warn/10 p-3 text-sm leading-snug">
+          You noted an injury to work around{defaults.background.injuryNote ? `: “${defaults.background.injuryNote}”` : ""}. Leave rest days between runs and
+          turn off sessions that aggravate it.
+        </p>
+      )}
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
       <button disabled={pending} className="btn btn-primary btn-block min-h-12">
