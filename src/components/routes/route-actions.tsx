@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Download, Pencil, Star, Trash2 } from "lucide-react";
+import { OpenInGoogleMaps } from "./google-maps";
+import type { LngLat } from "@/lib/routes/geometry";
 import { deleteRouteAction, renameRouteAction, toggleFavoriteAction } from "@/app/(app)/routes/actions";
 
-export function RouteActions({ id, name, favorite, editable }: { id: string; name: string; favorite: boolean; editable: boolean }) {
+export function RouteActions({ id, name, favorite, editable, coords }: { id: string; name: string; favorite: boolean; editable: boolean; coords: LngLat[] }) {
   const [pending, start] = useTransition();
   const [renaming, setRenaming] = useState(false);
   const [value, setValue] = useState(name);
@@ -18,6 +20,7 @@ export function RouteActions({ id, name, favorite, editable }: { id: string; nam
         <a href={`/api/routes/${id}/gpx`} className="btn btn-primary btn-sm" download>
           <Download size={16} /> Export GPX
         </a>
+        <OpenInGoogleMaps coords={coords} />
         <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(() => toggleFavoriteAction(id, !favorite))} aria-pressed={favorite}>
           <Star size={16} className={favorite ? "fill-[var(--warn)] text-warn" : undefined} /> {favorite ? "Favourite" : "Add to favourites"}
         </button>

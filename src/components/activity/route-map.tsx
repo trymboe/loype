@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import clsx from "clsx";
 import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
 import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
+import { SURFACE_COLOR_EXPR, surfaceGeoJson, type SurfaceSegment } from "@/lib/routes/surface";
 
 
 type Coord = [number, number];
@@ -14,10 +15,13 @@ export function RouteMap({
   coords,
   hover,
   highlight,
+  surface = null,
 }: {
   coords: Coord[]; // [lng, lat]
   hover: Coord | null;
   highlight: Coord[] | null;
+  /** When set, the route is drawn coloured by surface type. */
+  surface?: SurfaceSegment[] | null;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MlMap | null>(null);
@@ -26,8 +30,8 @@ export function RouteMap({
   const [style, setStyle] = useMapStyle();
   const styleRef = useRef(style);
   // latest overlay data, re-applied whenever the base style is swapped
-  const live = useRef({ hover, highlight });
-  live.current = { hover, highlight };
+  const live = useRef({ hover, highlight, surface });
+  live.current = { hover, highlight, surface };
 
   useEffect(() => {
     if (!el.current || coords.length < 2) return;
@@ -63,6 +67,8 @@ export function RouteMap({
         m.addSource("route", { type: "geojson", data: line(coords) });
         m.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#000", "line-opacity": 0.35, "line-width": 7 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": accent, "line-width": 4 }, layout: { "line-join": "round", "line-cap": "round" } });
+        m.addSource("surface", { type: "geojson", data: surfaceGeoJson(null) });
+        m.addLayer({ id: "surface", type: "line", source: "surface", paint: { "line-color": SURFACE_COLOR_EXPR, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addSource("highlight", { type: "geojson", data: line([]) });
         m.addLayer({ id: "highlight", type: "line", source: "highlight", paint: { "line-color": "#ffffff", "line-width": 6 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addSource("hover", { type: "geojson", data: point(null) });
@@ -79,6 +85,7 @@ export function RouteMap({
         });
         (m.getSource("highlight") as GeoJSONSource).setData(line(live.current.highlight ?? []));
         (m.getSource("hover") as GeoJSONSource).setData(point(live.current.hover));
+        (m.getSource("surface") as GeoJSONSource).setData(surfaceGeoJson(live.current.surface));
       });
     })();
     return () => {
@@ -105,6 +112,10 @@ export function RouteMap({
     if (!ready.current || !map.current) return;
     (map.current.getSource("hover") as GeoJSONSource | undefined)?.setData(point(hover));
   }, [hover]);
+
+  useEffect(() => {
+    (map.current?.getSource("surface") as GeoJSONSource | undefined)?.setData(surfaceGeoJson(surface));
+  }, [surface]);
 
   useEffect(() => {
     if (!ready.current || !map.current) return;

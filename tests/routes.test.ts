@@ -15,6 +15,9 @@ import {
 import { decodePolyline, encodePolyline } from "@/lib/routes/polyline";
 import { generateLoop, RoutingError, ValhallaProvider, type RoutingProvider } from "@/lib/routes/routing";
 import { gpxFileName, routeToGpx, toGpx } from "@/lib/routes/gpx";
+import { classifySurface, summarizeSurfaces, surfacePercents } from "@/lib/routes/surface";
+import { googleMapsUrl, viaIndices } from "@/lib/routes/google-maps";
+import { densify } from "@/lib/routes/geometry";
 
 const OSLO: LngLat = [10.7522, 59.9139];
 
@@ -123,6 +126,9 @@ function fakeRouter(detour: number, failFirst = 0): RoutingProvider & { calls: n
     async elevation(points) {
       return points.map(() => 100);
     },
+    async surfaces() {
+      return summarizeSurfaces([], []);
+    },
   };
 }
 
@@ -201,5 +207,105 @@ describe("gpx", () => {
   it("makes safe file names", () => {
     expect(gpxFileName("Løype rundt Sognsvann!")).toBe("loype-rundt-sognsvann.gpx");
     expect(gpxFileName("***")).toBe("route.gpx");
+  });
+});
+
+describe("densify", () => {
+  it("fills long steps", () => {
+    const line: LngLat[] = [OSLO, destination(OSLO, 90, 1000)];
+    const d = densify(line, 40);
+    expect(d.length).toBe(26);
+    expect(d[0]).toEqual(OSLO);
+    expect(d[d.length - 1]).toEqual(line[1]);
+    for (let i = 1; i < d.length; i++) expect(segmentLength(d[i - 1], d[i])).toBeLessThanOrEqual(40.01);
+  });
+});
+
+describe("surface", () => {
+  it("groups Valhalla surfaces into running-relevant classes", () => {
+    expect(classifySurface("paved_smooth")).toBe("paved");
+    expect(classifySurface("paved")).toBe("paved");
+    expect(classifySurface("paved_rough")).toBe("rough");
+    expect(classifySurface("compacted")).toBe("gravel");
+    expect(classifySurface("gravel")).toBe("gravel");
+    expect(classifySurface("dirt")).toBe("trail");
+    expect(classifySurface("path")).toBe("trail");
+    expect(classifySurface(undefined)).toBe("unknown");
+    expect(classifySurface("impassable")).toBe("unknown");
+  });
+
+  it("sums metres per class, merges stretches and computes the soft share", () => {
+    const shape = Array.from({ length: 11 }, (_, i) => destination(OSLO, 0, i * 100));
+    const s = summarizeSurfaces(shape, [
+      { surface: "paved", begin_shape_index: 0, end_shape_index: 3 },
+      { surface: "paved_smooth", begin_shape_index: 3, end_shape_index: 5 },
+      { surface: "gravel", begin_shape_index: 5, end_shape_index: 8 },
+      { surface: "path", begin_shape_index: 8, end_shape_index: 10 },
+      { surface: "dirt", length: 0.25 }, // no shape indices: counted, not drawn
+    ]);
+    expect(s.metres.paved).toBeCloseTo(500, 0);
+    expect(s.metres.gravel).toBeCloseTo(300, 0);
+    expect(s.metres.trail).toBeCloseTo(450, 0);
+    expect(s.totalM).toBeCloseTo(1250, 0);
+    expect(s.softPct).toBeCloseTo((750 / 1250) * 100, 1);
+    expect(s.segments.map((x) => x.cls)).toEqual(["paved", "gravel", "trail"]);
+    expect(s.segments[0].coords).toHaveLength(6);
+  });
+
+  it("leaves unknown surfaces out of the soft share and rounds percents to 100", () => {
+    const s = summarizeSurfaces([], [{ surface: null, length: 1 }]);
+    expect(s.softPct).toBeNull();
+    const p = surfacePercents({ paved: 1, rough: 1, gravel: 1, trail: 0, unknown: 0 });
+    expect(p.paved + p.rough + p.gravel).toBe(100);
+  });
+
+  it("asks Valhalla trace_attributes for edge surfaces", async () => {
+    let path = "";
+    let body: Record<string, unknown> = {};
+    const shape: LngLat[] = [OSLO, [10.76, 59.915], [10.77, 59.92]];
+    const fake = (async (url: string, init: RequestInit) => {
+      path = url;
+      body = JSON.parse(String(init.body));
+      return new Response(
+        JSON.stringify({
+          shape: encodePolyline(shape),
+          edges: [
+            { surface: "paved", begin_shape_index: 0, end_shape_index: 1 },
+            { surface: "gravel", begin_shape_index: 1, end_shape_index: 2 },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const res = await new ValhallaProvider("https://x", fake).surfaces(shape, { gps: true });
+    expect(path).toBe("https://x/trace_attributes");
+    expect(body.shape_match).toBe("map_snap");
+    expect(decodePolyline(body.encoded_polyline as string)).toHaveLength(3);
+    expect(res.segments).toHaveLength(2);
+    expect(res.softPct).toBeGreaterThan(0);
+    expect(res.softPct).toBeLessThan(100);
+  });
+});
+
+describe("google maps link", () => {
+  it("spreads at most 8 via points evenly along the route", () => {
+    const line = Array.from({ length: 101 }, (_, i) => destination(OSLO, 90, i * 100));
+    const idx = viaIndices(line);
+    expect(idx).toHaveLength(8);
+    expect(idx[0]).toBeGreaterThan(5);
+    expect(idx[7]).toBeLessThan(95);
+    expect(viaIndices([OSLO, line[1]])).toEqual([]);
+  });
+
+  it("builds a walking directions URL for a loop", () => {
+    const loop = [...loopWaypoints(OSLO, 6000, 0, 12)];
+    const url = new URL(googleMapsUrl(loop)!);
+    expect(url.origin + url.pathname).toBe("https://www.google.com/maps/dir/");
+    expect(url.searchParams.get("api")).toBe("1");
+    expect(url.searchParams.get("travelmode")).toBe("walking");
+    expect(url.searchParams.get("origin")).toBe("59.913900,10.752200");
+    expect(url.searchParams.get("destination")).toBe("59.913900,10.752200");
+    expect(url.searchParams.get("waypoints")!.split("|").length).toBe(8);
+    expect(googleMapsUrl([OSLO])).toBeNull();
   });
 });
