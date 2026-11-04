@@ -7,6 +7,7 @@ import clsx from "clsx";
 interface Job {
   id: string;
   kind: string;
+  provider?: string | null;
   status: string;
   range_start: string | null;
   discovered: number;
@@ -138,6 +139,7 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
               <div key={j.id} className="p-4 text-sm">
                 <div className="flex items-baseline justify-between">
                   <span className="font-semibold capitalize">
+                    {j.provider === "strava" ? "Strava · " : j.provider === "garmin" ? "Garmin · " : ""}
                     {j.kind} sync{j.range_start ? ` from ${j.range_start}` : ""}
                   </span>
                   <span className={clsx("text-xs font-medium capitalize", ACTIVE.includes(j.status) ? "text-accent" : j.status === "failed" ? "text-danger" : j.status === "done" ? "text-good" : "text-muted")}>

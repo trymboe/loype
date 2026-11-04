@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/manifest.webmanifest", "/icon.svg"];
+const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/api/strava/callback", "/api/strava/webhook", "/manifest.webmanifest", "/icon.svg"];
 
 /** Refreshes the Supabase session cookie and keeps the app private to ALLOWED_EMAIL. */
 export async function middleware(request: NextRequest) {

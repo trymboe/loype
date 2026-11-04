@@ -10,9 +10,10 @@ import {
 } from "../integrations/garmin/client";
 import { isRunningType, parseActivityRef } from "../integrations/garmin/summary";
 import type { DiscoveredItem, IngestRepo, JobCounters, RawSourceRow, SyncJob } from "./types";
+import type { NormalizedActivity } from "../fit/types";
 
 /**
- * Durable, resumable Garmin ingestion.
+ * Durable, resumable activity ingestion (Garmin, Strava).
  *
  * A tick does a bounded amount of work and returns before `deadline`:
  *   1. discovery: page through the activity list for the job's date range and
@@ -30,9 +31,84 @@ export const RUN_SPORTS = new Set(["running", "walking", "hiking", "training", "
 
 export type GarminLike = Pick<GarminPersonalApiClient, "listActivities" | "downloadOriginalFit">;
 
+/** What the engine does with an error from a source. */
+export type ErrorClass =
+  | "auth" // credentials rejected: stop the tick, surface "reconnect"
+  | "stop" // e.g. rate limited: stop the tick quietly, next tick continues
+  | "unavailable" // the activity is gone / has no file: never retry
+  | "permanent" // the file can't be parsed: fail without further retries
+  | "retry";
+
+/**
+ * A provider of recorded activities (Garmin, Strava). The engine owns the
+ * job/queue bookkeeping; a source only lists, downloads and parses.
+ */
+export interface ActivitySource {
+  /** Storage prefix and file extension for the stored original. */
+  name: string;
+  fileExt: string;
+  listPage(args: { offset: number; limit: number; rangeStart: string | null; rangeEnd: string | null }): Promise<{
+    items: DiscoveredItem[];
+    /** entries returned by the provider (before filtering) */
+    count: number;
+    /** the provider returned entries older than the range: discovery is complete */
+    reachedOlder: boolean;
+  }>;
+  download(externalId: string): Promise<Uint8Array>;
+  parse(bytes: Uint8Array): NormalizedActivity;
+  classifyError(e: unknown): ErrorClass;
+}
+
+export class SourceAuthError extends Error {}
+class StopTick extends Error {}
+
+export function garminSource(garmin: GarminLike): ActivitySource {
+  return {
+    name: "garmin",
+    fileExt: "fit",
+    async listPage({ offset, limit, rangeStart, rangeEnd }) {
+      const page = await garmin.listActivities({ start: offset, limit, startDate: rangeStart ?? undefined, endDate: rangeEnd ?? undefined });
+      const entries = Array.isArray(page) ? page : [];
+      const rangeStartMs = rangeStart ? Date.parse(`${rangeStart}T00:00:00Z`) - 86400_000 : -Infinity;
+      const items: DiscoveredItem[] = [];
+      let reachedOlder = false;
+      for (const e of entries) {
+        const ref = parseActivityRef(e);
+        if (!ref) continue;
+        // Defensive: if the API ignores date filters, stop once we are past the range.
+        if (ref.startTime && ref.startTime.getTime() < rangeStartMs) {
+          reachedOlder = true;
+          continue;
+        }
+        items.push({
+          externalId: ref.externalId,
+          activityType: ref.type,
+          startTime: ref.startTime,
+          name: ref.name,
+          raw: ref.raw,
+          status: isRunningType(ref.type) ? "discovered" : "skipped_type",
+        });
+      }
+      return { items, count: entries.length, reachedOlder };
+    },
+    async download(id) {
+      return (await garmin.downloadOriginalFit(id)).bytes;
+    },
+    parse: parseFitActivity,
+    classifyError(e) {
+      if (e instanceof GarminAuthError) return "auth";
+      if (e instanceof GarminNotFoundError || e instanceof NotFitError) return "unavailable";
+      if (e instanceof FitParseError) return "permanent";
+      return "retry";
+    },
+  };
+}
+
 export interface TickContext {
   repo: IngestRepo;
-  garmin: GarminLike;
+  /** Either a source, or (legacy/tests) a Garmin client that is wrapped as one. */
+  source?: ActivitySource;
+  garmin?: GarminLike;
   now?: () => Date;
   /** epoch ms after which no new unit of work is started */
   deadline: number;
@@ -44,6 +120,8 @@ export interface TickResult {
   processedThisTick: number;
   done: boolean;
   authError?: string;
+  /** The source asked to stop for now (rate limit); the next tick continues. */
+  paused?: string;
 }
 
 export const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -69,38 +147,27 @@ export async function startHistoricalImport(repo: IngestRepo, fromDate: string, 
   return repo.createJob("historical", fromDate, isoDate(addDays(now, 1)));
 }
 
+function sourceOf(ctx: TickContext): ActivitySource {
+  if (ctx.source) return ctx.source;
+  if (ctx.garmin) return garminSource(ctx.garmin);
+  throw new Error("TickContext needs a source");
+}
+
 async function discoverPage(ctx: TickContext, job: SyncJob): Promise<boolean> {
   const offset = job.cursor.offset ?? 0;
-  const page = await ctx.garmin.listActivities({
-    start: offset,
-    limit: PAGE_SIZE,
-    startDate: job.rangeStart ?? undefined,
-    endDate: job.rangeEnd ?? undefined,
-  });
-  const entries = Array.isArray(page) ? page : [];
-  const rangeStartMs = job.rangeStart ? Date.parse(`${job.rangeStart}T00:00:00Z`) - 86400_000 : -Infinity;
-  const items: DiscoveredItem[] = [];
-  let reachedOlder = false;
-  for (const e of entries) {
-    const ref = parseActivityRef(e);
-    if (!ref) continue;
-    // Defensive: if the API ignores date filters, stop once we are past the range.
-    if (ref.startTime && ref.startTime.getTime() < rangeStartMs) {
-      reachedOlder = true;
-      continue;
-    }
-    items.push({
-      externalId: ref.externalId,
-      activityType: ref.type,
-      startTime: ref.startTime,
-      name: ref.name,
-      raw: ref.raw,
-      status: isRunningType(ref.type) ? "discovered" : "skipped_type",
-    });
+  const source = sourceOf(ctx);
+  let page;
+  try {
+    page = await source.listPage({ offset, limit: PAGE_SIZE, rangeStart: job.rangeStart, rangeEnd: job.rangeEnd });
+  } catch (e) {
+    const cls = source.classifyError(e);
+    if (cls === "auth") throw new SourceAuthError(e instanceof Error ? e.message : String(e));
+    if (cls === "stop") throw new StopTick(e instanceof Error ? e.message : String(e));
+    throw e;
   }
-  await ctx.repo.insertDiscovered(items, job.id);
-  const done = entries.length < PAGE_SIZE || reachedOlder;
-  job.cursor = { offset: offset + entries.length, discoveryDone: done };
+  await ctx.repo.insertDiscovered(page.items, job.id);
+  const done = page.count < PAGE_SIZE || page.reachedOlder;
+  job.cursor = { offset: offset + page.count, discoveryDone: done };
   await ctx.repo.updateJob(job.id, { cursor: job.cursor, status: done ? "processing" : "discovering" });
   return done;
 }
@@ -109,23 +176,23 @@ async function discoverPage(ctx: TickContext, job: SyncJob): Promise<boolean> {
 export async function processOne(ctx: TickContext, raw: RawSourceRow): Promise<void> {
   const now = ctx.now?.() ?? new Date();
   const { repo } = ctx;
+  const source = sourceOf(ctx);
   try {
     let bytes: Uint8Array;
     if (raw.filePath) {
       bytes = await repo.loadFile(raw.filePath);
     } else {
-      const file = await ctx.garmin.downloadOriginalFit(raw.externalId);
-      bytes = file.bytes;
+      bytes = await source.download(raw.externalId);
       const sha = createHash("sha256").update(bytes).digest("hex");
-      const path = `garmin/${raw.externalId}/${sha}.fit`;
+      const path = `${source.name}/${raw.externalId}/${sha}.${source.fileExt}`;
       await repo.storeFile(path, bytes);
       await repo.updateRaw(raw.id, { status: "downloaded", filePath: path, fileSha256: sha, fileBytes: bytes.length, fetchedAt: now });
       raw = { ...raw, filePath: path, status: "downloaded" };
     }
 
-    const activity = parseFitActivity(bytes);
+    const activity = source.parse(bytes);
     if (!RUN_SPORTS.has(activity.sport)) {
-      await repo.updateRaw(raw.id, { status: "skipped_type", lastError: `FIT sport is ${activity.sport}`, processedAt: now });
+      await repo.updateRaw(raw.id, { status: "skipped_type", lastError: `Sport is ${activity.sport}`, processedAt: now });
       return;
     }
     const derived = deriveActivity(activity);
@@ -141,13 +208,15 @@ export async function processOne(ctx: TickContext, raw: RawSourceRow): Promise<v
     await repo.saveActivity(raw, activity, derived);
     await repo.updateRaw(raw.id, { status: "processed", lastError: null, processedAt: now });
   } catch (e) {
-    if (e instanceof GarminAuthError) throw e;
-    if (e instanceof GarminNotFoundError || e instanceof NotFitError) {
-      await repo.updateRaw(raw.id, { status: "unavailable", lastError: e.message, processedAt: now });
+    const cls = source.classifyError(e);
+    if (cls === "auth") throw new SourceAuthError(e instanceof Error ? e.message : String(e));
+    if (cls === "stop") throw new StopTick(e instanceof Error ? e.message : String(e));
+    if (cls === "unavailable") {
+      await repo.updateRaw(raw.id, { status: "unavailable", lastError: e instanceof Error ? e.message : String(e), processedAt: now });
       return;
     }
     const attempts = raw.attempts + 1;
-    const permanent = e instanceof FitParseError;
+    const permanent = cls === "permanent";
     await repo.updateRaw(raw.id, {
       status: "failed",
       attempts: permanent ? MAX_ATTEMPTS : attempts,
@@ -188,9 +257,13 @@ export async function runSyncTick(ctx: TickContext, opts: { createIncremental?: 
       }
     }
   } catch (e) {
-    if (e instanceof GarminAuthError) {
+    if (e instanceof SourceAuthError || e instanceof GarminAuthError) {
       if (job) await repo.updateJob(job.id, { lastError: e.message });
       return { job, counters: job ? await repo.countForJob(job.id, MAX_ATTEMPTS) : null, processedThisTick, done: false, authError: e.message };
+    }
+    if (e instanceof StopTick) {
+      if (job) await repo.updateJob(job.id, { lastError: e.message });
+      return { job, counters: job ? await repo.countForJob(job.id, MAX_ATTEMPTS) : null, processedThisTick, done: false, paused: e.message };
     }
     if (job) await repo.updateJob(job.id, { lastError: sanitizeError(e) });
     throw e;

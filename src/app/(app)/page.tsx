@@ -6,7 +6,7 @@ import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { FitnessSnapshotCard, InsightCard, RaceGoalCard } from "@/components/today/cards";
-import { activitiesSince, getFitnessState, getIntegrationStatus } from "@/lib/db/queries";
+import { activitiesSince, getFitnessState, getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
 import { createUserClient } from "@/lib/db/server";
 import { loadProgressMotivation } from "@/lib/progress/service";
 import { pickInsight } from "@/lib/progress/insight";
@@ -26,9 +26,10 @@ export default async function TodayPage() {
   const thisWeek = weekStart(today);
   const from = addDaysIso(thisWeek, -7 * 7);
   const db = await createUserClient();
-  const [acts, integration, fitness, { data: plan }, { data: proposal }] = await Promise.all([
+  const [acts, integration, strava, fitness, { data: plan }, { data: proposal }] = await Promise.all([
     activitiesSince(from),
     getIntegrationStatus(),
+    getStravaStatus().catch(() => null),
     getFitnessState(),
     db.from("training_plans").select("id, weeks, goal:goals(*)").eq("status", "active").maybeSingle(),
     db.from("adaptation_proposals").select("title").eq("status", "pending").order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -69,7 +70,7 @@ export default async function TodayPage() {
   for (const a of runs) if (a.local_date >= thisWeek) dayDist.set(a.local_date, (dayDist.get(a.local_date) ?? 0) + (a.distance_m ?? 0));
   const maxDay = Math.max(1, ...dayDist.values());
   const maxWeek = Math.max(1, ...weeks.map((w) => w.distanceM));
-  const connected = integration && integration.status !== "not_configured";
+  const connected = (integration && integration.status !== "not_configured") || (strava && strava.status !== "not_configured");
   const weekPct = priorAvg > 0 ? Math.min(100, (current.distanceM / priorAvg) * 100) : 0;
 
   return (
@@ -79,15 +80,15 @@ export default async function TodayPage() {
         title="Today"
         action={connected ? <SyncButton className="mb-1" /> : undefined}
       />
-      <SyncBanner integration={integration} />
+      <SyncBanner integration={integration} strava={strava} />
 
       {!connected && acts.length === 0 ? (
         <EmptyState
           icon={<Watch size={22} />}
           title="Let's get your training history in"
-          action={<ButtonLink href="/more/integrations">Connect Garmin</ButtonLink>}
+          action={<ButtonLink href="/more/integrations">Connect your watch</ButtonLink>}
         >
-          Løype builds everything from your real runs. Connect your Garmin account with a Personal API key and import at least 3–6 months of history to establish
+          Løype builds everything from your real runs. Connect Garmin, or Strava for an Apple Watch, and import at least 3–6 months of history to establish
           a baseline.
         </EmptyState>
       ) : (
