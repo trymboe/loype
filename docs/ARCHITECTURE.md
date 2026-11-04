@@ -18,7 +18,6 @@ Supabase project (Postgres + Auth + Storage). No separate microservices.
 │  src/lib/analytics/     PURE functions: moving time, splits, quality,       │
 │                         duplicates, zones, load, predictions (Phase 2+)     │
 │  src/lib/planning/      PURE plan generation + adaptation rules (Phase 3)   │
-│  src/lib/coach/         LLM orchestration with typed tools (Phase 5)        │
 │  src/lib/db/            Supabase clients + typed repositories               │
 └────────────────────────────────────────────────────────────────────────────┘
           │ service role (server only)              │ user session (RLS)
@@ -37,7 +36,6 @@ Separation of concerns (spec §3):
 | Data ingestion | `lib/ingest`, `lib/integrations/garmin` | Only place that talks to Garmin. Idempotent. |
 | Fitness calculations | `lib/analytics` | Pure, deterministic, versioned (`MODEL_VERSIONS`), unit-tested. No I/O. |
 | Plan generation / adaptation | `lib/planning` | Pure, rule-based, tested against scenario fixtures. |
-| AI coaching | `lib/coach` | LLM reads computed outputs; writes only via typed, validated tool calls that create *proposals*. |
 | Integrations | `lib/integrations/*` | Behind interfaces; outbound (Intervals.icu) independent of inbound (Garmin). |
 | Presentation | `app/`, `components/` | Reads from DB; never computes fitness itself. |
 
@@ -49,7 +47,7 @@ Key technical decisions:
 4. **Durable, resumable sync without a queue service.** A `sync_jobs` row tracks a job; `raw_activity_sources` doubles as the work queue (`status`, `attempts`, `next_attempt_at`). Each invocation is time-boxed (~45 s), processes what it can, and the next tick continues. Exponential backoff per item; job-level errors are surfaced in the UI.
 5. **Single-user auth**: Supabase magic link, plus `ALLOWED_EMAIL` enforced in middleware and the auth callback. RLS on every table (`user_id = auth.uid()`). Background jobs use the service-role key server-side only.
 6. **Secrets**: Garmin Personal API key lives in a Vercel env var (`GARMIN_PERSONAL_API_KEY`). The 24 h access token is cached in `integrations.secret_ciphertext`, AES-256-GCM encrypted with `TOKEN_ENCRYPTION_KEY`. Nothing secret is ever sent to the browser or logged.
-7. **Provenance everywhere**: every number is tagged as `measured` (from device), `calculated` (deterministic from measured), `estimated` (model-based, with model version + confidence) or `ai` (LLM interpretation). The UI shows this.
+7. **Provenance everywhere**: every number is tagged as `measured` (from device), `calculated` (deterministic from measured), `estimated` (model-based, with model version + confidence). The UI shows this.
 8. **Maps**: MapLibre GL with OpenFreeMap vector tiles (OSM data, no API key). Routing for the route planner (Phase 5): OpenRouteService `foot-walking`/`foot-hiking` profiles or GraphHopper (needs a free key).
 9. **Charts**: Recharts with a shared hover index so pace/HR/cadence/elevation charts and the map cursor are synchronized.
 
@@ -90,7 +88,7 @@ Later phases add the rest via new migrations; the shapes below are the plan.
 
 **Outbound + extras (Phase 4–5)**
 - `external_workout_syncs` — planned_workout_id, provider, external_id (stable `loype-<uuid>`), payload hash, remote id, state (`pending/sent/parsed/mismatch/on_watch/failed/removed`), parse check, last checked (migration 0005, see `docs/WATCH.md`).
-- `routes` (GeoJSON LineString, distance, elevation, favorite), `coach_conversations` + `coach_messages` (verbatim API messages, append-only; migration 0006, see `docs/COACH.md`), `calendar_feeds`.
+- `routes` (GeoJSON LineString, distance, elevation, favorite), `calendar_feeds`.
 
 Units: SI everywhere in the DB (metres, seconds, m/s, bpm, steps/min, °C). Timestamps are `timestamptz` (UTC); local date stored separately for calendar logic.
 
@@ -118,13 +116,13 @@ Unverified until tested with a real key (handled defensively in code):
 ### vívoactive 5 — capabilities assumed
 GPS, wrist HR, cadence, laps, structured workouts with pace/HR targets; no course navigation → routes stay web-only (spec §13). Running dynamics (GCT, vertical oscillation) and power are not expected; we don't depend on them.
 
-### LLM — feasible
-Anthropic Claude API (`ANTHROPIC_API_KEY`, model configurable) with tool use. Tools return proposals that pass deterministic validation before anything is written.
+### LLM — not used
+The app makes no LLM API calls. An AI coach chat was built and then removed at the owner's request; all coaching logic is deterministic.
 
 ## 4. Prioritized implementation plan
 
 **Phase 1 — Foundations & Garmin ingestion (this PR)**
-1. App shell: mobile bottom nav (Today, Plan, Progress, Activities, Coach, More), dark/light theme, PWA manifest.
+1. App shell: mobile bottom nav (Today, Plan, Progress, Activities, More), dark/light theme, PWA manifest.
 2. Supabase schema 0001 + RLS + storage bucket; single-user magic-link auth.
 3. Garmin client: token acquisition/caching/renewal, retry/backoff, ZIP→FIT extraction.
 4. Sync engine: historical import from a chosen date, incremental sync (overlap window), time-boxed resumable processing, per-item backoff, unavailable vs failed, duplicate detection, provenance.
@@ -138,7 +136,7 @@ Anthropic Claude API (`ANTHROPIC_API_KEY`, model configurable) with tool use. To
 
 **Phase 4 — Workout export**: Intervals.icu text encoder + bulk upsert, sync state per workout, FIT workout export, hardware validation checklist.
 
-**Phase 5 — Premium**: Claude coach with typed tools, insights ("Your training is paying off"), milestones, race page + pacing plan, routes (MapLibre + routing provider, GPX export), iCal feed + optional Google Calendar, animations.
+**Phase 5 — Premium**: insights ("Your training is paying off"), milestones, race page + pacing plan, routes (MapLibre + routing provider, GPX export), iCal feed + optional Google Calendar, animations.
 
 ## 5. Key risks and decisions
 
