@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { elevationAlong } from "@/lib/routes/elevation";
-import { simplify, type LngLat } from "@/lib/routes/geometry";
+import { routeFromActivity } from "@/lib/routes/from-activity";
 import { prepareRoute, type RouteDraft } from "@/lib/routes/prepare";
 import { routingProvider } from "@/lib/routes/routing";
 
@@ -110,41 +110,8 @@ export async function linkWorkoutAction(routeId: string, workoutId: string, link
 export async function saveActivityAsRouteAction(activityId: string) {
   const user = await getSessionUser();
   if (!user || !Id.safeParse(activityId).success) return;
-  const db = createAdminClient();
-  const { data: existing } = await db.from("routes").select("id").eq("user_id", user.id).eq("activity_id", activityId).maybeSingle();
-  if (existing) redirect(`/routes/${existing.id}`);
-  const [{ data: a }, { data: s }] = await Promise.all([
-    db.from("activities").select("name, local_date").eq("id", activityId).eq("user_id", user.id).maybeSingle(),
-    db.from("activity_streams").select("lat, lng, altitude").eq("activity_id", activityId).maybeSingle(),
-  ]);
-  if (!a || !s?.lat || !s?.lng) return;
-  const pts: [number, number, number][] = [];
-  for (let i = 0; i < s.lat.length; i++) if (s.lat[i] != null && s.lng[i] != null) pts.push([s.lng[i], s.lat[i], i]);
-  if (pts.length < 2) return;
-  // GPS noise is a few metres: simplify harder than planned routes
-  const kept = simplify(pts, 4);
-  const coords = kept.map(([lng, lat]) => [lng, lat] as LngLat);
-  const elevations = s.altitude ? kept.map(([, , i]) => (s.altitude[i] as number | null) ?? null) : null;
-  const prepared = prepareRoute({ name: a.name ?? `Run ${a.local_date}`, coords, elevations, waypoints: [coords[0], coords[coords.length - 1]], snapped: [false] });
-  if ("error" in prepared) return;
-  const { data, error } = await db
-    .from("routes")
-    .insert({
-      user_id: user.id,
-      name: prepared.name,
-      coords: prepared.coords,
-      elevations: prepared.elevations,
-      waypoints: prepared.waypoints,
-      snapped: prepared.snapped,
-      distance_m: prepared.distance_m,
-      elevation_gain_m: prepared.elevation_gain_m,
-      elevation_loss_m: prepared.elevation_loss_m,
-      source: "activity",
-      activity_id: activityId,
-    })
-    .select("id")
-    .single();
-  if (error || !data) return;
-  revalidatePath("/routes");
-  redirect(`/routes/${data.id}`);
+  const r = await routeFromActivity(createAdminClient(), user.id, activityId);
+  if ("error" in r) return;
+  if (!r.existed) revalidatePath("/routes");
+  redirect(`/routes/${r.id}`);
 }

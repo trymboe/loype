@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, CalendarDays, LineChart, Map as MapIcon, Ellipsis, Sun } from "lucide-react";
+import { Activity, CalendarDays, LineChart, Map as MapIcon, MessageCircle, Ellipsis, Sun } from "lucide-react";
 import clsx from "clsx";
 import { LogoMark, Wordmark } from "./logo";
 import { SyncButton } from "./sync/sync-button";
@@ -15,6 +15,10 @@ const ITEMS = [
   { href: "/routes", label: "Routes", icon: MapIcon },
   { href: "/more", label: "More", icon: Ellipsis },
 ];
+
+const COACH = { href: "/coach", label: "Coach", icon: MessageCircle };
+/** Desktop shows Coach in the list; on phones it's the floating button (the bottom bar is full). */
+const SIDE_ITEMS = [...ITEMS.slice(0, 5), COACH, ITEMS[5]];
 
 function isActive(path: string, href: string) {
   return href === "/" ? path === "/" : path.startsWith(href);
@@ -59,7 +63,7 @@ export function SideNav() {
         <LogoMark size={28} />
         <Wordmark />
       </Link>
-      {ITEMS.map(({ href, label, icon: Icon }) => {
+      {SIDE_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = isActive(path, href);
         return (
           <Link
@@ -80,5 +84,20 @@ export function SideNav() {
         <SyncButton className="w-full justify-center" />
       </div>
     </nav>
+  );
+}
+
+/** Phone-only shortcut to the coach, floating above the bottom bar. */
+export function CoachButton() {
+  const path = usePathname();
+  if (path.startsWith("/coach")) return null;
+  return (
+    <Link
+      href="/coach"
+      aria-label="Coach"
+      className="fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex size-13 items-center justify-center rounded-full bg-accent text-accent-fg shadow-[var(--shadow-pop)] transition active:scale-95 md:hidden"
+    >
+      <MessageCircle size={22} strokeWidth={2} />
+    </Link>
   );
 }

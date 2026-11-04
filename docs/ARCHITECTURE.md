@@ -116,8 +116,8 @@ Unverified until tested with a real key (handled defensively in code):
 ### vívoactive 5 — capabilities assumed
 GPS, wrist HR, cadence, laps, structured workouts with pace/HR targets; no course navigation → routes stay web-only (spec §13). Running dynamics (GCT, vertical oscillation) and power are not expected; we don't depend on them.
 
-### LLM — not used
-The app makes no LLM API calls. An AI coach chat was built and then removed at the owner's request; all coaching logic is deterministic.
+### LLM — coach chat
+OpenAI Responses API (`OPENAI_API_KEY`, model `gpt-6-luna`) with typed function tools that call the same planning services as the UI; increases pass the planner's safety checks and need the athlete's go-ahead. Fitness, zones, load and plan generation stay deterministic. See `docs/COACH.md`.
 
 ## 4. Prioritized implementation plan
 
