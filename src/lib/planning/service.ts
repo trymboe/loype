@@ -371,6 +371,68 @@ export async function refreshFutureWeeks(
   return true;
 }
 
+/** What startPlanEarlier replaced, so the change can be undone. */
+export interface PlanRestartUndo {
+  prevPlan: { config: any; baseline: any; weeks: any; summary: any; warnings: any; race_pace: any };
+  prevRows: any[];
+}
+
+/**
+ * Moves the start of the active plan earlier (to today at the soonest) and
+ * rebuilds it from that week with the same goal and settings. Without a race
+ * date the plan keeps its end date, so it gets longer. Finished, locked and
+ * hand-edited workouts are kept. Versioned, so it can be undone from History.
+ */
+export async function startPlanEarlier(db: SupabaseClient, userId: string, newStart: string, today: string): Promise<{ undo: PlanRestartUndo; versionBefore: number; weeksAdded: number }> {
+  const plan = await activePlan(db, userId);
+  if (!plan) throw new Error("There is no active plan.");
+  const cfg = plan.config as PlanConfig;
+  if (newStart < today) throw new Error("The plan can't start in the past.");
+  // the first week can start later than config.startDate when the race is far away
+  const oldFirst = (plan.weeks as PlanWeek[])[0]?.start ?? weekStart(cfg.startDate);
+  if (weekStart(newStart) >= oldFirst) throw new Error(`The plan already starts the week of ${oldFirst}.`);
+  const weeksAdded = Math.max(0, Math.round((Date.parse(oldFirst) - Date.parse(weekStart(newStart))) / (7 * 864e5)));
+  const { phases: _p, refreshedWeek: _r, ...rest } = cfg;
+  void _p;
+  void _r;
+  const config: PlanConfig = { ...rest, startDate: newStart, startNow: true, weeks: cfg.weeks + weeksAdded };
+  const baseline = await loadBaseline(db, userId, today);
+  const gen = generatePlan(goalFromRow(plan.goal), config, baseline);
+
+  const { data: rows } = await db.from("planned_workouts").select("*").eq("plan_id", plan.id);
+  const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
+  const keptDates = new Set((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
+  const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
+  if (ran?.length) keptDates.add(today);
+  if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
+  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date));
+  if (fresh.length) await check(db.from("planned_workouts").insert(fresh.map((w) => ({ ...workoutRow(w, plan.id, userId), status: "planned" }))));
+
+  const prevPlan = { config: plan.config, baseline: plan.baseline, weeks: plan.weeks, summary: plan.summary, warnings: plan.warnings, race_pace: plan.race_pace };
+  await check(
+    db
+      .from("training_plans")
+      .update({
+        config: { ...gen.config, projection: cfg.projection ?? null },
+        baseline: gen.baseline,
+        weeks: gen.weeks,
+        summary: gen.summary,
+        warnings: gen.warnings,
+        race_pace: gen.racePace,
+      })
+      .eq("id", plan.id),
+  );
+  await check(db.from("adaptation_proposals").update({ status: "superseded", decided_at: new Date().toISOString() }).eq("plan_id", plan.id).eq("status", "pending"));
+  await snapshot(db, userId, plan.id, `The plan now starts on ${newStart} instead of the week of ${oldFirst}, rebuilt from your current running.`, "athlete");
+  return { undo: { prevPlan, prevRows: replaceable }, versionBefore: plan.current_version, weeksAdded };
+}
+
+/** Reverses startPlanEarlier: puts back the plan's weeks and settings and the workouts it replaced. */
+export async function undoPlanRestart(db: SupabaseClient, planId: string, undo: PlanRestartUndo) {
+  await check(db.from("training_plans").update(undo.prevPlan).eq("id", planId));
+  if (undo.prevRows.length) await check(db.from("planned_workouts").upsert(undo.prevRows));
+}
+
 const toAdapt =
   (feedback: Map<string, { rpe: number | null; legs: string | null }>) =>
   (w: any): AdaptWorkout => ({

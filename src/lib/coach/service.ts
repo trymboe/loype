@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { env } from "../env";
-import { activePlan, refreshFutureWeeks, restoreVersion } from "../planning/service";
+import { activePlan, refreshFutureWeeks, restoreVersion, undoPlanRestart } from "../planning/service";
 import { buildSnapshot } from "./data";
 import { PROMPT_VERSION, SYSTEM_PROMPT } from "./prompt";
 import { isToolName, runTool, TOOL_STATUS, TOOLS, ToolInputError, type CoachAction, type ToolContext } from "./tools";
@@ -79,8 +79,37 @@ function titleFrom(text: string) {
   return t.length > 60 ? `${t.slice(0, 57).trimEnd()}…` : t;
 }
 
-/** Output items as they can be sent back as input next turn. */
-const replayable = (items: any[]): Item[] => items.filter((i) => i.type === "message" || i.type === "function_call" || i.type === "reasoning") as Item[];
+/**
+ * Output items as they can be sent back as input next turn. Only the fields the
+ * Responses API accepts as input are kept: the SDK's stream helper adds extras
+ * (parsed_arguments, parsed) that the API rejects with a 400 on replay.
+ */
+export function replayable(items: any[]): Item[] {
+  const out: any[] = [];
+  for (const i of items ?? []) {
+    if (!i || typeof i !== "object") continue;
+    if (i.type === "message" && i.role === "assistant") {
+      out.push({
+        type: "message",
+        id: i.id,
+        role: "assistant",
+        status: i.status ?? "completed",
+        content: (i.content ?? [])
+          .filter((c: any) => c.type === "output_text" || c.type === "refusal")
+          .map((c: any) => (c.type === "refusal" ? { type: "refusal", refusal: c.refusal } : { type: "output_text", text: c.text, annotations: c.annotations ?? [] })),
+      });
+    } else if (i.type === "function_call") {
+      out.push({ type: "function_call", id: i.id, call_id: i.call_id, name: i.name, arguments: i.arguments, status: i.status ?? "completed" });
+    } else if (i.type === "reasoning") {
+      out.push({ type: "reasoning", id: i.id, summary: i.summary ?? [], ...(i.encrypted_content ? { encrypted_content: i.encrypted_content } : {}) });
+    } else if (i.type === "function_call_output") {
+      out.push({ type: "function_call_output", call_id: i.call_id, output: i.output });
+    } else if (i.role === "user" || i.role === "developer" || i.role === "system") {
+      out.push({ role: i.role, content: i.content });
+    }
+  }
+  return out as Item[];
+}
 
 export interface TurnInput {
   db: SupabaseClient;
@@ -123,7 +152,7 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   const history = rows ?? [];
   const sameModel = conv.model === env.coachModel() && conv.prompt_version === PROMPT_VERSION;
   const items: Item[] = sameModel
-    ? history.flatMap((r: any) => (Array.isArray(r.content) ? (r.content as Item[]) : []))
+    ? history.flatMap((r: any) => (Array.isArray(r.content) ? replayable(r.content) : []))
     : history
         .filter((r: any) => r.display_text && (r.kind === "user" || r.kind === "assistant"))
         .map((r: any) => ({ role: r.role, content: r.display_text }) as Item);
@@ -229,6 +258,8 @@ export async function undoCoachActions(db: SupabaseClient, userId: string, messa
   for (const [planId, first] of byPlan) {
     const { data: plan } = await db.from("training_plans").select("id, goal_id, user_id").eq("id", planId).eq("user_id", userId).maybeSingle();
     if (!plan) continue;
+    // a moved start replaced the plan's weeks and workouts: put those back first
+    for (const a of actions) if (a.planId === planId && a.restart) await undoPlanRestart(db, planId, a.restart);
     const settings = actions.find((a) => a.planId === planId && a.prevConfig);
     if (settings?.prevConfig) await db.from("training_plans").update({ config: settings.prevConfig }).eq("id", planId);
     if (settings?.prevGoal) await db.from("goals").update(settings.prevGoal).eq("id", plan.goal_id).eq("user_id", userId);

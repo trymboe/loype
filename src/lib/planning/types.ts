@@ -34,6 +34,8 @@ export interface Goal {
 
 export interface PlanConfig {
   startDate: string;
+  /** start on startDate even when the race is further away than the usual longest plan */
+  startNow?: boolean;
   /** used when there is no race date */
   weeks: number;
   /** days you are available to run, 0 = Monday … 6 = Sunday; how many of them are used comes from your load */

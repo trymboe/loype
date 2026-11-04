@@ -6,7 +6,7 @@ import { addDaysIso, daysBetween, formatDay } from "../dates";
 import { formatDuration, formatPace } from "../units";
 import { fmtTime } from "../analytics/fitness/estimate";
 import { recomputeFitness } from "../fitness/service";
-import { checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, restoreVersion, snapshot, updateGoal, type GoalEdit } from "../planning/service";
+import { checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, restoreVersion, snapshot, startPlanEarlier, updateGoal, type GoalEdit, type PlanRestartUndo } from "../planning/service";
 import { editableSteps } from "../planning/edit-steps";
 import { moveIssues, validateSchedule } from "../planning/validate";
 import { buildWorkout, stepsDistance, stepsDuration } from "../planning/workouts";
@@ -28,6 +28,8 @@ export interface CoachAction {
   /** settings and goal before a settings change (versions only hold workouts) */
   prevConfig?: PlanConfig;
   prevGoal?: { name: string | null; target_time_s: number | null; target_weekly_km: number | null };
+  /** the plan's weeks, settings and replaced workouts before its start date was moved */
+  restart?: PlanRestartUndo;
 }
 
 export interface ToolContext {
@@ -94,6 +96,7 @@ const schemas = {
     race_name: z.string().max(80).nullable(),
     confirmed: z.boolean(),
   }),
+  start_plan_earlier: z.object({ start_date: DATE }),
   restore_plan_version: z.object({ version: z.number().int().min(1) }),
   respond_to_proposal: z.object({ proposal_id: ID, accept: z.boolean() }),
   update_route: z.object({ route_id: ID, name: z.string().max(80).nullable(), favorite: z.boolean().nullable() }),
@@ -194,6 +197,11 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
       confirmed: CONFIRMED,
     }),
   ),
+  fn(
+    "start_plan_earlier",
+    "Move the start of a plan that hasn't started yet to an earlier date (today at the soonest), e.g. to start this week. Also works when the plan was pushed back because the race is far away. The plan is rebuilt from that week with the same goal and settings, from the athlete's current running; without a race date it keeps its end date and gets longer. Finished, locked and hand-edited workouts are kept. Afterwards, check the new first week with get_plan_workouts and adjust it (add, remove or shorten sessions) to what the athlete asked for and what they've already run this week.",
+    obj({ start_date: s("New start date, YYYY-MM-DD, from today up to the current start") }),
+  ),
   fn("restore_plan_version", "Put every not-yet-done workout back to how it was in an earlier plan version (from get_plan_history).", obj({ version: { type: "integer" } })),
   fn("respond_to_proposal", "Accept a pending plan-change proposal (from the app's adaptation rules), or keep the plan as it is.", obj({ proposal_id: s("Proposal id"), accept: { type: "boolean" } })),
   fn("update_route", "Rename a saved route and/or mark it as a favourite. Null leaves a field unchanged.", obj({ route_id: s("Route id"), name: ns("New name, or null"), favorite: { type: ["boolean", "null"] } })),
@@ -223,6 +231,7 @@ export const TOOL_STATUS: Record<ToolName, string> = {
   add_workout: "Adding the session",
   set_workout_steps: "Updating the workout",
   change_plan_settings: "Updating your plan settings",
+  start_plan_earlier: "Moving your plan's start",
   restore_plan_version: "Restoring your plan",
   respond_to_proposal: "Updating your plan",
   update_route: "Updating the route",
@@ -306,6 +315,20 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
       return addTool(ctx, input);
     case "change_plan_settings":
       return settingsTool(ctx, input);
+    case "start_plan_earlier": {
+      const plan = await loadActivePlan(ctx.db, ctx.userId);
+      if (!plan) return "There is no active plan.";
+      const before = plan.weeks?.[0]?.start ?? plan.config?.startDate;
+      try {
+        const r = await startPlanEarlier(ctx.db, ctx.userId, input.start_date, ctx.today);
+        ctx.actions.push({ kind: "plan", summary: `Moved the plan's start from ${before} to ${input.start_date}`, planId: plan.id, versionBefore: r.versionBefore, restart: r.undo });
+      } catch (e) {
+        return `Not changed: ${e instanceof Error ? e.message : String(e)}`;
+      }
+      const { data: next } = await ctx.db.from("planned_workouts").select("id, date, title, duration_s, type, status").eq("plan_id", plan.id).gte("date", ctx.today).lte("date", addDaysIso(ctx.today, 13)).order("date");
+      const lines = (next ?? []).filter((w: any) => w.status === "planned" && w.type !== "rest").map((w: any) => `- ${w.date} ${w.title}, ${Math.round(w.duration_s / 60)} min (id ${w.id})`);
+      return [`Done: the plan now starts on ${input.start_date}.`, "Next two weeks now:", ...lines].join("\n");
+    }
     case "restore_plan_version": {
       const plan = await loadActivePlan(ctx.db, ctx.userId);
       if (!plan) return "There is no active plan.";
