@@ -7,7 +7,7 @@ import { getIntegrationStatus } from "@/lib/db/queries";
 import { userTimezone } from "@/lib/user-tz";
 import { GarminKeyForm } from "./garmin-key-form";
 import { SyncPanel } from "./sync-panel";
-import { IntervalsKeyForm, IntervalsPushControls } from "./intervals-panel";
+import { ApplyThresholdButton, IntervalsKeyForm, IntervalsPushControls } from "./intervals-panel";
 import { WATCH_STATE } from "@/components/watch/states";
 import { addDaysIso, formatDay, todayIn } from "@/lib/dates";
 import { formatPace } from "@/lib/units";
@@ -45,6 +45,8 @@ export default async function IntegrationsPage() {
       .order("workout_date")
       .limit(20),
   ]);
+  const { data: tSnap } = await db.from("fitness_snapshots").select("value").eq("metric", "threshold_pace").eq("kind", "contemporaneous").order("as_of", { ascending: false }).limit(1).maybeSingle();
+  const thresholds = { paceSPerKm: typeof tSnap?.value === "number" ? Math.round(tSnap.value) : null };
   const iStatus = STATUS[intervals?.status ?? "not_configured"] ?? STATUS.not_configured;
   const iConnected = Boolean(intervals && intervals.status !== "not_configured");
   const run = intervals?.settings?.run as { hasThresholdPace: boolean; thresholdPaceSPerKm: number | null; maxHr: number | null } | undefined;
@@ -117,9 +119,13 @@ export default async function IntegrationsPage() {
           <div className="mb-4 space-y-3">
             {intervals?.settings?.athleteName && <p className="text-xs text-muted">Signed in as {intervals.settings.athleteName}.</p>}
             {run && !run.hasThresholdPace && (
-              <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs leading-snug text-warn">
-                Intervals.icu has no Run threshold pace, so pace targets wouldn&apos;t reach Garmin. Workouts are sent with heart-rate targets until you set one in Intervals.icu → Settings → Sport settings → Run.
-              </p>
+              <div className="space-y-2.5 rounded-xl bg-warn/10 px-3 py-3">
+                <p className="text-xs leading-snug text-warn">
+                  Intervals.icu has no Run threshold pace, so it leaves pace targets out of the workouts it sends to Garmin.
+                  {thresholds.paceSPerKm ? " Løype can set it to your current estimate and resend your workouts with pace targets." : " Løype doesn't have a threshold estimate yet; set one in Intervals.icu → Settings → Run."}
+                </p>
+                {thresholds.paceSPerKm && <ApplyThresholdButton pace={formatPace(thresholds.paceSPerKm)} />}
+              </div>
             )}
             {run?.hasThresholdPace && run.thresholdPaceSPerKm && <p className="text-xs text-muted">Run threshold pace in Intervals.icu: {formatPace(run.thresholdPaceSPerKm)}/km. Workouts are sent with pace targets.</p>}
             {intervals?.last_success_at && (

@@ -103,8 +103,9 @@ describe("Intervals.icu workout text", () => {
   });
 
   it("reads Run threshold pace and max HR from the athlete record", () => {
-    const a = parseAthlete({ id: "i123", name: "T", sportSettings: [{ types: ["Ride"], max_hr: 180 }, { types: ["Run", "TrailRun"], threshold_pace: 3.4483, max_hr: 192 }] });
-    expect(a.run).toEqual({ hasThresholdPace: true, thresholdPaceSPerKm: 290, maxHr: 192 });
+    const a = parseAthlete({ id: "i123", name: "T", sportSettings: [{ types: ["Ride"], max_hr: 180 }, { id: 77, types: ["Run", "TrailRun"], threshold_pace: 3.4483, max_hr: 192 }] });
+    expect(a.run).toEqual({ hasThresholdPace: true, thresholdPaceSPerKm: 290, maxHr: 192, hasLthr: false });
+    expect(a.runSettingsId).toBe("77");
     expect(parseAthlete({ id: 1, sportSettings: [] }).run.hasThresholdPace).toBe(false);
   });
 });

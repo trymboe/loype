@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { connectIntervalsAction, disconnectIntervalsAction, pushNowAction, type IntervalsState } from "./intervals-actions";
+import { applyThresholdAction, connectIntervalsAction, disconnectIntervalsAction, pushNowAction, type IntervalsState } from "./intervals-actions";
 
 export function IntervalsKeyForm({ replacing }: { replacing: boolean }) {
   const [state, action, pending] = useActionState<IntervalsState, FormData>(connectIntervalsAction, {});
@@ -44,5 +44,18 @@ export function IntervalsPushControls() {
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.message && <p className="text-sm text-good">{state.message}</p>}
     </div>
+  );
+}
+
+export function ApplyThresholdButton({ pace }: { pace: string }) {
+  const [state, action, pending] = useActionState<IntervalsState, FormData>(applyThresholdAction, {});
+  return (
+    <form action={action} className="space-y-2">
+      <button disabled={pending} className="btn btn-primary btn-sm">
+        {pending ? "Updating Intervals.icu…" : `Set threshold pace to ${pace}/km in Intervals.icu`}
+      </button>
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
+      {state.message && <p className="text-sm text-good">{state.message}</p>}
+    </form>
   );
 }

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { IntervalsAuthError } from "@/lib/integrations/intervals/client";
-import { connectIntervals, disconnectIntervals, pushPlannedWorkouts } from "@/lib/outbound/service";
+import { applyThresholdsToIntervals, connectIntervals, disconnectIntervals, pushPlannedWorkouts } from "@/lib/outbound/service";
+import { formatPace } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
 
 const Form = z.object({
@@ -45,6 +46,20 @@ export async function pushNowAction(_prev: IntervalsState, _form: FormData): Pro
   if (!res.configured) return { error: "Intervals.icu isn't connected" };
   if (res.error) return { error: res.error };
   return { ok: true, message: describe(res) };
+}
+
+export async function applyThresholdAction(_prev: IntervalsState, _form: FormData): Promise<IntervalsState> {
+  void _form;
+  const user = await getSessionUser();
+  if (!user) return { error: "Not signed in" };
+  try {
+    const { paceSPerKm, push } = await applyThresholdsToIntervals(createAdminClient(), user.id, todayIn(await userTimezone()));
+    revalidatePath("/more/integrations");
+    if (push.error) return { error: push.error };
+    return { ok: true, message: `Threshold pace set to ${formatPace(paceSPerKm)}/km in Intervals.icu. ${describe(push)}` };
+  } catch (e) {
+    return { error: e instanceof IntervalsAuthError ? "Intervals.icu rejected the API key." : `Couldn't update Intervals.icu: ${e instanceof Error ? e.message : e}` };
+  }
 }
 
 export async function disconnectIntervalsAction(): Promise<void> {
