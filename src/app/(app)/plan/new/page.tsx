@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Card, PageHeader } from "@/components/ui";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
 import { PlanForm } from "../plan-form";
@@ -14,15 +15,17 @@ export default async function NewPlanPage() {
   if (!user) return null;
   const today = todayIn(await userTimezone());
   const db = createAdminClient();
-  const [baseline, plan] = await Promise.all([loadBaseline(db, user.id, today), activePlan(db, user.id)]);
+  // with a plan running, the goal is edited in place; a new plan needs the current one deleted first
+  if (await activePlan(db, user.id)) redirect("/plan/goal");
+  const baseline = await loadBaseline(db, user.id, today);
   const defaults = await defaultsFor(user.id, today, baseline);
   return (
     <>
-      <PageHeader back={{ href: "/plan", label: "Plan" }} title={plan ? "Change goal" : "New plan"} subtitle={plan ? "Builds a new plan from today. The current plan and its history are kept under History." : undefined} />
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title="New plan" />
       <div className="stagger space-y-3">
         <BaselineCard b={baseline} />
         <Card>
-          <PlanForm defaults={defaults} replacing={!!plan} />
+          <PlanForm defaults={defaults} />
         </Card>
       </div>
     </>

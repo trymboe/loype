@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysIso, formatDay, weekStart } from "../dates";
 import { fetchAll } from "../db/paginate";
 import { trainingPaces } from "../analytics/fitness/vdot";
+import { fmtTime } from "../analytics/fitness/estimate";
 import { buildBaseline } from "./baseline";
 import { generatePlan, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
@@ -95,6 +96,59 @@ export async function createPlan(db: SupabaseClient, userId: string, goal: Goal,
   if (plan.workouts.length) await check(db.from("planned_workouts").insert(plan.workouts.map((w) => workoutRow(w, p.id, userId))));
   await snapshot(db, userId, p.id, old ? `${reason} (replaces the previous plan)` : reason, "generator");
   return p.id as string;
+}
+
+/** Goal fields and plan settings that can change without rebuilding the plan. */
+export interface GoalEdit {
+  name?: string | null;
+  targetTimeS?: number | null;
+  targetWeeklyKm?: number | null;
+  config?: Partial<Pick<PlanConfig, "runDays" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">>;
+}
+
+/**
+ * Updates the active plan's goal and settings in place. The workouts are left
+ * exactly as they are; the weekly update picks up the new settings for weeks
+ * still to come. Recorded as a version so it shows in History.
+ */
+export async function updateGoal(db: SupabaseClient, userId: string, edit: GoalEdit): Promise<string[]> {
+  const plan = await activePlan(db, userId);
+  if (!plan) throw new Error("No active plan");
+  const g = plan.goal;
+  const goalPatch: Record<string, unknown> = {};
+  const changes: string[] = [];
+  if (edit.name !== undefined && edit.name !== g.name) {
+    goalPatch.name = edit.name;
+    changes.push(edit.name ? `name "${edit.name}"` : "name removed");
+  }
+  if (edit.targetTimeS !== undefined && edit.targetTimeS !== g.target_time_s) {
+    goalPatch.target_time_s = edit.targetTimeS;
+    changes.push(edit.targetTimeS ? `target ${fmtTime(edit.targetTimeS)}` : "target time removed");
+  }
+  if (edit.targetWeeklyKm !== undefined && edit.targetWeeklyKm !== g.target_weekly_km) {
+    goalPatch.target_weekly_km = edit.targetWeeklyKm;
+    changes.push(edit.targetWeeklyKm ? `weekly distance ${edit.targetWeeklyKm} km` : "weekly distance removed");
+  }
+  const cfg = (plan.config ?? {}) as PlanConfig;
+  const configPatch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(edit.config ?? {})) {
+    if (v !== undefined && JSON.stringify(v) !== JSON.stringify(cfg[k as keyof PlanConfig])) configPatch[k] = v;
+  }
+  if (Object.keys(configPatch).some((k) => k !== "unavailableDays")) changes.push("training settings");
+  if (!Object.keys(goalPatch).length && !Object.keys(configPatch).length) return [];
+  if (Object.keys(goalPatch).length) await check(db.from("goals").update(goalPatch).eq("id", g.id).eq("user_id", userId));
+  if (Object.keys(configPatch).length) await check(db.from("training_plans").update({ config: { ...cfg, ...configPatch } }).eq("id", plan.id).eq("user_id", userId));
+  if (changes.length) await snapshot(db, userId, plan.id, `Goal updated: ${changes.join(", ")}. Workouts unchanged.`, "athlete");
+  return changes;
+}
+
+/** Deletes the active plan with its goal, workouts, versions and proposals, so a new one can be made. */
+export async function deletePlan(db: SupabaseClient, userId: string) {
+  const plan = await activePlan(db, userId);
+  if (!plan) return false;
+  // the plan, its workouts, versions, proposals and race course all cascade from the goal
+  await check(db.from("goals").delete().eq("id", plan.goal_id).eq("user_id", userId));
+  return true;
 }
 
 /** Stores the plan's current workouts as a new version. */
