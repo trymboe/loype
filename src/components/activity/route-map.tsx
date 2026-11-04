@@ -7,8 +7,6 @@ import clsx from "clsx";
 import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
 import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 
-/** OpenFreeMap dark style: only the run-reveal animation still uses it. */
-export const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
 
 type Coord = [number, number];
 

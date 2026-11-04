@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MlMap, GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { STYLE_DARK } from "@/components/activity/route-map";
+import { currentMapStyle, mapStyleUrl } from "@/lib/map-style";
 
 type Coord = [number, number];
 
@@ -36,7 +36,7 @@ export function sliceRoute(coords: Coord[], cum: number[], p: number): Coord[] {
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 /**
- * Dark map that draws the run's route from start to finish, with the camera slowly tilting in.
+ * Map (the same base style as everywhere else) that draws the run's route from start to finish, with the camera slowly tilting in.
  * The drawing starts once the map has loaded (onStart), so it is never missed while tiles load.
  * Falls back to an SVG drawing when the map style or WebGL isn't available. Calls onDrawn once the line is complete.
  */
@@ -79,7 +79,7 @@ export function RevealMap({ coords, durationMs, onStart, onDrawn }: { coords: Co
         const bounds = coords.reduce((b, c) => b.extend(c), new maplibre.LngLatBounds(coords[0], coords[0]));
         const m = new maplibre.Map({
           container: el.current,
-          style: STYLE_DARK,
+          style: mapStyleUrl(currentMapStyle()),
           bounds,
           fitBoundsOptions: { padding: { top: 48, bottom: 96, left: 40, right: 40 } },
           attributionControl: { compact: true },
@@ -144,7 +144,7 @@ export function RevealMap({ coords, durationMs, onStart, onDrawn }: { coords: Co
   return (
     <>
       {/* MapLibre's own CSS makes its container position: relative, so it can't be the absolute layer itself */}
-      <div className="absolute inset-0">
+      <div className="map-dim absolute inset-0">
         <div ref={el} className="h-full w-full" />
       </div>
       {waiting && <div className="skeleton pointer-events-none absolute inset-0 rounded-none opacity-40" />}
