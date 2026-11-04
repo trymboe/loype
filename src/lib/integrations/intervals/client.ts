@@ -30,7 +30,9 @@ export interface RemoteEvent {
 export interface AthleteInfo {
   id: string;
   name: string | null;
-  run: AthleteRunSettings & { thresholdPaceSPerKm: number | null };
+  run: AthleteRunSettings & { thresholdPaceSPerKm: number | null; hasLthr?: boolean };
+  /** id of the sport-settings group that covers Run, for updating it */
+  runSettingsId: string | null;
 }
 
 export interface IntervalsClientOptions {
@@ -93,6 +95,27 @@ export class IntervalsClient {
     await this.request("PUT", `/athlete/${this.athlete}/events/bulk-delete`, externalIds.map((external_id) => ({ external_id })));
   }
 
+  /**
+   * Sets the Run threshold pace (and LTHR if missing). Without a threshold pace, Intervals.icu leaves pace targets
+   * out of the workouts it exports to Garmin. Stored in m/s.
+   */
+  async setRunThresholds(sPerKm: number, lthr: number | null): Promise<AthleteInfo> {
+    const athlete = await this.getAthlete();
+    if (!athlete.runSettingsId) {
+      // the athlete record didn't carry ids: look the Run group up in the sport-settings list
+      const list = await this.request<any[]>("GET", `/athlete/${this.athlete}/sport-settings`).catch(() => null); // eslint-disable-line @typescript-eslint/no-explicit-any
+      const run = Array.isArray(list) ? list.find((x) => Array.isArray(x?.types) && x.types.includes("Run")) : null;
+      if (run?.id != null) athlete.runSettingsId = String(run.id);
+    }
+    if (!athlete.runSettingsId) throw new IntervalsError("Intervals.icu has no Run sport settings to update");
+    await this.request("PUT", `/athlete/${this.athlete}/sport-settings/${athlete.runSettingsId}`, {
+      threshold_pace: Math.round((1000 / sPerKm) * 10000) / 10000,
+      // only fill LTHR when Intervals.icu has none, never overwrite the athlete's own value
+      ...(lthr && !athlete.run.hasLthr ? { lthr: Math.round(lthr) } : {}),
+    });
+    return this.getAthlete();
+  }
+
   async listEvents(oldest: string, newest: string): Promise<RemoteEvent[]> {
     const q = new URLSearchParams({ oldest, newest, category: "WORKOUT" });
     return (await this.request<RemoteEvent[]>("GET", `/athlete/${this.athlete}/events?${q}`)) ?? [];
@@ -109,6 +132,7 @@ export function parseAthlete(a: any): AthleteInfo {
   return {
     id: String(a?.id ?? ""),
     name: typeof a?.name === "string" ? a.name : null,
-    run: { hasThresholdPace: tp != null, thresholdPaceSPerKm: tp ? Math.round(1000 / tp) : null, maxHr },
+    run: { hasThresholdPace: tp != null, thresholdPaceSPerKm: tp ? Math.round(1000 / tp) : null, maxHr, hasLthr: typeof run?.lthr === "number" && run.lthr > 0 },
+    runSettingsId: run?.id != null ? String(run.id) : null,
   };
 }

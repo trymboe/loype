@@ -24,6 +24,11 @@ Intervals.icu. So each workout uses pace when that's set, otherwise heart rate
 otherwise cue-only steps. The Integrations page warns when the threshold pace
 is missing.
 
+### Two Intervals.icu behaviours that matter
+- With no Run threshold pace, Intervals.icu drops pace targets from the Garmin export (steps arrive as "No target"), even though it parses them. The Integrations page offers a button that writes Løype's threshold pace (and LTHR if missing) to Intervals.icu via `PUT /athlete/0/sport-settings/{runGroupId}` (`threshold_pace` in m/s), then resends everything.
+- Intervals.icu re-exports a workout to Garmin only when the event is created, not when it is updated in place. A changed workout is therefore deleted and created again.
+  (Source: forum thread "Pace targets lost in Garmin export for API-created running workouts", July 2026.)
+
 ### Sync states (`external_workout_syncs.state`)
 | State | Shown as | Meaning |
 |---|---|---|

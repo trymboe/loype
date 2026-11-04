@@ -126,6 +126,21 @@ function fakeDb(tables: Record<string, Row[]>) {
   return { from } as any;
 }
 
+describe("IntervalsClient.setRunThresholds", () => {
+  it("PUTs threshold pace in m/s to the Run settings group, and LTHR only when missing", async () => {
+    const calls: { url: string; method: string; body: any }[] = [];
+    const fetchImpl = async (url: string, init: any) => {
+      calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null });
+      if (url.endsWith("/athlete/0")) return new Response(JSON.stringify({ id: "i1", sportSettings: [{ id: 42, types: ["Run"], max_hr: 193 }] }));
+      return new Response("{}");
+    };
+    await new IntervalsClient({ apiKey: "k", fetchImpl: fetchImpl as any }).setRunThresholds(300, 175);
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.url).toBe("https://intervals.icu/api/v1/athlete/0/sport-settings/42");
+    expect(put.body).toEqual({ threshold_pace: 3.3333, lthr: 175 });
+  });
+});
+
 describe("pushPlannedWorkouts", () => {
   const KEY = Buffer.alloc(32, 7).toString("base64");
   beforeEach(() => {
@@ -167,6 +182,18 @@ describe("pushPlannedWorkouts", () => {
     const r2 = await pushPlannedWorkouts(s.db, "u", "2026-11-02", { fetchImpl: s.fetchImpl });
     expect(r2).toMatchObject({ sent: 0, unchanged: 1 });
     expect(s.calls.length).toBe(before); // no API calls at all
+  });
+
+  it("deletes and re-creates a changed workout so Intervals.icu re-exports it to Garmin", async () => {
+    const s = setup();
+    await pushPlannedWorkouts(s.db, "u", "2026-11-02", { fetchImpl: s.fetchImpl });
+    const first = s.calls.length;
+    s.tables.planned_workouts[0].date = "2026-11-05";
+    const r = await pushPlannedWorkouts(s.db, "u", "2026-11-02", { fetchImpl: s.fetchImpl });
+    expect(r.sent).toBe(1);
+    const later = s.calls.slice(first).map((c) => c.url.split("/events/")[1]);
+    expect(later).toEqual(["bulk-delete", "bulk?upsert=true"]);
+    expect(s.calls.slice(first)[0].body).toEqual([{ external_id: "loype-w1" }]);
   });
 
   it("flags a parse mismatch instead of claiming success", async () => {
