@@ -206,7 +206,8 @@ function fakeClient(script: Out[][]) {
         const output = step.map((o, i) =>
           o.type === "text"
             ? { type: "message", id: `msg_${r}_${i}`, role: "assistant", status: "completed", content: [{ type: "output_text", text: o.text, annotations: [] }] }
-            : { type: "function_call", id: `fc_${r}_${i}`, call_id: `call_${r}_${i}`, name: o.name, arguments: JSON.stringify(o.args), status: "completed" },
+            : // like the real SDK's stream helper, which adds parsed_arguments (the API rejects it as input)
+              { type: "function_call", id: `fc_${r}_${i}`, call_id: `call_${r}_${i}`, name: o.name, arguments: JSON.stringify(o.args), parsed_arguments: null, status: "completed" },
         );
         const reasoning = { type: "reasoning", id: `rs_${r}`, summary: [], encrypted_content: `enc-${r}` };
         const events: any[] = output.flatMap((o: any): any[] =>
@@ -273,6 +274,9 @@ describe("coach conversation loop", async () => {
     expect(transcript[1].text).toMatch(/^Done\. I dropped/);
     expect(transcript[1].actions).toHaveLength(2);
 
+    // only fields the API accepts as input are stored and replayed
+    expect(JSON.stringify(msgs)).not.toMatch(/parsed_arguments/);
+    expect(JSON.stringify(client.requests.at(-1).input)).not.toMatch(/parsed_arguments/);
     // the next turn replays the stored items exactly, with the same instructions
     const client2 = fakeClient([[{ type: "text", text: "Sure." }]]);
     await turn(db, client2, "Thanks", conv.id);
@@ -303,6 +307,70 @@ describe("coach conversation loop", async () => {
     const t = await loadTranscript(db as any, U, db.rows("coach_conversations")[0].id);
     expect(await undoCoachActions(db as any, U, t[1].actionMessageIds, today)).toEqual({ undone: 1 });
     expect(db.rows("planned_workouts")).toHaveLength(6);
+  });
+
+  it("replays older stored items without the SDK's extra fields", async () => {
+    const db = seed();
+    await turn(db, fakeClient([[{ type: "call", name: "get_routes", args: {} }], [{ type: "text", text: "None yet." }]]), "Any routes?");
+    const conv = db.rows("coach_conversations")[0];
+    for (const m of db.rows("coach_messages")) for (const c of m.content) if (c.type === "function_call") c.parsed_arguments = {};
+    const client = fakeClient([[{ type: "text", text: "Ok." }]]);
+    await turn(db, client, "Ok", conv.id);
+    expect(JSON.stringify(client.requests[0].input)).not.toMatch(/parsed_arguments/);
+  });
+
+  it("starts a plan earlier, rebuilding it from that week, and undoes that", async () => {
+    const db = seed();
+    const plan = db.rows("training_plans")[0];
+    plan.config = { ...plan.config, startDate: "2026-11-09", weeks: 8 };
+    plan.goal_id = GOAL;
+    plan.weeks = [{ index: 0, start: "2026-11-09", phase: "base" }];
+    const before = structuredClone(db.rows("planned_workouts"));
+    const client = fakeClient([[{ type: "call", name: "start_plan_earlier", args: { start_date: today } }], [{ type: "text", text: "Started." }]]);
+    const events = await turn(db, client, "Start the plan this week");
+    const out = client.requests[1].input.at(-1).output;
+    expect(out).toMatch(/now starts on 2026-11-04/);
+    const p = db.rows("training_plans")[0];
+    expect(p.config.startDate).toBe(today);
+    expect(p.weeks[0].start).toBe("2026-11-02");
+    // finished and locked sessions stay; nothing new lands before the new start
+    expect(workoutRow(db, 0).status).toBe("completed");
+    expect(workoutRow(db, 4).locked).toBe(true);
+    expect(db.rows("planned_workouts").filter((w) => w.source === "generator" && w.status !== "completed").every((w) => w.date >= today)).toBe(true);
+    expect(events.find((e) => e.type === "actions").items[0].summary).toMatch(/Moved the plan's start/);
+
+    const t = await loadTranscript(db as any, U, db.rows("coach_conversations")[0].id);
+    expect(await undoCoachActions(db as any, U, t[1].actionMessageIds, today)).toEqual({ undone: 1 });
+    const after = db.rows("training_plans")[0];
+    expect(after.config.startDate).toBe("2026-11-09");
+    expect(after.weeks[0].start).toBe("2026-11-09");
+    const ids = (rows: any[]) => rows.map((w) => `${w.id} ${w.date} ${w.status}`).sort();
+    expect(ids(db.rows("planned_workouts"))).toEqual(ids(before));
+  });
+
+  it("can start a plan that was pushed back because the race is far away", async () => {
+    const db = seed();
+    const plan = db.rows("training_plans")[0];
+    db.rows("goals")[0].race_date = "2027-04-24";
+    plan.config = { ...plan.config, startDate: today, weeks: 12 };
+    plan.weeks = [{ index: 0, start: "2026-11-09", phase: "base" }];
+    const { runTool } = await import("@/lib/coach/tools");
+    const tctx = { db: db as any, userId: U, today, actions: [] as any[] };
+    expect(await runTool("start_plan_earlier", { start_date: today }, tctx)).toMatch(/now starts on 2026-11-04/);
+    const p = db.rows("training_plans")[0];
+    expect(p.weeks[0].start).toBe("2026-11-02");
+    expect(p.weeks.at(-1).start).toBe("2027-04-19");
+    expect(db.rows("planned_workouts").some((w) => w.date > today && w.date <= "2026-11-08" && w.type !== "rest" && w.status === "planned")).toBe(true);
+  });
+
+  it("won't move a plan's start into the past or later", async () => {
+    const db = seed();
+    db.rows("training_plans")[0].config.startDate = "2026-11-09";
+    const { runTool } = await import("@/lib/coach/tools");
+    const tctx = { db: db as any, userId: U, today, actions: [] as any[] };
+    expect(await runTool("start_plan_earlier", { start_date: "2026-11-01" }, tctx)).toMatch(/past/);
+    expect(await runTool("start_plan_earlier", { start_date: "2026-11-10" }, tctx)).toMatch(/already starts/);
+    expect(tctx.actions).toHaveLength(0);
   });
 
   it("returns invalid tool input to the model instead of acting on it", async () => {

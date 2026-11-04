@@ -113,10 +113,12 @@ function planWeeks(goal: Goal, config: PlanConfig): { start: string; weeks: numb
   if (goal.raceDate) {
     const raceWeek = weekStart(goal.raceDate);
     let n = Math.floor(daysBetween(start, raceWeek) / 7) + 1;
-    if (n > MAX_WEEKS) {
-      start = addDaysIso(raceWeek, -7 * (MAX_WEEKS - 1));
-      warnings.push(`The race is more than ${MAX_WEEKS} weeks away, so the plan starts on ${start}. Until then, keep running as you do now.`);
-      n = MAX_WEEKS;
+    // asked to start now (startNow): a longer build is fine, up to a year
+    const cap = config.startNow ? 52 : MAX_WEEKS;
+    if (n > cap) {
+      start = addDaysIso(raceWeek, -7 * (cap - 1));
+      warnings.push(`The race is more than ${cap} weeks away, so the plan starts on ${start}. Until then, keep running as you do now.`);
+      n = cap;
     }
     if (n < 4) warnings.push(`Only ${n} week${n === 1 ? "" : "s"} until the race: there is no time to build fitness, so this plan keeps you fresh and sharp instead.`);
     return { start, weeks: Math.max(1, n), warnings };
