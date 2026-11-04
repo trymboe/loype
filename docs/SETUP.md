@@ -37,6 +37,8 @@ See `.env.example`. Set them in Vercel (Project → Settings → Environment Var
 | `CRON_SECRET` | `openssl rand -hex 32` | **yes** |
 | `GARMIN_PERSONAL_API_KEY` | optional; normally pasted in the app instead | **yes** |
 | `GARMIN_API_BASE_URL` | optional override if Garmin's data host differs | no |
+| `OPENAI_API_KEY` | <https://platform.openai.com/api-keys>; turns on the Coach (set a monthly spend limit there) | **yes** |
+| `COACH_MODEL` | optional; OpenAI model for the coach (default `gpt-6-luna`) | no |
 | `ROUTING_VALHALLA_URL` | Valhalla server for the route planner (routing + elevation); defaults to the keyless FOSSGIS server `https://valhalla1.openstreetmap.de` | no |
 | `NEXT_PUBLIC_MAPTILER_KEY` | enables the Outdoor (contours, hill shading) and Satellite map styles. Free account at maptiler.com → API keys; restrict the key to your app's domain. Without it, maps use OpenFreeMap Liberty only | no |
 

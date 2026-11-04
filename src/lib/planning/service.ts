@@ -10,7 +10,7 @@ import { assessExecution, matchRuns } from "./match";
 import { proposeAdaptations, type AdaptWorkout, type Change } from "./adapt";
 import { buildWorkout, stepsDistance, stepsDuration, type TargetContext } from "./workouts";
 import { editIssues, hardSeconds, rebuildSteps, titleFor, type EditableStep } from "./edit-steps";
-import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type WorkoutType } from "./types";
+import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type Step, type WorkoutType } from "./types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -562,18 +562,27 @@ async function loadWellness(db: SupabaseClient, userId: string, today: string) {
 /** Checks an edited workout against the planner's safety rules before saving. */
 export async function checkStepEdit(db: SupabaseClient, userId: string, id: string, edited: EditableStep[]): Promise<string[]> {
   const w = await single(db.from("planned_workouts").select("*, plan:training_plans(*, goal:goals(*))").eq("id", id).eq("user_id", userId));
-  const ctx = planContext(w.plan);
-  const steps = rebuildSteps(edited, ctx);
-  const from = addDaysIso(w.date, -30);
-  const ws = weekStart(w.date);
+  const steps = rebuildSteps(edited, planContext(w.plan));
+  return loadIssues(db, userId, w.plan, w.date, w.type as WorkoutType, steps, id);
+}
+
+/**
+ * The planner's safety rules for a session of `type` with `steps` on `date`:
+ * long-run jumps against the last 30 days, and the week's total and hard
+ * minutes. `excludeId` is the workout being replaced, if any.
+ */
+export async function loadIssues(db: SupabaseClient, userId: string, plan: any, date: string, type: WorkoutType, steps: Step[], excludeId: string | null): Promise<string[]> {
+  const ctx = planContext(plan);
+  const from = addDaysIso(date, -30);
+  const ws = weekStart(date);
   const [{ data: acts }, { data: planned }] = await Promise.all([
-    db.from("activities").select("moving_s").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).gte("local_date", from).lt("local_date", w.date),
-    db.from("planned_workouts").select("id, date, duration_s, steps, status").eq("plan_id", w.plan_id).gte("date", from < ws ? from : ws).lte("date", addDaysIso(ws, 6)),
+    db.from("activities").select("moving_s").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).gte("local_date", from).lt("local_date", date),
+    db.from("planned_workouts").select("id, date, duration_s, steps, status").eq("plan_id", plan.id).gte("date", from < ws ? from : ws).lte("date", addDaysIso(ws, 6)),
   ]);
   const realMax = Math.max(0, ...(acts ?? []).map((a: any) => (a.moving_s ?? 0) / 60));
-  const plannedMax = Math.max(0, ...(planned ?? []).filter((p: any) => p.id !== id && p.status === "planned" && p.date < w.date && p.date >= from).map((p: any) => p.duration_s / 60));
-  const week = (planned ?? []).filter((p: any) => p.id !== id && p.date >= ws && p.status !== "skipped");
-  return editIssues(w.type as WorkoutType, steps, {
+  const plannedMax = Math.max(0, ...(planned ?? []).filter((p: any) => p.id !== excludeId && p.status === "planned" && p.date < date && p.date >= from).map((p: any) => p.duration_s / 60));
+  const week = (planned ?? []).filter((p: any) => p.id !== excludeId && p.date >= ws && p.status !== "skipped");
+  return editIssues(type, steps, {
     longest30Min: Math.max(realMax, plannedMax),
     weekOtherMin: week.reduce((a: number, p: any) => a + p.duration_s / 60, 0),
     weekOtherHardMin: week.reduce((a: number, p: any) => a + hardSeconds(p.steps ?? []) / 60, 0),
