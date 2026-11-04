@@ -13,9 +13,6 @@ export const env = {
   cronSecret: () => required("CRON_SECRET"),
   garminApiKey: () => process.env.GARMIN_PERSONAL_API_KEY || null,
   garminBaseUrl: () => process.env.GARMIN_API_BASE_URL || undefined,
-  /** Claude API key for the coach; the Coach tab explains how to add it when missing. */
-  anthropicApiKey: () => process.env.ANTHROPIC_API_KEY || null,
-  coachModel: () => process.env.COACH_MODEL || "claude-sonnet-5-5",
 };
 
 export function isConfigured(): boolean {
