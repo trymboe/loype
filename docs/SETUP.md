@@ -37,6 +37,8 @@ See `.env.example`. Set them in Vercel (Project → Settings → Environment Var
 | `CRON_SECRET` | `openssl rand -hex 32` | **yes** |
 | `GARMIN_PERSONAL_API_KEY` | optional; normally pasted in the app instead | **yes** |
 | `GARMIN_API_BASE_URL` | optional override if Garmin's data host differs | no |
+| `ROUTING_VALHALLA_URL` | Valhalla server for the route planner (routing + elevation); defaults to the keyless FOSSGIS server `https://valhalla1.openstreetmap.de` | no |
+| `NEXT_PUBLIC_MAPTILER_KEY` | enables the Outdoor (contours, hill shading) and Satellite map styles. Free account at maptiler.com → API keys; restrict the key to your app's domain. Without it, maps use OpenFreeMap Liberty only | no |
 
 Changing `TOKEN_ENCRYPTION_KEY` makes stored Garmin secrets unreadable; just paste the Garmin key again.
 
@@ -48,7 +50,7 @@ Changing `TOKEN_ENCRYPTION_KEY` makes stored Garmin secrets unreadable; just pas
 
 ## 4. Scheduled sync
 
-- Every 30 minutes Supabase `pg_cron` calls `/api/cron/sync` through `pg_net` (migration `0006`). The migration generates the bearer token itself and keeps it in Supabase Vault (`loype_scheduler_token`); the app checks it with `verify_scheduler_token()`, so nothing has to be copied between Vercel and Supabase.
+- Every 30 minutes Supabase `pg_cron` calls `/api/cron/sync` through `pg_net` (migration `0008`). The migration generates the bearer token itself and keeps it in Supabase Vault (`loype_scheduler_token`); the app checks it with `verify_scheduler_token()`, so nothing has to be copied between Vercel and Supabase.
 - The target URL is the Vault secret `loype_app_url` (default `https://loype.vercel.app`). To change it:
   `select vault.update_secret((select id from vault.secrets where name = 'loype_app_url'), 'https://…');`
 - If Vercel Deployment Protection ever blocks that URL, add a [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret with `select vault.create_secret('<bypass>', 'loype_vercel_bypass');` and the scheduler sends it.

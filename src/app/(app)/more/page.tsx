@@ -50,7 +50,6 @@ export default function MorePage() {
           Sign out
         </button>
       </form>
-      <p className="mt-8 text-center text-xs text-subtle">Routes and more settings arrive in later phases.</p>
     </>
   );
 }

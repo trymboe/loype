@@ -19,6 +19,7 @@ export async function GET() {
     workout_feedback: "activity_id",
     wellness_daily: "id",
     sync_jobs: "id",
+    race_courses: "id",
   };
   const out: Record<string, unknown> = { exportedAt: new Date().toISOString() };
   try {

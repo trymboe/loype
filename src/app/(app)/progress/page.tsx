@@ -4,6 +4,9 @@ import { VolumeChart } from "@/components/volume-chart";
 import { weeklyVolume } from "@/lib/analytics/volume";
 import { ChartRangeProvider, ChartRangeSelector } from "@/components/progress/chart-range";
 import { FitnessSection } from "@/components/fitness/fitness-section";
+import { PayingOffCard } from "@/components/progress/paying-off";
+import { MilestonesCard } from "@/components/progress/milestones";
+import { loadProgressMotivation } from "@/lib/progress/service";
 import { activitiesSince, getFitnessState, getVdotHistory } from "@/lib/db/queries";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { recomputeFitness } from "@/lib/fitness/service";
@@ -30,6 +33,7 @@ export default async function ProgressPage() {
   }
   const fitness = await ensureFitness(today);
   const vdotRows = fitness ? await getVdotHistory(fitness.model_version) : [];
+  const motivation = await loadProgressMotivation(today, fitness, vdotRows);
   const history = vdotRows.map((r) => ({
     date: r.as_of,
     value: r.value,
@@ -52,6 +56,8 @@ export default async function ProgressPage() {
       <PageHeader title="Progress" subtitle="Training volume and consistency, calculated from your imported runs." />
       <ChartRangeProvider today={today}>
       <div className="stagger space-y-3">
+        <PayingOffCard payoff={motivation.payoff} />
+        <MilestonesCard milestones={motivation.milestones.slice(0, 6)} />
         <Card>
           <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
             <Stat

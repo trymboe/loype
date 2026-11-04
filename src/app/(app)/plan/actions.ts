@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { addDaysIso, todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
-import { createPlan, decideProposal, editWorkout, restoreVersion, undoProposal } from "@/lib/planning/service";
+import { checkStepEdit, createPlan, decideProposal, deletePlan, editWorkout, restoreVersion, undoProposal, updateGoal } from "@/lib/planning/service";
+import { editableSteps } from "@/lib/planning/edit-steps";
 import { moveIssues } from "@/lib/planning/validate";
 import type { Goal, GoalKind, PlanConfig } from "@/lib/planning/types";
 import { userTimezone } from "@/lib/user-tz";
@@ -29,17 +30,51 @@ export interface PlanFormState {
   error?: string;
 }
 
+const RACE_KINDS: GoalKind[] = ["5k", "10k", "half", "marathon", "race"];
+
+function parseTargets(form: FormData, k: GoalKind): { targetTimeS: number | null; weeklyKm: number | null } | { error: string } {
+  const s = (key: string) => String(form.get(key) ?? "").trim();
+  const targetTimeS = RACE_KINDS.includes(k) ? parseTime(s("target_time")) : null;
+  if (targetTimeS != null && (!Number.isFinite(targetTimeS) || targetTimeS < 600)) return { error: "Write the target time as h:mm:ss or mm:ss" };
+  const weeklyKm = k === "volume" && s("target_weekly_km") ? Number(s("target_weekly_km").replace(",", ".")) : null;
+  if (weeklyKm != null && (!Number.isFinite(weeklyKm) || weeklyKm < 5 || weeklyKm > 200)) return { error: "Target weekly km should be between 5 and 200" };
+  return { targetTimeS, weeklyKm };
+}
+
+/** The training settings shared by "new plan" and "edit goal". */
+function parseSettings(
+  form: FormData,
+): Pick<PlanConfig, "runDays" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides"> | { error: string } {
+  const s = (k: string) => String(form.get(k) ?? "").trim();
+  const runDays = form
+    .getAll("run_days")
+    .map((d) => Number(d))
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  if (runDays.length < 2) return { error: "Pick at least 2 days you could run" };
+  const longRunDay = s("long_run_day") === "" ? null : Number(s("long_run_day"));
+  const maxH = s("max_weekly_hours") ? Number(s("max_weekly_hours").replace(",", ".")) : null;
+  if (maxH != null && (!Number.isFinite(maxH) || maxH < 1 || maxH > 20)) return { error: "Weekly time limit should be between 1 and 20 hours" };
+  return {
+    runDays,
+    longRunDay: longRunDay != null && Number.isInteger(longRunDay) ? longRunDay : null,
+    // days you didn't tick count as unavailable, so moving a workout there gives a warning
+    unavailableDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => !runDays.includes(d)),
+    maxWeeklyMinutes: maxH ? Math.round(maxH * 60) : null,
+    includeIntervals: form.get("intervals") === "on",
+    includeLongRuns: form.get("long_runs") === "on",
+    includeStrides: form.get("strides") === "on",
+  };
+}
+
 export async function createPlanAction(_prev: PlanFormState, form: FormData): Promise<PlanFormState> {
   const user = await getSessionUser();
   if (!user) return { error: "Not signed in" };
   const today = todayIn(await userTimezone());
   const s = (k: string) => String(form.get(k) ?? "").trim();
-  const days = (k: string) => form.getAll(k).map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 
   const kind = z.enum(KINDS).safeParse(s("kind"));
   if (!kind.success) return { error: "Choose a goal" };
   const k: GoalKind = kind.data;
-  const raceKinds: GoalKind[] = ["5k", "10k", "half", "marathon", "race"];
   const raceDate = s("race_date") || null;
   if (raceDate && !DATE.safeParse(raceDate).success) return { error: "Check the race date" };
   if (raceDate && raceDate <= today) return { error: "The race date must be in the future" };
@@ -50,40 +85,69 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
     if (!Number.isFinite(km) || km < 1 || km > 100) return { error: "Add the race distance in km (1–100)" };
     distanceM = km * 1000;
   }
-  const targetTimeS = raceKinds.includes(k) ? parseTime(s("target_time")) : null;
-  if (targetTimeS != null && (!Number.isFinite(targetTimeS) || targetTimeS < 600)) return { error: "Write the target time as h:mm:ss or mm:ss" };
-  const weeklyKm = k === "volume" && s("target_weekly_km") ? Number(s("target_weekly_km").replace(",", ".")) : null;
-  if (weeklyKm != null && (!Number.isFinite(weeklyKm) || weeklyKm < 5 || weeklyKm > 200)) return { error: "Target weekly km should be between 5 and 200" };
+  const targets = parseTargets(form, k);
+  if ("error" in targets) return targets;
+  const { targetTimeS, weeklyKm } = targets;
 
-  const runDays = days("run_days");
-  if (runDays.length < 2) return { error: "Pick at least 2 days you could run" };
-  const longRunDay = s("long_run_day") === "" ? null : Number(s("long_run_day"));
+  const settings = parseSettings(form);
+  if ("error" in settings) return settings;
   const startDate = s("start_date") || today;
   if (!DATE.safeParse(startDate).success || startDate < today) return { error: "The start date can't be in the past" };
   const weeks = Number(s("weeks") || 12);
-  const maxH = s("max_weekly_hours") ? Number(s("max_weekly_hours").replace(",", ".")) : null;
-  if (maxH != null && (!Number.isFinite(maxH) || maxH < 1 || maxH > 20)) return { error: "Weekly time limit should be between 1 and 20 hours" };
 
-  const goal: Goal = { kind: k, name: s("name") || null, distanceM, raceDate: raceKinds.includes(k) ? raceDate : null, targetTimeS, targetWeeklyKm: weeklyKm };
+  const goal: Goal = { kind: k, name: s("name") || null, distanceM, raceDate: RACE_KINDS.includes(k) ? raceDate : null, targetTimeS, targetWeeklyKm: weeklyKm };
   const config: PlanConfig = {
     startDate,
     weeks: Number.isFinite(weeks) ? weeks : 12,
-    runDays,
-    longRunDay: longRunDay != null && Number.isInteger(longRunDay) ? longRunDay : null,
-    // days you didn't tick count as unavailable, so moving a workout there gives a warning
-    unavailableDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => !runDays.includes(d)),
-    maxWeeklyMinutes: maxH ? Math.round(maxH * 60) : null,
-    includeIntervals: form.get("intervals") === "on",
-    includeLongRuns: form.get("long_runs") === "on",
-    includeStrides: form.get("strides") === "on",
+    ...settings,
   };
   const db = createAdminClient();
   try {
-    await createPlan(db, user.id, goal, config, today, form.get("replacing") ? "Goal changed" : "Plan created");
+    await createPlan(db, user.id, goal, config, today);
   } catch (e) {
     return { error: `Could not create the plan: ${e instanceof Error ? e.message : String(e)}` };
   }
   revalidatePath("/plan");
+  revalidatePath("/");
+  redirect("/plan");
+}
+
+export interface GoalEditState {
+  error?: string;
+  saved?: string;
+}
+
+/** Saves goal details and settings without touching the plan's workouts. */
+export async function updateGoalAction(_prev: GoalEditState, form: FormData): Promise<GoalEditState> {
+  const user = await getSessionUser();
+  if (!user) return { error: "Not signed in" };
+  const db = createAdminClient();
+  const { data: plan } = await db.from("training_plans").select("id, goal:goals(kind)").eq("user_id", user.id).eq("status", "active").maybeSingle();
+  if (!plan) return { error: "There is no plan to update" };
+  const k = (plan.goal as unknown as { kind: GoalKind }).kind;
+  const targets = parseTargets(form, k);
+  if ("error" in targets) return targets;
+  const settings = parseSettings(form);
+  if ("error" in settings) return settings;
+  try {
+    const changes = await updateGoal(db, user.id, {
+      ...(k === "race" ? { name: String(form.get("name") ?? "").trim() || null } : {}),
+      ...(RACE_KINDS.includes(k) ? { targetTimeS: targets.targetTimeS } : {}),
+      ...(k === "volume" ? { targetWeeklyKm: targets.weeklyKm } : {}),
+      config: settings,
+    });
+    revalidatePath("/plan", "layout");
+    revalidatePath("/");
+    return { saved: changes.length ? "Saved. Your workouts are unchanged." : "Nothing changed." };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function deletePlanAction() {
+  const user = await userOrThrow();
+  await deletePlan(createAdminClient(), user.id);
+  revalidatePath("/plan", "layout");
   revalidatePath("/");
   redirect("/plan");
 }
@@ -97,7 +161,10 @@ async function userOrThrow() {
 export async function decideProposalAction(form: FormData) {
   const user = await userOrThrow();
   const id = z.string().uuid().parse(form.get("id"));
-  await decideProposal(createAdminClient(), user.id, id, form.get("decision") === "accept");
+  // "modify": accept only the workouts left ticked
+  const decision = form.get("decision");
+  const only = decision === "modify" ? form.getAll("only").map(String).filter((x) => z.string().uuid().safeParse(x).success) : undefined;
+  await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only);
   revalidatePath("/plan", "layout");
   revalidatePath("/");
 }
@@ -157,6 +224,22 @@ export async function editWorkoutAction(_prev: EditState, form: FormData): Promi
     else if (op === "skip") await editWorkout(db, user.id, id.data, { kind: "skip" });
     else if (op === "unskip") await editWorkout(db, user.id, id.data, { kind: "unskip" });
     else if (op === "easy" || op === "rest") await editWorkout(db, user.id, id.data, { kind: "swap", to: op });
+    else if (op === "steps") {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(String(form.get("steps") ?? ""));
+      } catch {
+        return { error: "Couldn't read the steps" };
+      }
+      const parsed = editableSteps.safeParse(raw);
+      if (!parsed.success) return { error: "Some steps are incomplete: every step needs a time or a distance." };
+      const payload = String(form.get("steps"));
+      if (form.get("confirm") !== "1") {
+        const issues = await checkStepEdit(db, user.id, id.data, parsed.data);
+        if (issues.length) return { issues, issuesFor: payload };
+      }
+      await editWorkout(db, user.id, id.data, { kind: "steps", steps: parsed.data });
+    }
     else return { error: "Unknown action" };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

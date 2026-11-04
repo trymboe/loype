@@ -4,12 +4,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/db/server";
 import { env } from "@/lib/env";
 import { syncTickForUser } from "@/lib/ingest/service";
+import { todayIn } from "@/lib/dates";
+import { pushPlannedWorkouts } from "@/lib/outbound/service";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /**
- * Scheduled sync. Called every 30 minutes by Supabase pg_cron (migration 0006,
+ * Scheduled sync. Called every 30 minutes by Supabase pg_cron (migration 0008,
  * bearer token kept in Supabase Vault) and daily by Vercel Cron
  * (`Authorization: Bearer $CRON_SECRET`) as a backstop.
  */
@@ -35,7 +37,15 @@ export async function GET(request: NextRequest) {
       error: out.error ? true : undefined,
     });
   }
-  return NextResponse.json({ ok: true, results });
+  // Outbound: keep Intervals.icu (→ Garmin) in step with the plan. Separate from the import above.
+  const outbound = [];
+  const { data: outRows } = await db.from("integrations").select("user_id").eq("provider", "intervals_icu").neq("status", "not_configured");
+  for (const r of outRows ?? []) {
+    const { data: profile } = await db.from("athlete_profile").select("timezone").eq("user_id", r.user_id).maybeSingle();
+    const res = await pushPlannedWorkouts(db, r.user_id, todayIn(profile?.timezone ?? "Europe/Oslo")).catch(() => null);
+    outbound.push(res ? { sent: res.sent, removed: res.removed, failed: res.failed, error: res.error ? true : undefined } : { error: true });
+  }
+  return NextResponse.json({ ok: true, results, outbound });
 }
 
 /** pg_cron's token lives in Supabase Vault; the database checks it (service role only). */

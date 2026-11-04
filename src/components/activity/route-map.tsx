@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MlMap, GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import clsx from "clsx";
+import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
+import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 
-/** OpenFreeMap: free OSM vector tiles, no API key. */
-export const STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
-const STYLE_LIGHT = "https://tiles.openfreemap.org/styles/positron";
 
 type Coord = [number, number];
 
@@ -23,6 +23,11 @@ export function RouteMap({
   const map = useRef<MlMap | null>(null);
   const ready = useRef(false);
   const [failed, setFailed] = useState(false);
+  const [style, setStyle] = useMapStyle();
+  const styleRef = useRef(style);
+  // latest overlay data, re-applied whenever the base style is swapped
+  const live = useRef({ hover, highlight });
+  live.current = { hover, highlight };
 
   useEffect(() => {
     if (!el.current || coords.length < 2) return;
@@ -32,12 +37,11 @@ export function RouteMap({
       if (cancelled || !el.current) return;
       // bundled MapLibre can't find its worker on its own (copied to /public at build time)
       maplibre.setWorkerUrl(`/maplibre-gl-worker.mjs?v=${maplibre.getVersion()}`);
-      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6fe3a8";
       const bounds = coords.reduce((b, c) => b.extend(c), new maplibre.LngLatBounds(coords[0], coords[0]));
       const m = new maplibre.Map({
         container: el.current,
-        style: dark ? STYLE_DARK : STYLE_LIGHT,
+        style: mapStyleUrl(styleRef.current),
         bounds,
         fitBoundsOptions: { padding: 32 },
         attributionControl: { compact: true },
@@ -51,6 +55,11 @@ export function RouteMap({
       });
       m.on("load", () => {
         clearTimeout(giveUp);
+        ready.current = true;
+      });
+      // fires for the first style and after every setStyle(); custom layers must be re-added each time
+      m.on("style.load", () => {
+        if (m.getSource("route")) return;
         m.addSource("route", { type: "geojson", data: line(coords) });
         m.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#000", "line-opacity": 0.35, "line-width": 7 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": accent, "line-width": 4 }, layout: { "line-join": "round", "line-cap": "round" } });
@@ -68,7 +77,8 @@ export function RouteMap({
           source: "ends",
           paint: { "circle-radius": 5, "circle-color": ["match", ["get", "kind"], "start", "#22c55e", "#ef4444"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 },
         });
-        ready.current = true;
+        (m.getSource("highlight") as GeoJSONSource).setData(line(live.current.highlight ?? []));
+        (m.getSource("hover") as GeoJSONSource).setData(point(live.current.hover));
       });
     })();
     return () => {
@@ -78,6 +88,12 @@ export function RouteMap({
       map.current = null;
     };
   }, [coords]);
+
+  useEffect(() => {
+    if (styleRef.current === style) return;
+    styleRef.current = style;
+    map.current?.setStyle(mapStyleUrl(style), { diff: false });
+  }, [style]);
 
   useEffect(() => {
     if (!failed) return;
@@ -103,7 +119,15 @@ export function RouteMap({
 
   if (coords.length < 2) return null;
   if (failed) return <RouteFallback coords={coords} highlight={highlight} />;
-  return <div ref={el} className="card h-64 w-full overflow-hidden md:h-80" />;
+  return (
+    <div className={clsx("card relative h-64 w-full overflow-hidden md:h-80", style === "map" && "map-dim")}>
+      <div className="absolute inset-0">
+        <div ref={el} className="h-full w-full" />
+      </div>
+      <MapStyleSwitch value={style} onChange={setStyle} className="absolute top-3 left-3" />
+      <MapTilerLogo style={style} className="bottom-2 left-2" />
+    </div>
+  );
 }
 
 function line(c: Coord[]): GeoJSON.Feature<GeoJSON.LineString> {

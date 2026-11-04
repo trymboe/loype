@@ -48,20 +48,48 @@ export default async function CalendarPage() {
       ) : (
         <div className="stagger space-y-3">
           <Card>
-            <CardHeader title="Add to your calendar" aside={feed.lastFetchedAt ? `Last read ${relativeTime(feed.lastFetchedAt)}` : "Not read yet"} />
-            <div className="mt-4 space-y-2">
-              <a href={links.google} target="_blank" rel="noreferrer" className="btn btn-primary btn-block min-h-12">
-                Add to Google Calendar
-              </a>
-              <a href={links.webcal} className="btn btn-secondary btn-block min-h-12">
-                Open in Apple Calendar or Outlook
-              </a>
-            </div>
-            <p className="mt-5 mb-2 text-sm font-semibold">Or copy the link</p>
+            <CardHeader title="Apple Calendar" aside={feed.lastFetchedAt ? `Last read ${relativeTime(feed.lastFetchedAt)}` : "Not read yet"} />
+            <ol className="mt-3 mb-4 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
+              <li>On your iPhone, iPad or Mac, tap the button below.</li>
+              <li>
+                Choose <span className="font-medium text-fg">Subscribe</span>. Pick your <span className="font-medium text-fg">iCloud</span> account if asked,
+                so it shows on all your Apple devices.
+              </li>
+              <li>Done. Workouts update on their own, roughly every hour.</li>
+            </ol>
+            <a href={links.webcal} className="btn btn-primary btn-block min-h-12">
+              Subscribe in Apple Calendar
+            </a>
+          </Card>
+
+          <Card>
+            <CardHeader title="Google Calendar" />
+            <ol className="mt-3 mb-4 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
+              <li>Tap the button below and sign in to Google if asked. On a phone it may open the Google Calendar website; that&apos;s expected.</li>
+              <li>
+                Confirm <span className="font-medium text-fg">Add</span>. &quot;Løype training&quot; appears under Other calendars.
+              </li>
+              <li>
+                It shows in the Google Calendar app too. If it doesn&apos;t, open the app&apos;s settings, tap Løype training and turn on{" "}
+                <span className="font-medium text-fg">Sync</span>.
+              </li>
+            </ol>
+            <a href={links.google} target="_blank" rel="noreferrer" className="btn btn-primary btn-block min-h-12">
+              Add to Google Calendar
+            </a>
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              Google decides when it re-reads subscribed calendars, usually every few hours and at most about a day, so a moved workout can take a while to
+              show there. Apple Calendar is quicker.
+            </p>
+          </Card>
+
+          <Card>
+            <CardHeader title="Other calendar apps" />
+            <p className="mt-1 mb-3 text-[0.8125rem] leading-snug text-muted">Outlook and most others can subscribe by URL. Paste this link:</p>
             <CopyField value={links.https} />
             <p className="mt-3 text-xs leading-relaxed text-muted">
-              Google Calendar refreshes subscribed calendars on its own schedule, usually within a few hours up to a day, so a moved workout can take a while to
-              appear there. Apple Calendar and Outlook follow the hourly refresh hint. Skipped workouts and rest days are left out; completed ones get a ✓.
+              The calendar always shows your current plan: moved, added and swapped workouts update by themselves. Skipped workouts and rest days are left out;
+              completed ones get a ✓.
             </p>
           </Card>
 

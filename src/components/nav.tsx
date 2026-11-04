@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, CalendarDays, LineChart, MessageCircle, Ellipsis, Sun } from "lucide-react";
+import { Activity, CalendarDays, LineChart, Map as MapIcon, Ellipsis, Sun } from "lucide-react";
 import clsx from "clsx";
 import { LogoMark, Wordmark } from "./logo";
 import { SyncButton } from "./sync/sync-button";
@@ -12,7 +12,7 @@ const ITEMS = [
   { href: "/plan", label: "Plan", icon: CalendarDays },
   { href: "/progress", label: "Progress", icon: LineChart },
   { href: "/activities", label: "Activities", icon: Activity },
-  { href: "/coach", label: "Coach", icon: MessageCircle },
+  { href: "/routes", label: "Routes", icon: MapIcon },
   { href: "/more", label: "More", icon: Ellipsis },
 ];
 
