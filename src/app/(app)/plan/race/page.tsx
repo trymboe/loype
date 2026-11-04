@@ -37,7 +37,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
     return (
       <>
         <PageHeader title="Race" back={{ href: "/plan", label: "Plan" }} />
-        <EmptyState icon={<Flag size={22} />} title="No race on the calendar" action={<ButtonLink href="/plan/new">Set a race goal</ButtonLink>}>
+        <EmptyState icon={<Flag size={22} />} title="No race on the calendar" action={<ButtonLink href="/plan/goal">Set a race goal</ButtonLink>}>
           Pick a race distance and date, and this page counts down, compares your predicted time with your target and builds a race-day pacing plan.
         </EmptyState>
       </>
@@ -109,7 +109,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
                 <p className="section-title">{status.headline}</p>
                 <p className="mt-1 text-sm text-muted">{status.detail}</p>
                 <div className="mt-4">
-                  <ButtonLink href="/plan/new">Set your next goal</ButtonLink>
+                  <ButtonLink href="/plan/goal">Set your next goal</ButtonLink>
                 </div>
               </>
             ) : (
@@ -155,7 +155,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
               size="md"
               label="Target"
               value={goal.targetTimeS ? fmtTime(goal.targetTimeS) : "–"}
-              hint={goal.targetTimeS ? `${formatPace(goal.targetTimeS / (goal.distanceM / 1000))}/km` : <Link href="/plan/new" className="text-accent">Add one</Link>}
+              hint={goal.targetTimeS ? `${formatPace(goal.targetTimeS / (goal.distanceM / 1000))}/km` : <Link href="/plan/goal" className="text-accent">Add one</Link>}
             />
             <Stat
               size="md"
@@ -321,7 +321,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
         </Card>
         {!goal.raceDate && (
           <p className="px-1 text-xs text-muted">
-            No race date set. <Link href="/plan/new" className="text-accent">Add one</Link> to get a countdown.
+            No race date set. A race date shapes the whole plan, so adding one means <Link href="/plan/goal" className="text-accent">starting a new plan</Link>.
           </p>
         )}
       </div>

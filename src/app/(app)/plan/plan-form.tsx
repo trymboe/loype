@@ -3,22 +3,9 @@
 import { useActionState, useState } from "react";
 import clsx from "clsx";
 import { createPlanAction, type PlanFormState } from "./actions";
+import { DAYS, GOALS } from "./goal-options";
 
 const input = "input";
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-const GOALS: { kind: string; label: string; hint: string }[] = [
-  { kind: "5k", label: "5 km", hint: "Get faster over 5 km" },
-  { kind: "10k", label: "10 km", hint: "Get faster over 10 km" },
-  { kind: "half", label: "Half marathon", hint: "21.1 km" },
-  { kind: "marathon", label: "Marathon", hint: "42.2 km" },
-  { kind: "race", label: "Other race", hint: "Any distance and date" },
-  { kind: "general", label: "General fitness", hint: "Fitter all round" },
-  { kind: "endurance", label: "Endurance", hint: "Run longer, comfortably" },
-  { kind: "consistency", label: "Consistency", hint: "Run regularly, mostly easy" },
-  { kind: "volume", label: "More volume", hint: "Build weekly km safely" },
-  { kind: "maintain", label: "Maintain", hint: "Keep what you have" },
-];
 
 export interface PlanFormDefaults {
   runDays: number[];
@@ -30,7 +17,7 @@ export interface PlanFormDefaults {
   runMinutes: number | null;
 }
 
-export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; replacing?: boolean }) {
+export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
   const [state, action, pending] = useActionState<PlanFormState, FormData>(createPlanAction, {});
   const [kind, setKind] = useState("half");
   const [runDays, setRunDays] = useState<number[]>(defaults.runDays);
@@ -38,7 +25,6 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
 
   return (
     <form action={action} className="space-y-7">
-      {replacing && <input type="hidden" name="replacing" value="1" />}
       <section>
         <h2 className="section-title mb-3">What are you training for?</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -153,22 +139,22 @@ export function PlanForm({ defaults, replacing }: { defaults: PlanFormDefaults; 
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
       <button disabled={pending} className="btn btn-primary btn-block min-h-12">
-        {pending ? "Building your plan…" : replacing ? "Build new plan" : "Build my plan"}
+        {pending ? "Building your plan…" : "Build my plan"}
       </button>
     </form>
   );
 }
 
-function Toggle({ name, label }: { name: string; label: string }) {
+export function Toggle({ name, label, defaultChecked = true }: { name: string; label: string; defaultChecked?: boolean }) {
   return (
     <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 bg-surface-2 px-4 py-3">
       {label}
-      <input type="checkbox" name={name} defaultChecked className="switch" />
+      <input type="checkbox" name={name} defaultChecked={defaultChecked} className="switch" />
     </label>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold">{label}</span>

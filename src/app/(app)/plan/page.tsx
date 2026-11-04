@@ -90,7 +90,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             <Link href="/plan/history" className="chip" aria-label="Plan history">
               <History size={14} /> History
             </Link>
-            <Link href="/plan/new" className="chip" aria-label="Change goal">
+            <Link href="/plan/goal" className="chip" aria-label="Goal">
               <Target size={14} /> Goal
             </Link>
           </div>
