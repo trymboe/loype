@@ -5,7 +5,7 @@ import { addDaysIso, formatDay } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { goalDistance } from "@/lib/planning/generator";
 import { activePlan, goalFromRow } from "@/lib/planning/service";
-import { GOAL_LABEL, type PlanConfig, type PlanWeek } from "@/lib/planning/types";
+import { GOAL_LABEL, type Baseline, type PlanConfig, type PlanWeek } from "@/lib/planning/types";
 import { GOALS } from "../goal-options";
 import { DeletePlan, GoalForm } from "./goal-form";
 
@@ -42,7 +42,7 @@ export default async function GoalPage() {
 
   return (
     <>
-      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Goal" subtitle="Changes here are saved without rebuilding your plan." />
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Goal" subtitle="Change your target without touching your workouts, or adjust how you train." />
       <div className="stagger space-y-3">
         <Card>
           <dl className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4">
@@ -68,6 +68,9 @@ export default async function GoalPage() {
               includeIntervals: cfg.includeIntervals !== false,
               includeLongRuns: cfg.includeLongRuns !== false,
               includeStrides: cfg.includeStrides !== false,
+              runsPerWeek: cfg.runsPerWeek ?? null,
+              usualRuns: cfg.usualRunsPerWeek != null ? String(cfg.usualRunsPerWeek) : "",
+              recentRuns: (plan.baseline as Baseline | null)?.runsPerWeek ?? 0,
             }}
           />
         </Card>

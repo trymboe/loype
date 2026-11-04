@@ -214,7 +214,11 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   // 2 a week can become 3), with 2 runs as the floor for someone starting from nothing.
   const runLen = baseline.habitualRunMinutes ?? 30;
   const SHORT_RUN = 22;
-  const runHist = baseline.recentRunCounts?.length === 4 ? [...baseline.recentRunCounts] : [1, 1, 1, 1].map(() => Math.round(baseline.runsPerWeek));
+  const usual = config.usualRunsPerWeek != null && config.usualRunsPerWeek > 0 ? Math.min(7, config.usualRunsPerWeek) : null;
+  const runHist = usual != null ? [usual, usual, usual, usual] : baseline.recentRunCounts?.length === 4 ? [...baseline.recentRunCounts] : [1, 1, 1, 1].map(() => Math.round(baseline.runsPerWeek));
+  // a fixed number of runs a week, if you chose one (never more than the days you can run)
+  const fixedRuns = config.runsPerWeek != null && config.runsPerWeek >= 1 ? Math.min(avail.length, Math.round(config.runsPerWeek)) : null;
+  if (fixedRuns != null && config.runsPerWeek! > avail.length) warnings.push(`You asked for ${config.runsPerWeek} runs a week but ticked ${avail.length} days, so the plan uses ${avail.length}.`);
   const freqCap = () => {
     const m = runHist.slice(-4).reduce((a, b) => a + b, 0) / 4;
     return Math.min(avail.length, Math.max(2, Math.floor(m * ACWR_MAX + 0.5), m < 4 ? Math.round(m) + 1 : 0));
@@ -262,6 +266,9 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     weekly.push(Math.round(w));
     history.push(w);
   }
+
+  if (fixedRuns != null && weekly[0] / fixedRuns < 20)
+    warnings.push(`Weekly time starts from what you have run lately (${weekly[0]} min), so ${fixedRuns} runs a week means short runs at first (about ${Math.round(weekly[0] / fixedRuns)} min). They get longer as the weekly time builds.`);
 
   // --- pace and projection --------------------------------------------------
   const easyZone = baseline.paceZones?.find((z) => z.key === "easy");
@@ -337,7 +344,12 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     // taper: keep frequency (cut volume, not runs)
     if (ph === "taper" || ph === "race") runsW = Math.min(avail.length, Math.max(runsW, lastRuns));
     else if (ph !== "recovery") lastRuns = runsW;
+    // a fixed frequency holds every week; the week's time (still set by your load) is spread over those runs
+    if (fixedRuns != null) runsW = fixedRuns;
     const cap = spikeCap(ws);
+    // shortest runs: 20 min (25 for the long run), lower when a fixed frequency spreads a small week over many runs
+    const minEasy = fixedRuns != null ? Math.max(10, Math.min(20, Math.floor(target / runsW) - 3)) : 20;
+    const minLong = minEasy + 5;
     const days = spreadDays(avail, runsW, longDay);
     const wLong = longDay != null && days.includes(longDay) ? longDay : null;
 
@@ -348,10 +360,10 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     if (wLong != null && ph !== "race") {
       const share = Math.max(ph === "build" || ph === "specific" ? 0.32 : 0.3, runsW <= 3 ? 1.1 / runsW : 0);
       const allowed = Math.min(longCap, longest + 5, cap);
-      longMin = Math.max(25, Math.min(allowed, Math.max(Math.round(target * share), Math.round(Math.min(longest * 0.8, target * 0.4)))));
+      longMin = Math.max(minLong, Math.min(allowed, Math.max(Math.round(target * share), Math.round(Math.min(longest * 0.8, target * 0.4)))));
       if (ph !== "recovery" && ph !== "taper") longest = Math.max(longest, longMin);
       if (ph === "taper") longMin = Math.min(longMin, Math.round(longest * 0.7));
-      if (ph === "recovery") longMin = Math.max(25, Math.min(longMin, Math.round(longest * 0.75)));
+      if (ph === "recovery") longMin = Math.max(minLong, Math.min(longMin, Math.round(longest * 0.75)));
       const withRacePace = ph === "specific" && (dk === "half" || dk === "marathon") && i % 2 === 0;
       const progressive = !withRacePace && ph === "build" && i % 2 === 1;
       list.push({
@@ -422,7 +434,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     const easyCap = Math.min(cap, Math.max(35, Math.round(longMin * 0.85) || 60));
     const left = Math.max(0, target - fixedMin);
     const slots = easyDays.length + list.filter(flexible).length;
-    const each = slots ? Math.round(Math.max(20, Math.min(easyCap, left / slots))) : 0;
+    const each = slots ? Math.round(Math.max(minEasy, Math.min(easyCap, left / slots))) : 0;
     for (const l of list) if (flexible(l)) l.spec.minutes = each;
     for (const d of easyDays) {
       const afterHard = list.some((l) => isHard(l.spec.type) && (l.dow === d - 1 || (d === 0 && l.dow === 6)));
@@ -441,11 +453,11 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     for (let guard = 0; guard < 40 && ph !== "race"; guard++) {
       const planned = list.reduce((a, l) => a + mins(l), 0);
       if (planned <= target * 1.1) break;
-      const easy = list.filter((l) => ["easy", "recovery", "strides"].includes(l.spec.type) && (l.spec.minutes ?? 0) > 20).sort((a, b) => (b.spec.minutes ?? 0) - (a.spec.minutes ?? 0))[0];
-      const long = list.find((l) => (l.spec.type === "long" || l.spec.type === "progressive_long") && (l.spec.minutes ?? 0) > 25);
+      const easy = list.filter((l) => ["easy", "recovery", "strides"].includes(l.spec.type) && (l.spec.minutes ?? 0) > minEasy).sort((a, b) => (b.spec.minutes ?? 0) - (a.spec.minutes ?? 0))[0];
+      const long = list.find((l) => (l.spec.type === "long" || l.spec.type === "progressive_long") && (l.spec.minutes ?? 0) > minLong);
       const hard = list.filter((l) => isHard(l.spec.type) && l.spec.type !== "race");
-      if (easy) easy.spec.minutes = Math.max(20, (easy.spec.minutes ?? 20) - 5);
-      else if (long) long.spec.minutes = Math.max(25, (long.spec.minutes ?? 25) - 5);
+      if (easy) easy.spec.minutes = Math.max(minEasy, (easy.spec.minutes ?? minEasy) - 5);
+      else if (long) long.spec.minutes = Math.max(minLong, (long.spec.minutes ?? minLong) - 5);
       else if (hard.some((h) => (h.spec.progress ?? 0) > 0)) for (const h of hard) h.spec.progress = Math.max(0, (h.spec.progress ?? 0) - 0.25);
       else if (hard.length) {
         const h = hard[hard.length - 1];

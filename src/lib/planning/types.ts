@@ -44,6 +44,13 @@ export interface PlanConfig {
   refreshedWeek?: string;
   /** race-time projection made when the plan was created */
   projection?: Projection | null;
+  /**
+   * Runs per week. A number fixes it (capped by the days you ticked); null or missing lets the planner
+   * choose from how often you have been running.
+   */
+  runsPerWeek?: number | null;
+  /** how often you run now, entered by hand: replaces the measured frequency (e.g. without a watch connected) */
+  usualRunsPerWeek?: number | null;
   longRunDay: number | null;
   unavailableDays: number[];
   maxWeeklyMinutes: number | null;
