@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GeoJSONSource, Map as MlMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { CornerUpLeft, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Undo2, Waypoints } from "lucide-react";
+import { CornerUpLeft, Footprints, Leaf, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Undo2, Waypoints } from "lucide-react";
 import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
 import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 import { ElevationProfile } from "./elevation-profile";
@@ -39,6 +39,30 @@ type Mode = "draw" | "loop";
 
 const EMPTY: State = { waypoints: [], segments: [] };
 const GOLDEN = 137.508;
+const START_RADII = [
+  { m: 0, label: "Here" },
+  { m: 500, label: "500 m" },
+  { m: 1000, label: "1 km" },
+  { m: 2000, label: "2 km" },
+];
+
+interface Approach {
+  /** The point the user picked (where they are). */
+  from: LngLat;
+  /** The loop's first waypoint when it was generated; the walk is hidden once that moves. */
+  startAt: LngLat;
+  coords: LngLat[];
+  distanceM: number;
+}
+
+interface LoopResponse {
+  legs: LngLat[][];
+  waypoints: LngLat[];
+  distanceM: number;
+  approach?: { coords: LngLat[]; distanceM: number } | null;
+  surface?: { softPct: number | null } | null;
+  candidates?: number;
+}
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -86,6 +110,10 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   const [showRuns, setShowRuns] = useState(runs.length > 0);
   const [loopKm, setLoopKm] = useState(8);
   const [bearing, setBearing] = useState(() => Math.round(Math.random() * 360));
+  const [soft, setSoft] = useState(false);
+  const [startRadius, setStartRadius] = useState(0);
+  const [approach, setApproach] = useState<Approach | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [elevations, setElevations] = useState<(number | null)[] | null>(null);
@@ -144,6 +172,8 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       const s = stateRef.current;
       if (modeRef.current === "loop") {
         setNotice(null);
+        setInfo(null);
+        setApproach(null);
         commit({ waypoints: [p], segments: [] });
         return;
       }
@@ -197,6 +227,8 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   const clear = () => {
     commit(EMPTY);
     setNotice(null);
+    setInfo(null);
+    setApproach(null);
   };
   const closeLoop = () => {
     const s = stateRef.current;
@@ -215,15 +247,22 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   };
 
   const generate = async (b = bearing) => {
-    const start = stateRef.current.waypoints[0];
+    // after a soft loop moved the start, keep generating from where the user is
+    const start = approach?.from ?? stateRef.current.waypoints[0];
     if (!start) {
       setNotice("Tap the map to set where the loop starts.");
       return;
     }
     setBusy("loop");
     setNotice(null);
+    setInfo(null);
     try {
-      const res = await postJson<{ legs: LngLat[][]; waypoints: LngLat[]; distanceM: number }>("/api/routes/loop", { start, distanceM: loopKm * 1000, bearing: b });
+      const res = await postJson<LoopResponse>("/api/routes/loop", {
+        start,
+        distanceM: loopKm * 1000,
+        bearing: b,
+        ...(soft ? { soft: true, startRadiusM: startRadius } : {}),
+      });
       const wps = res.waypoints.slice();
       // use the routed leg ends as waypoints so editing later lines up with the path
       res.legs.forEach((leg, i) => {
@@ -231,6 +270,19 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       });
       commit({ waypoints: wps, segments: res.legs.map((coords) => ({ coords, snapped: true })) });
       setSource("loop");
+      setApproach(res.approach && res.approach.coords.length > 1 ? { from: start, startAt: wps[0], ...res.approach } : null);
+      // bring the whole loop (and the walk to it) into view
+      const all = [...res.legs.flat(), ...(res.approach?.coords ?? [])];
+      if (all.length > 1 && map.current && ml.current) {
+        const bounds = all.reduce((acc, c) => acc.extend(c), new ml.current.LngLatBounds(all[0], all[0]));
+        map.current.fitBounds(bounds, { padding: { top: 72, bottom: 64, left: 40, right: 64 }, duration: 600, maxZoom: 16 });
+      }
+      if (soft) {
+        const pct = res.surface?.softPct;
+        const parts = [`Softest of ${res.candidates ?? 1} loops${pct != null ? `: about ${Math.round(pct)}% gravel or trail` : ""}.`];
+        if (res.approach) parts.push(`It starts a ${formatWalk(res.approach.distanceM)} walk from your point (dashed line).`);
+        setInfo(parts.join(" "));
+      }
       const off = Math.abs(res.distanceM / (loopKm * 1000) - 1);
       if (off > 0.12) setNotice(`Closest loop found is ${(res.distanceM / 1000).toFixed(1)} km. Try another direction or tweak it in Draw.`);
     } catch (e) {
@@ -239,6 +291,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       setBusy(null);
     }
   };
+  const showApproach = approach != null && state.waypoints[0] != null && approach.startAt[0] === state.waypoints[0][0] && approach.startAt[1] === state.waypoints[0][1];
   const another = () => {
     const nb = (bearing + GOLDEN) % 360;
     setBearing(nb);
@@ -339,6 +392,10 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
         m.addSource("route", { type: "geojson", data: line([]) });
         m.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#000", "line-opacity": 0.35, "line-width": 8 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": accent, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
+        m.addSource("approach", { type: "geojson", data: multi([]) });
+        m.addLayer({ id: "approach", type: "line", source: "approach", paint: { "line-color": runsColor, "line-width": 3, "line-dasharray": [1, 1.6] }, layout: { "line-cap": "round" } });
+        m.addSource("origin", { type: "geojson", data: points([]) });
+        m.addLayer({ id: "origin", type: "circle", source: "origin", paint: { "circle-radius": 6, "circle-color": runsColor, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
         m.addSource("surface", { type: "geojson", data: surfaceGeoJson(null) });
         m.addLayer({ id: "surface", type: "line", source: "surface", paint: { "line-color": SURFACE_COLOR_EXPR, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addSource("pending", { type: "geojson", data: multi([]) });
@@ -370,6 +427,12 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
     (map.current.getSource("route") as GeoJSONSource | undefined)?.setData(multi(done.map((s) => s.coords)));
     (map.current.getSource("pending") as GeoJSONSource | undefined)?.setData(multi(state.segments.filter((s) => s.pending).map((s) => s.coords)));
   }, [ready, state.segments, styleGen]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("approach") as GeoJSONSource | undefined)?.setData(multi(showApproach ? [approach.coords] : []));
+    (map.current.getSource("origin") as GeoJSONSource | undefined)?.setData(points(showApproach ? [approach.from] : []));
+  }, [ready, showApproach, approach, styleGen]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -486,7 +549,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
           </div>
           <MapTilerLogo style={mapStyle} className="right-2 bottom-12" />
           <p className="pointer-events-none absolute inset-x-3 bottom-3 w-fit max-w-[calc(100%-1.5rem)] rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-fg-2 shadow-[var(--shadow-pop)] backdrop-blur">
-            {busy === "loop" ? "Finding a loop…" : pending ? "Following paths…" : hint}
+            {busy === "loop" ? (soft ? "Comparing loops for soft ground…" : "Finding a loop…") : pending ? "Following paths…" : hint}
           </p>
         </div>
 
@@ -541,6 +604,27 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
                   </button>
                 ))}
               </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                <input type="checkbox" className="switch" checked={soft} onChange={(e) => setSoft(e.target.checked)} />
+                <Leaf size={15} className="text-muted" /> Prefer soft surfaces
+              </label>
+              {soft && (
+                <div className="space-y-2">
+                  <p className="text-[0.8125rem] leading-snug text-muted">
+                    Compares several loops and keeps the one with the most gravel and trail. Let it start a short walk away to find softer ground.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Start within">
+                    <span className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+                      <Footprints size={14} /> Start within
+                    </span>
+                    {START_RADII.map((r) => (
+                      <button key={r.m} type="button" onClick={() => setStartRadius(r.m)} className="chip" aria-pressed={startRadius === r.m}>
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2">
                 <button type="button" className="btn btn-primary flex-1" disabled={!state.waypoints.length || busy != null} onClick={() => generate()}>
                   {busy === "loop" ? <Loader2 size={16} className="animate-spin" /> : <RouteIcon size={16} />} Generate loop
@@ -561,10 +645,11 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
 
           {!pending && coords.length > 1 && (
             <div className="mt-3">
-              <OpenInGoogleMaps coords={simplified} className="btn btn-secondary btn-sm" />
+              <OpenInGoogleMaps coords={showApproach ? joinSegments([approach.coords, simplified]) : simplified} className="btn btn-secondary btn-sm" />
             </div>
           )}
 
+          {info && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-[0.8125rem] leading-snug text-fg-2">{info}</p>}
           {notice && <p className="mt-3 rounded-xl bg-warn/10 px-3 py-2 text-[0.8125rem] leading-snug text-warn">{notice}</p>}
         </div>
       </div>
@@ -613,6 +698,10 @@ function ToolButton({ children, label, ...rest }: { children: React.ReactNode; l
       <span className="hidden sm:inline">{label}</span>
     </button>
   );
+}
+
+function formatWalk(m: number) {
+  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
 function defaultName(distanceM: number, source: "drawn" | "loop") {

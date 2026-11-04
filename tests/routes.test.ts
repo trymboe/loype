@@ -18,6 +18,7 @@ import { gpxFileName, routeToGpx, toGpx } from "@/lib/routes/gpx";
 import { classifySurface, summarizeSurfaces, surfacePercents } from "@/lib/routes/surface";
 import { googleMapsUrl, viaIndices } from "@/lib/routes/google-maps";
 import { densify } from "@/lib/routes/geometry";
+import { findSoftLoop, softCandidates, softScore } from "@/lib/routes/soft-loop";
 
 const OSLO: LngLat = [10.7522, 59.9139];
 
@@ -307,5 +308,55 @@ describe("google maps link", () => {
     expect(url.searchParams.get("destination")).toBe("59.913900,10.752200");
     expect(url.searchParams.get("waypoints")!.split("|").length).toBe(8);
     expect(googleMapsUrl([OSLO])).toBeNull();
+  });
+});
+
+describe("soft loops", () => {
+  it("spreads candidate starts within the radius", () => {
+    expect(softCandidates(OSLO, 10, 0).map((c) => c.bearing)).toEqual([10, 100, 190, 280]);
+    const c = softCandidates(OSLO, 350, 1000);
+    expect(c).toHaveLength(6);
+    expect(c[0].start).toEqual(OSLO);
+    for (const x of c.slice(2)) expect(segmentLength(OSLO, x.start)).toBeCloseTo(750, 0);
+    expect(c.every((x) => x.bearing >= 0 && x.bearing < 360)).toBe(true);
+  });
+
+  it("scores soft share and punishes loops far from the distance", () => {
+    expect(softScore(10_500, 10_000, 60)).toBe(60);
+    expect(softScore(13_000, 10_000, 90)).toBeLessThan(softScore(10_000, 10_000, 30));
+    expect(softScore(10_000, 10_000, null)).toBe(0);
+  });
+
+  it("keeps the softest loop, routes the walk to its start and uses trail costing", async () => {
+    const base = fakeRouter(1.3);
+    const costings: unknown[] = [];
+    // softer the further east the loop goes
+    const router: RoutingProvider = {
+      ...base,
+      async route(wps, opts) {
+        costings.push(opts?.costing);
+        return base.route.call(base, wps);
+      },
+      async surfaces(points) {
+        const east = Math.max(...points.map((p) => p[0])) - OSLO[0];
+        return { ...summarizeSurfaces([], []), softPct: Math.min(100, east * 2000) };
+      },
+    };
+    const res = await findSoftLoop(router, OSLO, 5000, 0, 1000);
+    expect(res.candidates).toBe(6);
+    expect(res.surface!.softPct).toBeGreaterThan(50);
+    // the winner starts east of the origin, so there is a walk to it
+    expect(res.approach).not.toBeNull();
+    expect(res.approach!.coords[0]).toEqual(OSLO);
+    expect(res.legs[0][0][0]).toBeGreaterThan(OSLO[0]);
+    expect(costings.filter(Boolean).every((c) => (c as Record<string, number>).use_tracks === 1)).toBe(true);
+    // the walk itself uses normal costing
+    expect(costings[costings.length - 1]).toBeUndefined();
+  });
+
+  it("starts at the point itself without a radius", async () => {
+    const res = await findSoftLoop(fakeRouter(1.3), OSLO, 5000, 0, 0);
+    expect(res.approach).toBeNull();
+    expect(res.waypoints[0]).toEqual(OSLO);
   });
 });
