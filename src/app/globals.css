@@ -537,3 +537,10 @@
   background: #ef4444;
   border-color: #fff;
 }
+
+/* Liberty is a light style: soften it in dark mode so it doesn't glare */
+@media (prefers-color-scheme: dark) {
+  .map-dim .maplibregl-canvas {
+    filter: brightness(0.88);
+  }
+}
