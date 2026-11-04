@@ -1,11 +1,13 @@
 "use client";
 
+import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GeoJSONSource, Map as MlMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CornerUpLeft, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Undo2, Waypoints } from "lucide-react";
-import { STYLE_DARK, STYLE_LIGHT } from "@/components/activity/route-map";
+import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
+import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 import { ElevationProfile } from "./elevation-profile";
 import { cumulativeDistance, elevationStats, joinSegments, lineLength, simplify, type LngLat } from "@/lib/routes/geometry";
 import { saveRouteAction } from "@/app/(app)/routes/actions";
@@ -288,6 +290,9 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   const [mapFailed, setMapFailed] = useState(false);
   const markers = useRef<Marker[]>([]);
   const ml = useRef<typeof import("maplibre-gl") | null>(null);
+  const [mapStyle, setMapStyle] = useMapStyle();
+  const mapStyleRef = useRef(mapStyle);
+  const [styleGen, setStyleGen] = useState(0); // bumps when overlays were re-added after a style swap
 
   useEffect(() => {
     if (!el.current) return;
@@ -297,12 +302,11 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       if (cancelled || !el.current) return;
       ml.current = maplibre;
       maplibre.setWorkerUrl(`/maplibre-gl-worker.mjs?v=${maplibre.getVersion()}`);
-      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const init = stateRef.current.waypoints;
       const startCoords = initial?.coords.length ? initial.coords : init;
       const m = new maplibre.Map({
         container: el.current,
-        style: dark ? STYLE_DARK : STYLE_LIGHT,
+        style: mapStyleUrl(mapStyleRef.current),
         center: center ?? [10.7522, 59.9139],
         zoom: center ? 13 : 11,
         attributionControl: { compact: true },
@@ -317,6 +321,11 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       const giveUp = setTimeout(() => !m.isStyleLoaded() && setMapFailed(true), 15_000);
       m.on("load", () => {
         clearTimeout(giveUp);
+        setReady(true);
+      });
+      // first style and every swap: re-add our layers, then let the data effects refill them
+      m.on("style.load", () => {
+        if (m.getSource("route")) return;
         const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff6b3d";
         const runsColor = getComputedStyle(document.documentElement).getPropertyValue("--pace").trim() || "#5aaeff";
         m.addSource("runs", { type: "geojson", data: multi([]) });
@@ -328,7 +337,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
         m.addLayer({ id: "pending", type: "line", source: "pending", paint: { "line-color": accent, "line-width": 3, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] } });
         m.addSource("hover", { type: "geojson", data: points([]) });
         m.addLayer({ id: "hover", type: "circle", source: "hover", paint: { "circle-radius": 7, "circle-color": accent, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
-        setReady(true);
+        setStyleGen((g) => g + 1);
       });
       m.on("click", (e) => addPoint([round6(e.lngLat.lng), round6(e.lngLat.lat)]));
     })();
@@ -344,20 +353,26 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
 
   useEffect(() => {
     if (!ready || !map.current) return;
-    (map.current.getSource("runs") as GeoJSONSource).setData(multi(showRuns ? runs : []));
-  }, [ready, showRuns, runs]);
+    (map.current.getSource("runs") as GeoJSONSource | undefined)?.setData(multi(showRuns ? runs : []));
+  }, [ready, showRuns, runs, styleGen]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
     const done = state.segments.filter((s) => !s.pending);
-    (map.current.getSource("route") as GeoJSONSource).setData(multi(done.map((s) => s.coords)));
-    (map.current.getSource("pending") as GeoJSONSource).setData(multi(state.segments.filter((s) => s.pending).map((s) => s.coords)));
-  }, [ready, state.segments]);
+    (map.current.getSource("route") as GeoJSONSource | undefined)?.setData(multi(done.map((s) => s.coords)));
+    (map.current.getSource("pending") as GeoJSONSource | undefined)?.setData(multi(state.segments.filter((s) => s.pending).map((s) => s.coords)));
+  }, [ready, state.segments, styleGen]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
-    (map.current.getSource("hover") as GeoJSONSource).setData(points(hover ? [hover] : []));
-  }, [ready, hover]);
+    (map.current.getSource("hover") as GeoJSONSource | undefined)?.setData(points(hover ? [hover] : []));
+  }, [ready, hover, styleGen]);
+
+  useEffect(() => {
+    if (mapStyleRef.current === mapStyle) return;
+    mapStyleRef.current = mapStyle;
+    map.current?.setStyle(mapStyleUrl(mapStyle), { diff: false });
+  }, [mapStyle]);
 
   // waypoint markers: draggable; tap to remove (except in loop mode)
   useEffect(() => {
@@ -437,7 +452,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   return (
     <div className="space-y-3">
       <div className="card relative overflow-hidden">
-        <div className="relative h-[52dvh] min-h-80 w-full md:h-[60dvh]">
+        <div className={clsx("relative h-[52dvh] min-h-80 w-full md:h-[60dvh]", mapStyle === "map" && "map-dim")}>
           <div className="absolute inset-0">
             <div ref={el} className="h-full w-full" data-testid="planner-map" />
           </div>
@@ -446,7 +461,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
               The map couldn&apos;t load. Check your connection and reload the page.
             </div>
           )}
-          <div className="pointer-events-none absolute inset-x-3 top-3 flex">
+          <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
             <div className="seg pointer-events-auto bg-surface/90 shadow-[var(--shadow-pop)] backdrop-blur">
               {(["draw", "loop"] as const).map((m) => (
                 <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>
@@ -454,7 +469,9 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
                 </button>
               ))}
             </div>
+            <MapStyleSwitch value={mapStyle} onChange={setMapStyle} />
           </div>
+          <MapTilerLogo style={mapStyle} className="right-2 bottom-12" />
           <p className="pointer-events-none absolute inset-x-3 bottom-3 w-fit max-w-[calc(100%-1.5rem)] rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-fg-2 shadow-[var(--shadow-pop)] backdrop-blur">
             {busy === "loop" ? "Finding a loop…" : pending ? "Following paths…" : hint}
           </p>

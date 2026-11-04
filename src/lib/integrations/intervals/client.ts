@@ -47,7 +47,7 @@ export class IntervalsClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly opts: IntervalsClientOptions) {
-    this.base = (opts.baseUrl ?? INTERVALS_BASE_URL).replace(/\/$/, "");
+    this.base = (opts.baseUrl ?? process.env.INTERVALS_API_BASE_URL ?? INTERVALS_BASE_URL).replace(/\/$/, "");
     this.athlete = opts.athleteId?.trim() || "0";
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
