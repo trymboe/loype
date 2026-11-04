@@ -103,7 +103,9 @@ export interface GoalEdit {
   name?: string | null;
   targetTimeS?: number | null;
   targetWeeklyKm?: number | null;
-  config?: Partial<Pick<PlanConfig, "runDays" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">>;
+  config?: Partial<
+    Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">
+  >;
 }
 
 /**
@@ -111,7 +113,7 @@ export interface GoalEdit {
  * exactly as they are; the weekly update picks up the new settings for weeks
  * still to come. Recorded as a version so it shows in History.
  */
-export async function updateGoal(db: SupabaseClient, userId: string, edit: GoalEdit): Promise<string[]> {
+export async function updateGoal(db: SupabaseClient, userId: string, edit: GoalEdit, opts: { today?: string } = {}): Promise<string[]> {
   const plan = await activePlan(db, userId);
   if (!plan) throw new Error("No active plan");
   const g = plan.goal;
@@ -134,12 +136,25 @@ export async function updateGoal(db: SupabaseClient, userId: string, edit: GoalE
   for (const [k, v] of Object.entries(edit.config ?? {})) {
     if (v !== undefined && JSON.stringify(v) !== JSON.stringify(cfg[k as keyof PlanConfig])) configPatch[k] = v;
   }
-  if (Object.keys(configPatch).some((k) => k !== "unavailableDays")) changes.push("training settings");
+  if (Object.keys(configPatch).length) changes.push("training settings");
   if (!Object.keys(goalPatch).length && !Object.keys(configPatch).length) return [];
   if (Object.keys(goalPatch).length) await check(db.from("goals").update(goalPatch).eq("id", g.id).eq("user_id", userId));
   if (Object.keys(configPatch).length) await check(db.from("training_plans").update({ config: { ...cfg, ...configPatch } }).eq("id", plan.id).eq("user_id", userId));
-  if (changes.length) await snapshot(db, userId, plan.id, `Goal updated: ${changes.join(", ")}. Workouts unchanged.`, "athlete");
+  const settingsChanged = Object.keys(configPatch).length > 0;
+  if (Object.keys(goalPatch).length) await snapshot(db, userId, plan.id, `Goal updated: ${changes.filter((c) => c !== "training settings").join(", ")}. Workouts unchanged.`, "athlete");
+  if (settingsChanged && opts.today) {
+    // the days you run shape every week, so the weeks still to come are rebalanced right away
+    const fresh = await activePlan(db, userId);
+    await refreshFutureWeeks(db, userId, fresh, opts.today, { force: true, reason: `Training settings changed (${frequencyLabel({ ...cfg, ...configPatch } as PlanConfig)}): the rest of the plan was recalculated. Finished, locked and edited workouts are kept.` });
+  }
   return changes;
+}
+
+/** "3 runs a week" or "runs a week chosen from your history". */
+export function frequencyLabel(c: Pick<PlanConfig, "runsPerWeek" | "usualRunsPerWeek">): string {
+  if (c.runsPerWeek) return `${c.runsPerWeek} runs a week`;
+  if (c.usualRunsPerWeek) return `runs a week chosen from your usual ${c.usualRunsPerWeek}`;
+  return "runs a week chosen from your history";
 }
 
 /** Deletes the active plan with its goal, workouts, versions and proposals, so a new one can be made. */
@@ -286,11 +301,20 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
  * finished or skipped, and accepted adaptations, are kept. Versioned, so it
  * can be undone from History.
  */
-export async function refreshFutureWeeks(db: SupabaseClient, userId: string, plan: any, today: string): Promise<boolean> {
-  const thisWeek = weekStart(today);
+export async function refreshFutureWeeks(
+  db: SupabaseClient,
+  userId: string,
+  plan: any,
+  today: string,
+  /** force: recalculate now even in the first week or if already done this week (after a settings change); reason: the History note */
+  opts: { force?: boolean; reason?: string } = {},
+): Promise<boolean> {
   const weeks = plan.weeks as PlanWeek[];
+  // before the plan has started, recalculate from its start
+  if (opts.force && plan.config?.startDate && today < plan.config.startDate) today = plan.config.startDate;
+  const thisWeek = weekStart(today);
   const idx = weeks.findIndex((w) => w.start === thisWeek);
-  if (idx < 1 || plan.config?.refreshedWeek === thisWeek) return false;
+  if (idx < 0 || (!opts.force && (idx < 1 || plan.config?.refreshedWeek === thisWeek))) return false;
   const remaining = weeks.slice(idx);
   const fresh = await loadBaseline(db, userId, today);
   const old = plan.baseline as Baseline;
@@ -340,7 +364,8 @@ export async function refreshFutureWeeks(db: SupabaseClient, userId: string, pla
     db,
     userId,
     plan.id,
-    `Weekly update: the coming weeks were recalculated from your actual running (last week ${rw.at(-1) ?? 0} min, 4-week average ${fresh.weeklyMinutes} min). This week: ${gen.weeks[0].targetMinutes} min.`,
+    opts.reason ??
+      `Weekly update: the coming weeks were recalculated from your actual running (last week ${rw.at(-1) ?? 0} min, 4-week average ${fresh.weeklyMinutes} min). This week: ${gen.weeks[0].targetMinutes} min.`,
     "adaptation",
   );
   return true;

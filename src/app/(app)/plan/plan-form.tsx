@@ -113,10 +113,7 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
             <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
           </Field>
         </div>
-        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-          How often you run is measured from your history, not set here. You have averaged {defaults.recentRuns} runs a week lately{defaults.runMinutes ? `, usually about ${defaults.runMinutes} min each` : ""}, so the plan starts from that and only adds time and runs as fast as is considered
-          safe (about 10 % a week, and never more than 1.3× your last four weeks). Each week it is recalculated from what you actually ran, so it grows if you do more.
-        </p>
+        <FrequencyPicker dayCount={runDays.length} recentRuns={defaults.recentRuns} runMinutes={defaults.runMinutes} />
       </section>
 
       <section className="grid grid-cols-2 gap-3">
@@ -151,6 +148,68 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
         {pending ? "Building your plan…" : "Build my plan"}
       </button>
     </form>
+  );
+}
+
+/** Runs per week: Auto (from your history, or a frequency you enter) or a fixed number. */
+export function FrequencyPicker({
+  dayCount,
+  recentRuns,
+  runMinutes,
+  initialFixed = null,
+  initialUsual = "",
+}: {
+  dayCount: number;
+  recentRuns: number;
+  runMinutes?: number | null;
+  initialFixed?: number | null;
+  initialUsual?: string;
+}) {
+  const [fixed, setFixed] = useState<number | null>(initialFixed);
+  const options: (number | null)[] = [null, 1, 2, 3, 4, 5, 6, 7];
+  const noHistory = recentRuns === 0;
+  return (
+    <div className="space-y-3">
+      <div>
+        <span className="mb-1.5 block text-sm font-semibold">Runs per week</span>
+        <div className="grid grid-cols-8 gap-1.5">
+          {options.map((o) => {
+            const tooMany = o != null && o > dayCount;
+            return (
+              <label
+                key={o ?? "auto"}
+                className={clsx(
+                  "rounded-xl py-2.5 text-center text-xs font-semibold transition-colors",
+                  o == null && "col-span-1",
+                  tooMany ? "cursor-default opacity-40" : "cursor-pointer",
+                  fixed === o ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-fg",
+                )}
+              >
+                <input type="radio" name="frequency" value={o ?? "auto"} checked={fixed === o} disabled={tooMany} onChange={() => setFixed(o)} className="sr-only" />
+                {o ?? "Auto"}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+      {fixed == null ? (
+        <>
+          <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+            {noHistory
+              ? "No runs synced lately, so tell Løype how often you run now and it starts from there. "
+              : `Auto: you have averaged ${recentRuns} runs a week lately${runMinutes ? `, usually about ${runMinutes} min each` : ""}, so the plan starts from that. `}
+            It only adds time and runs as fast as is considered safe (about 10 % a week, and never more than 1.3× your last four weeks), and each week it is recalculated from what you actually ran.
+          </p>
+          <Field label="How often do you run now?" hint={noHistory ? "Times per week. Leave empty if you're starting from scratch." : "Optional. Replaces the measured frequency, e.g. if not all your runs are synced."}>
+            <input name="usual_runs" inputMode="decimal" defaultValue={initialUsual} className="input" placeholder={noHistory ? "e.g. 2" : String(recentRuns)} />
+          </Field>
+        </>
+      ) : (
+        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+          Every week has {fixed} run{fixed === 1 ? "" : "s"}, spread over the days you ticked. The weekly time still builds safely from what you actually run, so it&apos;s divided over {fixed} run{fixed === 1 ? "" : "s"}.
+        </p>
+      )}
+    </div>
   );
 }
 

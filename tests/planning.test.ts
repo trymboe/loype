@@ -309,3 +309,41 @@ describe("adaptation", () => {
     expect(p.find((x) => x.rule === "B")).toBeUndefined();
   });
 });
+
+describe("runs per week: fixed or auto", () => {
+  const low = base({ weeklyMinutes: 50, runsPerWeek: 1.5, consistency: 0.75, longestRunMinutes: 61, recentWeeks: [50, 50, 50, 50], recentRunCounts: [1, 2, 1, 2] });
+  const tenK: Goal = { kind: "10k", name: null, distanceM: null, raceDate: "2027-04-24", targetTimeS: null, targetWeeklyKm: null };
+  const runs = (pl: ReturnType<typeof generatePlan>) => pl.weeks.map((w) => pl.workouts.filter((x) => x.type !== "rest" && x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length);
+
+  it("holds a fixed number every week, including recovery and taper", () => {
+    const p = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, runsPerWeek: 3 }), low);
+    const counts = runs(p);
+    // the race week may hold the race on top; all other weeks have exactly 3
+    counts.slice(0, -1).forEach((c) => expect(c).toBe(3));
+  });
+
+  it("keeps the weekly time set by your load, whatever the frequency", () => {
+    const auto = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6 }), low);
+    const four = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, runsPerWeek: 4 }), low);
+    // same load limits: within the planner's 10 % of the week's target (structured sessions don't divide exactly)
+    four.weeks.forEach((w, i) => expect(w.targetMinutes).toBeLessThanOrEqual(auto.weeks[i].targetMinutes * 1.12 + 3));
+    const mins = four.weeks.map((w) => w.targetMinutes);
+    const hist = [50, 50, 50, 50, ...mins];
+    mins.forEach((m, i) => expect(m).toBeLessThanOrEqual(Math.max((hist.slice(i, i + 4).reduce((a, b) => a + b, 0) / 4) * ACWR_MAX * 1.1, 70)));
+    expect(runs(four).slice(0, -1).every((c) => c === 4)).toBe(true);
+  });
+
+  it("never uses more days than you ticked, and warns", () => {
+    const p = generatePlan(tenK, config({ runDays: [1, 3], longRunDay: 3, runsPerWeek: 4 }), low);
+    runs(p).slice(0, -1).forEach((c) => expect(c).toBeLessThanOrEqual(2));
+    expect(p.warnings.some((w) => w.includes("ticked 2 days"))).toBe(true);
+  });
+
+  it("auto uses a frequency you enter instead of the measured one", () => {
+    const none = base({ weeklyMinutes: 0, runsPerWeek: 0, consistency: 0, longestRunMinutes: 0, recentWeeks: [0, 0, 0, 0], recentRunCounts: [0, 0, 0, 0], habitualRunMinutes: null });
+    const measured = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6 }), base({ ...none, weeklyMinutes: 200, recentWeeks: [200, 200, 200, 200] }));
+    const told = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, usualRunsPerWeek: 5 }), base({ ...none, weeklyMinutes: 200, recentWeeks: [200, 200, 200, 200] }));
+    expect(runs(told)[0]).toBeGreaterThan(runs(measured)[0]);
+    expect(runs(told)[0]).toBeLessThanOrEqual(7);
+  });
+});

@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import clsx from "clsx";
 import { deletePlanAction, updateGoalAction, type GoalEditState } from "../actions";
 import { DAYS } from "../goal-options";
-import { Field, Toggle } from "../plan-form";
+import { Field, FrequencyPicker, Toggle } from "../plan-form";
 
 export interface GoalFormInitial {
   name: string;
@@ -16,6 +16,9 @@ export interface GoalFormInitial {
   includeIntervals: boolean;
   includeLongRuns: boolean;
   includeStrides: boolean;
+  runsPerWeek: number | null;
+  usualRuns: string;
+  recentRuns: number;
 }
 
 const RACE = ["5k", "10k", "half", "marathon", "race"];
@@ -72,6 +75,7 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
             </label>
           ))}
         </div>
+        <FrequencyPicker dayCount={runDays.length} recentRuns={initial.recentRuns} initialFixed={initial.runsPerWeek} initialUsual={initial.usualRuns} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Long run day">
             <select name="long_run_day" defaultValue={initial.longRunDay} className="input">
@@ -95,7 +99,7 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
       </section>
 
       <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-        Saving keeps every planned workout as it is. Day and session settings are used from the next weekly update, which only recalculates weeks that haven&apos;t started.
+        A new target time or name keeps every workout as it is. Changing days, runs per week or the other training settings recalculates the rest of the plan from today; finished, locked and edited workouts are kept.
       </p>
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 const { deletePlan, updateGoal } = await import("../src/lib/planning/service");
+const { generatePlan } = await import("../src/lib/planning/generator");
+const { addDaysIso } = await import("../src/lib/dates");
 
 type Row = Record<string, any>;
 /** In-memory Supabase with just enough for the goal edit: filters, update, insert, delete, and the plan → goal join (with cascade). */
@@ -18,6 +20,9 @@ function fakeDb(tables: Record<string, Row[]>) {
       select: (s?: string) => ((join = !!s?.includes("goal:goals")), q),
       eq: (k: string, v: any) => (filters.push((r) => r[k] === v), q),
       in: (k: string, vs: any[]) => (filters.push((r) => vs.includes(r[k])), q),
+      is: (k: string, v: any) => (filters.push((r) => (r[k] ?? null) === v), q),
+      gte: (k: string, v: any) => (filters.push((r) => r[k] >= v), q),
+      lte: (k: string, v: any) => (filters.push((r) => r[k] <= v), q),
       order: () => q,
       maybeSingle: () => ((single = true), q),
       single: () => ((single = true), q),
@@ -29,7 +34,7 @@ function fakeDb(tables: Record<string, Row[]>) {
     const run = () => {
       const match = rows().filter((r) => filters.every((f) => f(r)));
       if (op.kind === "update") match.forEach((r) => Object.assign(r, op.payload));
-      if (op.kind === "insert") rows().push({ id: `id${++seq}`, ...op.payload });
+      if (op.kind === "insert") for (const p of [op.payload].flat()) rows().push({ id: `id${++seq}`, ...p });
       if (op.kind === "delete") {
         tables[table] = rows().filter((r) => !match.includes(r));
         // goals → training_plans → planned_workouts / plan_versions cascade
@@ -122,5 +127,45 @@ describe("deletePlan", () => {
     const { tables, db } = setup();
     expect(await deletePlan(db, "someone-else")).toBe(false);
     expect(tables.goals).toHaveLength(1);
+  });
+});
+
+describe("changing runs per week", () => {
+  it("rebalances the weeks to come, keeping finished workouts", async () => {
+    const goal = { kind: "10k" as const, name: null, distanceM: null, raceDate: null, targetTimeS: null, targetWeeklyKm: null };
+    const today = "2026-11-04";
+    const baseline: any = {
+      asOf: today, vdot: null, vdotRange: null, vdotConfidence: null, paceZones: null, hrZones: null, thresholdHr: null,
+      weeklyMinutes: 120, weeklyKm: 20, runsPerWeek: 2, consistency: 1, longestRunMinutes: 50, longestRun30Minutes: 50,
+      recentWeeks: [120, 120, 120, 120], recentRunCounts: [2, 2, 2, 2], habitualRunMinutes: 50, predictions: [],
+    };
+    const config: any = { startDate: "2026-11-02", weeks: 8, runDays: [0, 1, 2, 3, 4, 5, 6], runsPerWeek: 2, longRunDay: 6, unavailableDays: [], maxWeeklyMinutes: null, includeIntervals: true, includeLongRuns: true, includeStrides: true };
+    const gen = generatePlan(goal, config, baseline);
+    const tables: Record<string, Row[]> = {
+      goals: [{ id: "g", user_id: "u", kind: "10k", name: null, distance_m: null, race_date: null, target_time_s: null, target_weekly_km: null }],
+      training_plans: [{ id: "p", user_id: "u", goal_id: "g", status: "active", race_pace: null, current_version: 1, config: gen.config, baseline, weeks: gen.weeks }],
+      planned_workouts: gen.workouts.map((w, i) => ({ id: `w${i}`, plan_id: "p", user_id: "u", date: w.date, type: w.type, steps: w.steps, status: w.date < today ? "done" : "planned", locked: false, source: "generator" })),
+      plan_versions: [],
+      activities: [],
+      adaptation_proposals: [],
+    };
+    const db = fakeDb(tables);
+    const runsIn = (from: string, to: string) => tables.planned_workouts.filter((w) => w.type !== "rest" && w.date >= from && w.date <= to).length;
+    const nextWeek = addDaysIso(gen.weeks[1].start, 0);
+    expect(runsIn(nextWeek, addDaysIso(nextWeek, 6))).toBe(2);
+    const done = tables.planned_workouts.filter((w) => w.status === "done").map((w) => w.id);
+
+    await updateGoal(db, "u", { config: { runsPerWeek: 3 } }, { today });
+
+    expect(tables.training_plans[0].config.runsPerWeek).toBe(3);
+    expect(runsIn(nextWeek, addDaysIso(nextWeek, 6))).toBe(3);
+    for (const id of done) expect(tables.planned_workouts.some((w) => w.id === id)).toBe(true);
+    expect(tables.plan_versions.at(-1)!.reason).toContain("3 runs a week");
+  });
+
+  it("leaves workouts alone when only the target time changes", async () => {
+    const { tables, db, workout } = setup();
+    await updateGoal(db, "u", { targetTimeS: 6000 }, { today: "2026-11-04" });
+    expect(tables.planned_workouts).toEqual([workout]);
   });
 });

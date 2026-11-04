@@ -44,18 +44,30 @@ function parseTargets(form: FormData, k: GoalKind): { targetTimeS: number | null
 /** The training settings shared by "new plan" and "edit goal". */
 function parseSettings(
   form: FormData,
-): Pick<PlanConfig, "runDays" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides"> | { error: string } {
+):
+  | Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">
+  | { error: string } {
   const s = (k: string) => String(form.get(k) ?? "").trim();
   const runDays = form
     .getAll("run_days")
     .map((d) => Number(d))
     .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
   if (runDays.length < 2) return { error: "Pick at least 2 days you could run" };
+  // "auto" (or nothing) lets the planner choose from your history; a number fixes runs per week
+  const freq = s("frequency");
+  const runsPerWeek = freq && freq !== "auto" ? Number(freq) : null;
+  if (runsPerWeek != null && (!Number.isInteger(runsPerWeek) || runsPerWeek < 1 || runsPerWeek > 7)) return { error: "Choose 1–7 runs a week, or Auto" };
+  if (runsPerWeek != null && runsPerWeek > runDays.length) return { error: `Tick at least ${runsPerWeek} days to run ${runsPerWeek} times a week` };
+  const usualRaw = runsPerWeek == null ? s("usual_runs").replace(",", ".") : "";
+  const usualRunsPerWeek = usualRaw ? Number(usualRaw) : null;
+  if (usualRunsPerWeek != null && (!Number.isFinite(usualRunsPerWeek) || usualRunsPerWeek < 0.5 || usualRunsPerWeek > 7)) return { error: "How often you run now should be between 0.5 and 7 times a week" };
   const longRunDay = s("long_run_day") === "" ? null : Number(s("long_run_day"));
   const maxH = s("max_weekly_hours") ? Number(s("max_weekly_hours").replace(",", ".")) : null;
   if (maxH != null && (!Number.isFinite(maxH) || maxH < 1 || maxH > 20)) return { error: "Weekly time limit should be between 1 and 20 hours" };
   return {
     runDays,
+    runsPerWeek,
+    usualRunsPerWeek,
     longRunDay: longRunDay != null && Number.isInteger(longRunDay) ? longRunDay : null,
     // days you didn't tick count as unavailable, so moving a workout there gives a warning
     unavailableDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => !runDays.includes(d)),
@@ -135,10 +147,15 @@ export async function updateGoalAction(_prev: GoalEditState, form: FormData): Pr
       ...(RACE_KINDS.includes(k) ? { targetTimeS: targets.targetTimeS } : {}),
       ...(k === "volume" ? { targetWeeklyKm: targets.weeklyKm } : {}),
       config: settings,
-    });
+    }, { today: todayIn(await userTimezone()) });
     revalidatePath("/plan", "layout");
     revalidatePath("/");
-    return { saved: changes.length ? "Saved. Your workouts are unchanged." : "Nothing changed." };
+    const msg = !changes.length
+      ? "Nothing changed."
+      : changes.includes("training settings")
+        ? "Saved. The rest of the plan was recalculated for your new settings; finished, locked and edited workouts were kept."
+        : "Saved. Your workouts are unchanged.";
+    return { saved: msg };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
