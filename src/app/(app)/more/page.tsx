@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { ChevronRight, Download, HeartPulse, KeyRound, Link2, LogOut, Map as MapIcon } from "lucide-react";
+import { ChevronRight, Download, HeartPulse, KeyRound, Link2, LogOut } from "lucide-react";
 import { IconTile, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "More" };
 
 const ROWS = [
-  { href: "/routes", icon: MapIcon, color: "var(--good)", label: "Routes", hint: "Plan runs on the map, generate loops, export GPX" },
   { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations", hint: "Garmin Connect, sync and history import" },
   { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile", hint: "Max and resting heart rate, birth year, sex" },
   { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password", hint: "Set a password to sign in on new browsers and the home-screen app" },

@@ -122,7 +122,7 @@ The app makes no LLM API calls. An AI coach chat was built and then removed at t
 ## 4. Prioritized implementation plan
 
 **Phase 1 — Foundations & Garmin ingestion (this PR)**
-1. App shell: mobile bottom nav (Today, Plan, Progress, Activities, More), dark/light theme, PWA manifest.
+1. App shell: mobile bottom nav (Today, Plan, Progress, Activities, Routes, More), dark/light theme, PWA manifest.
 2. Supabase schema 0001 + RLS + storage bucket; single-user magic-link auth.
 3. Garmin client: token acquisition/caching/renewal, retry/backoff, ZIP→FIT extraction.
 4. Sync engine: historical import from a chosen date, incremental sync (overlap window), time-boxed resumable processing, per-item backoff, unavailable vs failed, duplicate detection, provenance.

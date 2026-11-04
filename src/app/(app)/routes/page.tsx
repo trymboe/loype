@@ -18,7 +18,7 @@ export default async function RoutesPage() {
   );
   return (
     <>
-      <PageHeader back={{ href: "/more", label: "More" }} title="Routes" subtitle="Plan runs on the map, save favourites and export GPX." action={routes.length ? newBtn : undefined} />
+      <PageHeader title="Routes" subtitle="Plan runs on the map, save favourites and export GPX." action={routes.length ? newBtn : undefined} />
       {routes.length === 0 ? (
         <EmptyState
           icon={<MapIcon size={22} />}
