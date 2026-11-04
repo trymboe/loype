@@ -39,6 +39,17 @@ const config = (over: Partial<PlanConfig> = {}): PlanConfig => ({
 });
 const half: Goal = { kind: "half", name: null, distanceM: null, raceDate: "2027-03-14", targetTimeS: 6600, targetWeeklyKm: null };
 
+/**
+ * The weekly load rules: week 1 at most the larger of 1.3× the 4-week average + 10 min and 120 % of the best recent
+ * week; after that a loading week grows at most 15 % (or 15 min, or one added easy run of ≤ 60 min) over the last one.
+ * 5 % slack for the week-fitting tolerance, 3 min for rounding.
+ */
+function expectLoadRules(p: ReturnType<typeof generatePlan>, chronic: number, best: number) {
+  expect(p.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(chronic * ACWR_MAX + 10, best * 1.2) * 1.05 + 3);
+  const load = p.weeks.filter((w) => ["base", "build", "specific"].includes(w.phase)).map((w) => w.targetMinutes);
+  for (let i = 1; i < load.length; i++) expect(load[i]).toBeLessThanOrEqual(Math.max(load[i - 1] * 1.15, load[i - 1] + 15, load[i - 1] + 51) * 1.05 + 3);
+}
+
 describe("plan generator", () => {
   const plan = generatePlan(half, config(), base());
 
@@ -114,14 +125,8 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
     for (const ws of perWeek) expect(ws.length).toBeLessThanOrEqual(5);
   });
 
-  it("starts near what you run now and limits week-to-week and acute:chronic increases", () => {
-    expect(p.weeks[0].targetMinutes).toBeLessThanOrEqual(50 * 1.25 + 5);
-    const mins = p.weeks.map((w) => w.targetMinutes);
-    const hist = [50, 50, 50, 50, ...mins];
-    for (let i = 0; i < mins.length; i++) {
-      const chronic = hist.slice(i, i + 4).reduce((a, b) => a + b, 0) / 4;
-      expect(mins[i]).toBeLessThanOrEqual(Math.max(chronic * ACWR_MAX * 1.1, 70));
-    }
+  it("starts near what you run now and limits week-to-week increases", () => {
+    expectLoadRules(p, 50, 50);
   });
 
   it("keeps hard running to about 20 % and no hard sessions in the first two weeks", () => {
@@ -322,14 +327,9 @@ describe("runs per week: fixed or auto", () => {
     counts.slice(0, -1).forEach((c) => expect(c).toBe(3));
   });
 
-  it("keeps the weekly time set by your load, whatever the frequency", () => {
-    const auto = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6 }), low);
+  it("keeps the same load limits whatever the frequency", () => {
     const four = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, runsPerWeek: 4 }), low);
-    // same load limits: within the planner's 10 % of the week's target (structured sessions don't divide exactly)
-    four.weeks.forEach((w, i) => expect(w.targetMinutes).toBeLessThanOrEqual(auto.weeks[i].targetMinutes * 1.12 + 3));
-    const mins = four.weeks.map((w) => w.targetMinutes);
-    const hist = [50, 50, 50, 50, ...mins];
-    mins.forEach((m, i) => expect(m).toBeLessThanOrEqual(Math.max((hist.slice(i, i + 4).reduce((a, b) => a + b, 0) / 4) * ACWR_MAX * 1.1, 70)));
+    expectLoadRules(four, 50, 50);
     expect(runs(four).slice(0, -1).every((c) => c === 4)).toBe(true);
   });
 
@@ -345,5 +345,76 @@ describe("runs per week: fixed or auto", () => {
     const told = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, usualRunsPerWeek: 5 }), base({ ...none, weeklyMinutes: 200, recentWeeks: [200, 200, 200, 200] }));
     expect(runs(told)[0]).toBeGreaterThan(runs(measured)[0]);
     expect(runs(told)[0]).toBeLessThanOrEqual(7);
+  });
+});
+
+describe("sessions seeded from your own runs (planner@2)", () => {
+  // Trym's last 8 weeks before 2026-11-05: mostly 4.5–7 km, with recent long runs of 10.05 km and 8.65 km
+  const raw: [string, number, number][] = [
+    ["2026-09-13", 6.09, 34], ["2026-09-15", 5.61, 39], ["2026-09-26", 5.35, 31], ["2026-10-05", 6.27, 31], ["2026-10-08", 10.05, 61],
+    ["2026-10-17", 5.44, 29], ["2026-10-21", 7.01, 39], ["2026-10-23", 4.61, 23], ["2026-11-01", 8.65, 45], ["2026-11-02", 4.73, 31],
+  ];
+  const real = raw.map(([date, km, min]) => ({ date, distanceM: km * 1000, movingS: min * 60 }));
+  const fit = {
+    estimate: { withheld: false, vdot: 41.5, lower: 41.5, upper: 44, confidence: "medium" as const },
+    paceZones: trainingPaces(41.5),
+    hrZones,
+    threshold: { hr: 175 },
+    predictions: [5000, 10000, 21097.5, 42195].map((d) => ({ distanceM: d, timeS: predictTimeS(41.5, d) })),
+  };
+  const b = buildBaseline("2026-11-05", fit, real);
+  const tenK: Goal = { kind: "10k", name: null, distanceM: null, raceDate: "2027-04-24", targetTimeS: null, targetWeeklyKm: null };
+  const p = generatePlan(tenK, config({ startDate: "2026-11-05", runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 3, runsPerWeek: 3 }), b);
+  const isLong = (t: string) => t === "long" || t === "progressive_long";
+  const km = (w: { distanceM: number | null }) => (w.distanceM ?? 0) / 1000;
+  const weekOf = (w: (typeof p.weeks)[number]) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6));
+
+  it("keeps your recent runs in the baseline", () => {
+    expect(b.recentRuns?.length).toBe(raw.length);
+    expect(b.recentRuns?.at(-1)).toEqual({ date: "2026-11-02", minutes: 31, km: 4.73 });
+  });
+
+  it("starts the long run from your recent long runs, within 10 % of your longest in the last 30 days", () => {
+    const first = p.workouts.find((w) => isLong(w.type))!;
+    expect(km(first)).toBeGreaterThanOrEqual(8.5);
+    expect(km(first)).toBeLessThanOrEqual(8.65 * 1.1 + 0.1);
+    expect(first.why).toMatch(/10 km and 8\.7 km/);
+  });
+
+  it("makes the long run clearly longer than the other runs", () => {
+    for (const w of p.weeks.filter((x) => ["base", "build", "specific"].includes(x.phase))) {
+      const ws = weekOf(w);
+      const long = ws.find((x) => isLong(x.type))!;
+      for (const e of ws.filter((x) => x.type === "easy" || x.type === "strides" || x.type === "recovery")) expect(long.durationS).toBeGreaterThanOrEqual(e.durationS * 1.4);
+    }
+  });
+
+  it("builds the long run to about 1.3× race distance by the end of the build phase, holds it, then tapers", () => {
+    const longs = p.workouts.filter((w) => isLong(w.type));
+    const top = Math.max(...longs.map(km));
+    expect(top).toBeGreaterThanOrEqual(10);
+    expect(top).toBeLessThanOrEqual(13.5);
+    const lastBuild = p.weeks.filter((w) => w.phase === "build").at(-1)!;
+    const peakAt = longs.find((w) => km(w) === top)!;
+    expect(peakAt.date <= addDaysIso(lastBuild.start, 6)).toBe(true);
+    const taperLong = weekOf(p.weeks.find((w) => w.phase === "taper")!).find((x) => isLong(x.type))!;
+    expect(km(taperLong)).toBeLessThanOrEqual(top * 0.7);
+  });
+
+  it("never plans a run more than 10 % further than the furthest in the previous 30 days (real runs included)", () => {
+    const all = [...real.filter((r) => r.movingS >= 600).map((r) => ({ date: r.date, km: r.distanceM / 1000 })), ...p.workouts.filter((w) => w.type !== "race").map((w) => ({ date: w.date, km: km(w) }))];
+    for (const w of p.workouts.filter((x) => x.type !== "race")) {
+      const prior = all.filter((x) => x.date < addDaysIso(w.date, -6) && x.date >= addDaysIso(w.date, -30)).map((x) => x.km);
+      expect(km(w)).toBeLessThanOrEqual(1.1 * Math.max(...prior, 0) + 0.15);
+    }
+  });
+
+  it("alternates the phase's session types when there is room for one hard session a week", () => {
+    const hard = p.workouts.filter((w) => p.weeks.some((x) => x.phase === "specific" && w.date >= x.start && w.date <= addDaysIso(x.start, 6)) && isHard(w.type));
+    expect(new Set(hard.map((w) => w.type)).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("explains the long-run distance for the race", () => {
+    expect(p.summary.join(" ")).toMatch(/1\.3×/);
   });
 });

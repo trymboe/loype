@@ -1,9 +1,9 @@
-/** Planning types (`planner@1`). Durations in seconds, distances in metres, paces in s/km. */
+/** Planning types (`planner@2`). Durations in seconds, distances in metres, paces in s/km. */
 import type { HrZone } from "../analytics/fitness/physiology";
 import type { PaceZone } from "../analytics/fitness/vdot";
 import type { Projection } from "./projection";
 
-export const PLANNER_VERSION = "planner@1";
+export const PLANNER_VERSION = "planner@2";
 
 export type GoalKind = "5k" | "10k" | "half" | "marathon" | "race" | "general" | "endurance" | "consistency" | "maintain" | "volume";
 
@@ -84,8 +84,16 @@ export interface Baseline {
   recentRunCounts?: number[];
   /** median length of your runs over the last 8 weeks, minutes */
   habitualRunMinutes?: number | null;
+  /** your runs of 10 min or more in the last 8 weeks, oldest first: session lengths and the spike limit are seeded from them */
+  recentRuns?: BaselineRunSummary[];
   /** race-time predictions by distance (m → s) at the current estimate */
   predictions: { distanceM: number; timeS: number }[];
+}
+
+export interface BaselineRunSummary {
+  date: string;
+  minutes: number;
+  km: number | null;
 }
 
 export type Zone = "recovery" | "easy" | "steady" | "marathon" | "threshold" | "interval" | "repetition" | "race" | "hill";
