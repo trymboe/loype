@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/db/server";
 import { generateLoop, routingProvider } from "@/lib/routes/routing";
+import { findSoftLoop } from "@/lib/routes/soft-loop";
 import { LngLatSchema, routingErrorResponse } from "../http";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +12,22 @@ const Body = z.object({
   start: LngLatSchema,
   distanceM: z.number().min(1000).max(50_000),
   bearing: z.number().min(0).max(360),
+  /** Compare several loops and keep the one with the most gravel and trail. */
+  soft: z.boolean().optional(),
+  /** With `soft`: the loop may start anywhere within this walk of `start`. */
+  startRadiusM: z.number().min(0).max(3000).optional(),
 });
 
-/** Generates a loop of roughly the requested distance from a start point. */
+/** Generates a loop of roughly the requested distance from a start point (optionally the softest of several). */
 export async function POST(req: NextRequest) {
   if (!(await getSessionUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = Body.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Invalid loop request" }, { status: 400 });
   try {
     const router = routingProvider();
-    const res = await generateLoop(router, body.data.start, body.data.distanceM, body.data.bearing);
+    const { start, distanceM, bearing, soft, startRadiusM = 0 } = body.data;
+    if (soft) return NextResponse.json({ ...(await findSoftLoop(router, start, distanceM, bearing, startRadiusM)), provider: router.name });
+    const res = await generateLoop(router, start, distanceM, bearing);
     return NextResponse.json({ ...res, provider: router.name });
   } catch (e) {
     return routingErrorResponse(e);

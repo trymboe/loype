@@ -17,7 +17,8 @@ export interface RoutedPath {
 
 export interface RoutingProvider {
   readonly name: string;
-  route(waypoints: LngLat[]): Promise<RoutedPath>;
+  /** `costing` overrides the pedestrian costing options (e.g. SOFT_COSTING). */
+  route(waypoints: LngLat[], opts?: { costing?: PedestrianCosting }): Promise<RoutedPath>;
   /** Elevation in metres for each point (null where the model has no data). */
   elevation(points: LngLat[]): Promise<(number | null)[]>;
   /** Snaps a line to the path network and reports the surface along it. `gps` loosens matching for recorded tracks. */
@@ -37,7 +38,9 @@ type Fetch = typeof fetch;
 
 export const DEFAULT_VALHALLA_URL = "https://valhalla1.openstreetmap.de";
 
-export const RUNNING_COSTING = {
+export type PedestrianCosting = Record<string, number>;
+
+export const RUNNING_COSTING: PedestrianCosting = {
   // 0–1 preferences; 0.5 is neutral. Runners like trails and quiet streets.
   use_tracks: 0.7,
   use_living_streets: 0.7,
@@ -47,6 +50,21 @@ export const RUNNING_COSTING = {
   sidewalk_factor: 0.95,
   alley_factor: 2,
   driveway_factor: 5,
+};
+
+/**
+ * Leans towards unpaved ways: tracks and park/forest footways up, sidewalks
+ * and service roads (almost always asphalt) down. Valhalla's pedestrian
+ * costing has no surface preference of its own, so this works through way
+ * types; the surface of the result is then measured, not assumed.
+ */
+export const SOFT_COSTING: PedestrianCosting = {
+  ...RUNNING_COSTING,
+  use_tracks: 1,
+  use_living_streets: 0.3,
+  walkway_factor: 0.75,
+  sidewalk_factor: 1.6,
+  service_factor: 1.6,
 };
 
 export class ValhallaProvider implements RoutingProvider {
@@ -82,12 +100,12 @@ export class ValhallaProvider implements RoutingProvider {
     return json;
   }
 
-  async route(waypoints: LngLat[]): Promise<RoutedPath> {
+  async route(waypoints: LngLat[], { costing = RUNNING_COSTING }: { costing?: PedestrianCosting } = {}): Promise<RoutedPath> {
     if (waypoints.length < 2) return { legs: [], distanceM: 0 };
     const json = (await this.post("/route", {
       locations: waypoints.map(([lon, lat]) => ({ lat, lon, type: "break" })),
       costing: "pedestrian",
-      costing_options: { pedestrian: RUNNING_COSTING },
+      costing_options: { pedestrian: costing },
       directions_type: "none",
       units: "kilometers",
     })) as { trip?: { legs?: { shape: string; summary?: { length?: number } }[] } };
@@ -151,7 +169,12 @@ export async function generateLoop(
   start: LngLat,
   targetM: number,
   bearingDeg: number,
-  { maxAttempts = 4, tolerance = 0.06, points = 3 }: { maxAttempts?: number; tolerance?: number; points?: number } = {},
+  {
+    maxAttempts = 4,
+    tolerance = 0.06,
+    points = 3,
+    costing,
+  }: { maxAttempts?: number; tolerance?: number; points?: number; costing?: PedestrianCosting } = {},
 ): Promise<LoopResult> {
   let scale = 1;
   let bearing = bearingDeg;
@@ -161,7 +184,7 @@ export async function generateLoop(
     const wps = loopWaypoints(start, targetM * scale, bearing, points);
     let res: RoutedPath;
     try {
-      res = await router.route(wps);
+      res = await router.route(wps, costing ? { costing } : undefined);
     } catch (e) {
       lastError = e;
       if (e instanceof RoutingError && e.kind === "no_route") {
