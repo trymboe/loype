@@ -9,6 +9,7 @@ import { nearestIndex, summarizeSegment } from "@/lib/analytics/segment";
 import { formatDuration, formatPace, formatPaceFromSpeed } from "@/lib/units";
 import { LapCompare } from "./lap-compare";
 import { RouteMap } from "./route-map";
+import { SurfaceBreakdown, useSurfaces } from "@/components/routes/surface-breakdown";
 
 export interface LapView {
   index: number;
@@ -48,6 +49,9 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
     () => points.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lng!, p.lat!] as [number, number]),
     [points],
   );
+  const surfaceKey = coords.length > 1 ? `${coords.length}:${coords[0]}` : null;
+  const surface = useSurfaces(coords, surfaceKey, { gps: true, delayMs: 0 });
+  const [surfaceOnMap, setSurfaceOnMap] = useState(false);
   const hasPace = points.some((p) => p.pace != null);
   const hasHr = points.some((p) => p.hr != null);
   const hasCad = points.some((p) => p.cad != null);
@@ -141,7 +145,7 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
 
   return (
     <div className="space-y-3">
-      {coords.length > 1 && <RouteMap coords={coords} hover={hover?.lat != null ? [hover.lng!, hover.lat!] : null} highlight={shaded?.coords ?? null} />}
+      {coords.length > 1 && <RouteMap coords={coords} hover={hover?.lat != null ? [hover.lng!, hover.lat!] : null} highlight={shaded?.coords ?? null} surface={surfaceOnMap ? surface.data?.segments : null} />}
 
       <div className="card p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -345,6 +349,8 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
           {comparing && <LapCompare laps={laps} points={points} selected={cmp} onSelect={setCmp} />}
         </div>
       )}
+
+      <SurfaceBreakdown data={surface.data} state={surface.state} onMap={surfaceOnMap} onToggleMap={setSurfaceOnMap} />
     </div>
   );
 }

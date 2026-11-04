@@ -6,7 +6,8 @@
  * another Valhalla instance.
  */
 import { lineLength, loopWaypoints, type LngLat } from "./geometry";
-import { decodePolyline } from "./polyline";
+import { decodePolyline, encodePolyline } from "./polyline";
+import { summarizeSurfaces, type SurfaceEdge, type SurfaceSummary } from "./surface";
 
 export interface RoutedPath {
   /** One coordinate list per pair of consecutive waypoints. */
@@ -19,6 +20,8 @@ export interface RoutingProvider {
   route(waypoints: LngLat[]): Promise<RoutedPath>;
   /** Elevation in metres for each point (null where the model has no data). */
   elevation(points: LngLat[]): Promise<(number | null)[]>;
+  /** Snaps a line to the path network and reports the surface along it. `gps` loosens matching for recorded tracks. */
+  surfaces(points: LngLat[], opts?: { gps?: boolean }): Promise<SurfaceSummary>;
 }
 
 export class RoutingError extends Error {
@@ -68,9 +71,9 @@ export class ValhallaProvider implements RoutingProvider {
     }
     const json = (await res.json().catch(() => null)) as { error?: string; error_code?: number } | null;
     if (!res.ok) {
-      // Valhalla 1xx/4xx codes: 171 = no road near a point, 442/443 = no path between points
+      // Valhalla 1xx/4xx codes: 171 = no road near a point, 442/443 = no path between points, 444 = map matching failed
       const code = json?.error_code;
-      if (res.status === 400 && code != null && [170, 171, 172, 442, 443].includes(code)) {
+      if (res.status === 400 && code != null && [170, 171, 172, 442, 443, 444].includes(code)) {
         throw new RoutingError("No runnable path found there. Move the point closer to a road or trail.", "no_route");
       }
       if (res.status === 400) throw new RoutingError(json?.error ?? "The routing request was rejected.", "bad_request");
@@ -106,6 +109,24 @@ export class ValhallaProvider implements RoutingProvider {
     const h = json.height ?? [];
     // Valhalla reports missing DEM tiles as -32768
     return points.map((_, i) => (h[i] != null && h[i]! > -1000 ? h[i]! : null));
+  }
+
+  async surfaces(points: LngLat[], { gps = false }: { gps?: boolean } = {}): Promise<SurfaceSummary> {
+    if (points.length < 2) return summarizeSurfaces([], []);
+    const json = (await this.post("/trace_attributes", {
+      encoded_polyline: encodePolyline(points, 6),
+      shape_match: "map_snap",
+      costing: "pedestrian",
+      costing_options: { pedestrian: RUNNING_COSTING },
+      // Planned routes already follow paths; GPS tracks wander a few metres.
+      trace_options: { search_radius: gps ? 35 : 15, gps_accuracy: gps ? 10 : 5 },
+      filters: {
+        attributes: ["edge.surface", "edge.length", "edge.begin_shape_index", "edge.end_shape_index", "shape"],
+        action: "include",
+      },
+    })) as { shape?: string; edges?: SurfaceEdge[] };
+    if (!json.edges) throw new RoutingError("Unexpected answer from the routing service.", "unavailable");
+    return summarizeSurfaces(json.shape ? decodePolyline(json.shape, 6) : [], json.edges);
   }
 }
 

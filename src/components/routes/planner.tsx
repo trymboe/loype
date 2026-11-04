@@ -9,6 +9,9 @@ import { CornerUpLeft, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Und
 import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
 import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 import { ElevationProfile } from "./elevation-profile";
+import { SurfaceBreakdown, useSurfaces } from "./surface-breakdown";
+import { OpenInGoogleMaps } from "./google-maps";
+import { SURFACE_COLOR_EXPR, surfaceGeoJson } from "@/lib/routes/surface";
 import { cumulativeDistance, elevationStats, joinSegments, lineLength, simplify, type LngLat } from "@/lib/routes/geometry";
 import { saveRouteAction } from "@/app/(app)/routes/actions";
 
@@ -276,6 +279,9 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geomKey]);
 
+  const surface = useSurfaces(simplified, geomKey);
+  const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+
   const ele = useMemo(() => (elevations && elevations.length === simplified.length ? elevationStats(elevations) : null), [elevations, simplified]);
   const profile = useMemo(() => {
     if (!elevations || elevations.length !== simplified.length) return null;
@@ -333,6 +339,8 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
         m.addSource("route", { type: "geojson", data: line([]) });
         m.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#000", "line-opacity": 0.35, "line-width": 8 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": accent, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
+        m.addSource("surface", { type: "geojson", data: surfaceGeoJson(null) });
+        m.addLayer({ id: "surface", type: "line", source: "surface", paint: { "line-color": SURFACE_COLOR_EXPR, "line-width": 4.5 }, layout: { "line-join": "round", "line-cap": "round" } });
         m.addSource("pending", { type: "geojson", data: multi([]) });
         m.addLayer({ id: "pending", type: "line", source: "pending", paint: { "line-color": accent, "line-width": 3, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] } });
         m.addSource("hover", { type: "geojson", data: points([]) });
@@ -362,6 +370,11 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
     (map.current.getSource("route") as GeoJSONSource | undefined)?.setData(multi(done.map((s) => s.coords)));
     (map.current.getSource("pending") as GeoJSONSource | undefined)?.setData(multi(state.segments.filter((s) => s.pending).map((s) => s.coords)));
   }, [ready, state.segments, styleGen]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("surface") as GeoJSONSource | undefined)?.setData(surfaceGeoJson(surfaceOnMap ? surface.data?.segments : null));
+  }, [ready, surfaceOnMap, surface.data, styleGen]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -546,11 +559,18 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
             </label>
           )}
 
+          {!pending && coords.length > 1 && (
+            <div className="mt-3">
+              <OpenInGoogleMaps coords={simplified} className="btn btn-secondary btn-sm" />
+            </div>
+          )}
+
           {notice && <p className="mt-3 rounded-xl bg-warn/10 px-3 py-2 text-[0.8125rem] leading-snug text-warn">{notice}</p>}
         </div>
       </div>
 
       {profile && <ElevationProfile data={profile} onHover={setHover} />}
+      <SurfaceBreakdown data={surface.data} state={surface.state} onMap={surfaceOnMap} onToggleMap={setSurfaceOnMap} />
       {eleState === "failed" && state.segments.length > 0 && (
         <p className="px-1 text-xs text-muted">Elevation is unavailable right now; it will be looked up again when you save.</p>
       )}

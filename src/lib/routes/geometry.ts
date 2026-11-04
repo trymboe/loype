@@ -183,3 +183,17 @@ export function isLngLat(v: unknown): v is LngLat {
     Math.abs(v[1]) <= 90
   );
 }
+
+/** Inserts points so no step is longer than `maxStepM` (map matching wants dense input). */
+export function densify(coords: LngLat[], maxStepM: number): LngLat[] {
+  if (coords.length < 2) return coords.slice();
+  const out: LngLat[] = [coords[0]];
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+    const n = Math.ceil(segmentLength(a, b) / maxStepM);
+    for (let k = 1; k < n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+    out.push(b);
+  }
+  return out;
+}
