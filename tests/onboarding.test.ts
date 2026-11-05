@@ -119,3 +119,14 @@ describe("baseline summary", () => {
     expect(titles(s.caveats)).toEqual(["No runs yet"]);
   });
 });
+
+describe("welcome guide on first login", () => {
+  it("shows for a brand-new account only", async () => {
+    const { showWelcomeGuide } = await import("@/lib/onboarding/state");
+    expect(showWelcomeGuide({ connected: false, hasRuns: false, prefs: {} })).toBe(true);
+    expect(showWelcomeGuide({ connected: true, hasRuns: false, prefs: {} })).toBe(false);
+    expect(showWelcomeGuide({ connected: false, hasRuns: true, prefs: {} })).toBe(false);
+    expect(showWelcomeGuide({ connected: false, hasRuns: false, prefs: { guideSeenAt: "2026-11-05T00:00:00Z" } })).toBe(false);
+    expect(showWelcomeGuide({ connected: false, hasRuns: false, prefs: { dismissedAt: "2026-11-05T00:00:00Z" } })).toBe(false);
+  });
+});

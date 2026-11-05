@@ -1,5 +1,5 @@
 /**
- * Guided first-run setup: connect Garmin → import history → baseline summary
+ * Guided first-run setup (after the welcome guide at /guide): connect Garmin or Strava → import history → baseline summary
  * → about you → goal and plan. Pure; the page gathers the facts.
  */
 
@@ -7,7 +7,7 @@ export const STEPS = ["connect", "import", "baseline", "about", "goal"] as const
 export type StepKey = (typeof STEPS)[number];
 
 export const STEP_LABEL: Record<StepKey, string> = {
-  connect: "Connect Garmin",
+  connect: "Connect your watch",
   import: "Import history",
   baseline: "Your baseline",
   about: "About you",
@@ -15,7 +15,7 @@ export const STEP_LABEL: Record<StepKey, string> = {
 };
 
 /** Short names for the step indicator. */
-export const STEP_SHORT: Record<StepKey, string> = { connect: "Garmin", import: "History", baseline: "Baseline", about: "About you", goal: "Goal" };
+export const STEP_SHORT: Record<StepKey, string> = { connect: "Watch", import: "History", baseline: "Baseline", about: "About you", goal: "Goal" };
 
 export type Experience = "new" | "returning" | "regular" | "experienced";
 
@@ -38,6 +38,8 @@ export interface AthleteBackground {
 
 /** athlete_profile.preferences.onboarding */
 export interface OnboardingPrefs {
+  /** the welcome guide was read (a new user is sent there from Today until then) */
+  guideSeenAt?: string;
   baselineSeenAt?: string;
   aboutDoneAt?: string;
   /** set when the athlete skips the rest of setup */
@@ -68,6 +70,11 @@ export function canOpen(step: StepKey, f: OnboardingFacts): boolean {
   const n = nextStep(f);
   if (n === "done") return true;
   return STEPS.indexOf(step) <= STEPS.indexOf(n);
+}
+
+/** A brand-new account (nothing connected, no runs, guide not read) starts on the welcome guide. */
+export function showWelcomeGuide(f: { connected: boolean; hasRuns: boolean; prefs: OnboardingPrefs }): boolean {
+  return !f.connected && !f.hasRuns && !f.prefs.guideSeenAt && !f.prefs.dismissedAt;
 }
 
 /** Whether to show the "finish setting up" prompt on Today. */

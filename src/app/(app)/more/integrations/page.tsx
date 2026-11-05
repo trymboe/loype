@@ -128,7 +128,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         </div>
         {stravaFlash && (
           <p className="mb-3 rounded-xl bg-good/10 px-3 py-2 text-sm text-good">
-            {stravaFlash === "connected" ? "Strava connected. New runs arrive within a minute of reaching Strava." : "Strava connected. New runs are picked up by the 30-minute sync."}
+            {stravaFlash === "connected" ? "Strava connected. New runs arrive within a minute of reaching Strava." : "Strava connected. New runs are picked up by the 30-minute sync."}{" "}
+            <Link href="/welcome" className="font-semibold underline underline-offset-2">
+              Continue setup
+            </Link>
           </p>
         )}
         {stravaFlashError && <p className="mb-3 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{stravaFlashError}</p>}
