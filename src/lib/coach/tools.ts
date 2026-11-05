@@ -65,6 +65,17 @@ const anyStep = z.object({
   steps: z.array(simpleStep).nullable(),
 });
 
+const MAX_OPS = 150;
+const OP_ACTIONS = ["move", "skip", "restore", "replace", "resize", "add", "lock", "unlock"] as const;
+const planOp = z.object({
+  action: z.enum(OP_ACTIONS),
+  workout_id: ID.nullable(),
+  date: DATE.nullable(),
+  type: z.enum(SESSION_TYPES).nullable(),
+  minutes: z.number().min(10).max(300).nullable(),
+  intensity: z.number().min(0).max(1).nullable(),
+});
+
 const schemas = {
   get_runs: z.object({ from: DATE, to: DATE }),
   get_run_detail: z.object({ activity_id: ID }),
@@ -97,6 +108,20 @@ const schemas = {
     confirmed: z.boolean(),
   }),
   start_plan_earlier: z.object({ start_date: DATE }),
+  get_plan_overview: z.object({}),
+  edit_plan: z.object({
+    reason: z.string().min(1).max(300),
+    operations: z.array(planOp).min(1).max(MAX_OPS),
+    confirmed: z.boolean(),
+  }),
+  scale_plan: z.object({
+    from: DATE,
+    to: DATE,
+    percent: z.number().min(-60).max(60),
+    sessions: z.enum(["all", "easy", "long"]),
+    reason: z.string().min(1).max(300),
+    confirmed: z.boolean(),
+  }),
   restore_plan_version: z.object({ version: z.number().int().min(1) }),
   respond_to_proposal: z.object({ proposal_id: ID, accept: z.boolean() }),
   update_route: z.object({ route_id: ID, name: z.string().max(80).nullable(), favorite: z.boolean().nullable() }),
@@ -202,6 +227,42 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
     "Move the start of a plan that hasn't started yet to an earlier date (today at the soonest), e.g. to start this week. Also works when the plan was pushed back because the race is far away. The plan is rebuilt from that week with the same goal and settings, from the athlete's current running; without a race date it keeps its end date and gets longer. Finished, locked and hand-edited workouts are kept. Afterwards, check the new first week with get_plan_workouts and adjust it (add, remove or shorten sessions) to what the athlete asked for and what they've already run this week.",
     obj({ start_date: s("New start date, YYYY-MM-DD, from today up to the current start") }),
   ),
+  fn(
+    "get_plan_overview",
+    "The whole active plan at a glance, week by week: phase, the planner's target minutes, planned minutes and every session (date, type, minutes, status, flags, id). Use it before larger changes across many weeks.",
+    obj({}),
+  ),
+  fn(
+    "edit_plan",
+    `Change many workouts in one go, across any part of the plan (up to ${MAX_OPS} operations), applied together as one plan version with one Undo. Use it for larger rewrites: restructuring weeks, changing session types across a block, lengthening or shortening many sessions, moving a whole week, adding or removing sessions everywhere. Operations run in order. Actions: move (workout_id, date: any later day in the plan), skip, restore, lock, unlock (workout_id), replace (workout_id, type, minutes, intensity: build a different session), resize (workout_id, minutes for easy/recovery/long/progressive_long, intensity 0-1 for structured sessions: same type, new size), add (date, type, minutes, intensity: a new session; replaces a planned rest day on that date). Unused fields are null. Finished, missed, past and race sessions can't be changed; locked ones only after unlock. The app checks the result as a whole (schedule rules, week-to-week jumps in planned time, the first week against recent running, long runs against the longest recent run) and returns warnings without changing anything unless confirmed.`,
+    obj({
+      reason: s("One sentence for the plan history: what this change does and why"),
+      operations: {
+        type: "array",
+        items: obj({
+          action: { type: "string", enum: [...OP_ACTIONS] },
+          workout_id: ns("Workout id, or null for add"),
+          date: ns("YYYY-MM-DD for move and add, otherwise null"),
+          type: { type: ["string", "null"], enum: [...SESSION_TYPES, null], description: "Session type for replace and add, otherwise null" },
+          minutes: { type: ["number", "null"], description: "Minutes for easy/recovery/long/progressive_long sessions, or null for the planner's default" },
+          intensity: { type: ["number", "null"], description: "0-1 for structured sessions, or null" },
+        }),
+      },
+      confirmed: CONFIRMED,
+    }),
+  ),
+  fn(
+    "scale_plan",
+    "Make every planned session in a date range longer or shorter by a percentage, e.g. +20 % for the next four weeks or -30 % for a busy week. sessions: all (structured sessions get a matching change in intensity), easy (easy and recovery runs only) or long (long runs only). Finished, locked, past and race sessions are left alone. Same checks and confirmation as edit_plan, one plan version, one Undo.",
+    obj({
+      from: date("First day"),
+      to: date("Last day"),
+      percent: { type: "number", description: "-60 to 60" },
+      sessions: { type: "string", enum: ["all", "easy", "long"] },
+      reason: s("One sentence for the plan history"),
+      confirmed: CONFIRMED,
+    }),
+  ),
   fn("restore_plan_version", "Put every not-yet-done workout back to how it was in an earlier plan version (from get_plan_history).", obj({ version: { type: "integer" } })),
   fn("respond_to_proposal", "Accept a pending plan-change proposal (from the app's adaptation rules), or keep the plan as it is.", obj({ proposal_id: s("Proposal id"), accept: { type: "boolean" } })),
   fn("update_route", "Rename a saved route and/or mark it as a favourite. Null leaves a field unchanged.", obj({ route_id: s("Route id"), name: ns("New name, or null"), favorite: { type: ["boolean", "null"] } })),
@@ -232,6 +293,9 @@ export const TOOL_STATUS: Record<ToolName, string> = {
   set_workout_steps: "Updating the workout",
   change_plan_settings: "Updating your plan settings",
   start_plan_earlier: "Moving your plan's start",
+  get_plan_overview: "Reading your whole plan",
+  edit_plan: "Reworking your plan",
+  scale_plan: "Adjusting your training load",
   restore_plan_version: "Restoring your plan",
   respond_to_proposal: "Updating your plan",
   update_route: "Updating the route",
@@ -315,6 +379,12 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
       return addTool(ctx, input);
     case "change_plan_settings":
       return settingsTool(ctx, input);
+    case "get_plan_overview":
+      return planOverview(ctx);
+    case "edit_plan":
+      return editPlanTool(ctx, input.operations, input.reason, input.confirmed);
+    case "scale_plan":
+      return scalePlanTool(ctx, input);
     case "start_plan_earlier": {
       const plan = await loadActivePlan(ctx.db, ctx.userId);
       if (!plan) return "There is no active plan.";
@@ -724,4 +794,196 @@ async function addTool(ctx: ToolContext, input: z.infer<(typeof schemas)["add_wo
   await snapshot(ctx.db, ctx.userId, plan.id, summary, "athlete");
   ctx.actions.push({ kind: "plan", summary, planId: plan.id, versionBefore: plan.current_version });
   return `Done: ${summary}.`;
+}
+
+
+// ---------- whole-plan changes ----------
+
+const ENDURANCE: WorkoutType[] = ["easy", "recovery", "long", "progressive_long"];
+const isLong = (t: string) => t === "long" || t === "progressive_long";
+
+async function planOverview(ctx: ToolContext): Promise<string> {
+  const plan = await loadActivePlan(ctx.db, ctx.userId);
+  if (!plan) return "There is no active plan.";
+  const { data } = await ctx.db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date");
+  const rows = (data ?? []) as any[];
+  const weeks = (plan.weeks ?? []) as any[];
+  const L: string[] = [`Plan ${weeks[0]?.start ?? "?"} to ${rows.at(-1)?.date ?? "?"}, ${weeks.length} weeks. Today is ${ctx.today}.`];
+  for (const w of weeks) {
+    const end = addDaysIso(w.start, 6);
+    const list = rows.filter((r) => r.date >= w.start && r.date <= end && r.type !== "rest");
+    const planned = list.filter((r) => r.status !== "skipped").reduce((a, r) => a + r.duration_s / 60, 0);
+    L.push(`Week ${w.index + 1} (${w.start}, ${w.phase}${w.start <= ctx.today && ctx.today <= end ? ", this week" : ""}): target ${w.targetMinutes ?? "?"} min, planned ${Math.round(planned)} min`);
+    for (const r of list)
+      L.push(`  - ${r.date} ${formatDay(r.date).slice(0, 3)} ${r.type} ${Math.round(r.duration_s / 60)} min "${r.title}"${r.status !== "planned" ? ` [${r.status}]` : ""}${r.locked ? " [locked]" : ""}${r.key ? " [key]" : ""} id ${r.id}`);
+  }
+  return L.join("\n");
+}
+
+type PlanOp = z.infer<typeof planOp>;
+
+/** Applies many changes as one version: validated together, checked as a whole, undone together. */
+async function editPlanTool(ctx: ToolContext, ops: PlanOp[], reason: string, confirmed: boolean): Promise<string> {
+  const plan = await loadActivePlan(ctx.db, ctx.userId);
+  if (!plan) return "There is no active plan. The athlete can create one on the Plan tab.";
+  const { data } = await ctx.db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date");
+  const before = (data ?? []) as any[];
+  const lastDate = before.at(-1)?.date ?? ctx.today;
+  // work on a copy; new sessions get temporary ids
+  const work = new Map<string, any>(before.map((r) => [r.id, { ...r }]));
+  const touched = new Set<string>();
+  const errors: string[] = [];
+  const done: string[] = [];
+  let n = 0;
+  for (const [i, op] of ops.entries()) {
+    const at = `#${i + 1} ${op.action}`;
+    if (op.action === "add") {
+      if (!op.date || !op.type) { errors.push(`${at}: needs date and type.`); continue; }
+      if (op.date < ctx.today || op.date > lastDate) { errors.push(`${at}: ${op.date} is outside the plan (${ctx.today} to ${lastDate}).`); continue; }
+      if (op.type === "rest") { errors.push(`${at}: rest days don't need adding.`); continue; }
+      const b = buildSession(plan, op.type as WorkoutType, op.minutes, op.intensity);
+      const rest = [...work.values()].find((r) => r.date === op.date && r.type === "rest" && r.status === "planned");
+      const fields = sessionFields(op.type as WorkoutType, b, "Added by your coach.");
+      if (rest) { Object.assign(rest, fields); touched.add(rest.id); }
+      else { const id = `new-${n++}`; work.set(id, { id, date: op.date, original_date: op.date, status: "planned", locked: false, plan_id: plan.id, user_id: ctx.userId, ...fields }); touched.add(id); }
+      done.push(`added ${withMinutes(b.title, b.durationS)} on ${op.date}`);
+      continue;
+    }
+    const w = op.workout_id ? work.get(op.workout_id) : null;
+    if (!w) { errors.push(`${at}: workout ${op.workout_id ?? "(none)"} isn't in the active plan.`); continue; }
+    const label = `${w.title} (${w.date})`;
+    if (w.status === "completed" || w.status === "missed") { errors.push(`${at}: ${label} is ${w.status}.`); continue; }
+    if (w.date < ctx.today && op.action !== "lock" && op.action !== "unlock") { errors.push(`${at}: ${label} is in the past.`); continue; }
+    if (w.type === "race" && op.action !== "lock" && op.action !== "unlock") { errors.push(`${at}: the race itself can't be changed.`); continue; }
+    if (w.locked && !["lock", "unlock", "restore"].includes(op.action)) { errors.push(`${at}: the athlete locked ${label}; unlock it first if they want it changed.`); continue; }
+    if (op.action !== "restore" && op.action !== "lock" && op.action !== "unlock" && w.status !== "planned") { errors.push(`${at}: ${label} is ${w.status}.`); continue; }
+    switch (op.action) {
+      case "move":
+        if (!op.date) { errors.push(`${at}: needs a date.`); continue; }
+        if (op.date < ctx.today || op.date > lastDate) { errors.push(`${at}: ${op.date} is outside the plan (${ctx.today} to ${lastDate}).`); continue; }
+        w.date = op.date;
+        done.push(`moved ${label} to ${op.date}`);
+        break;
+      case "skip":
+        w.status = "skipped";
+        done.push(`removed ${label}`);
+        break;
+      case "restore":
+        if (w.status !== "skipped") { errors.push(`${at}: ${label} isn't skipped.`); continue; }
+        w.status = "planned";
+        done.push(`put back ${label}`);
+        break;
+      case "lock":
+      case "unlock":
+        w.locked = op.action === "lock";
+        done.push(`${op.action}ed ${label}`);
+        break;
+      case "replace":
+      case "resize": {
+        const type = (op.action === "resize" ? w.type : op.type) as WorkoutType | null;
+        if (!type) { errors.push(`${at}: needs a type.`); continue; }
+        if (type === "race") { errors.push(`${at}: can't turn a session into the race.`); continue; }
+        const minutes = op.minutes;
+        if (op.action === "resize" && minutes == null && op.intensity == null) { errors.push(`${at}: give minutes or intensity.`); continue; }
+        const b = buildSession(plan, type, minutes, op.intensity);
+        Object.assign(w, sessionFields(type, b, op.action === "replace" && type !== w.type ? `Changed from ${(WORKOUT_LABEL[w.type as WorkoutType] ?? w.type).toLowerCase()} by your coach.` : w.why ?? "Adjusted by your coach."));
+        done.push(`${op.action === "replace" ? "changed" : "resized"} ${label} to ${type === "rest" ? "rest" : withMinutes(b.title, b.durationS)}`);
+        break;
+      }
+    }
+    touched.add(w.id);
+  }
+  if (errors.length) return `Nothing changed. Fix these and send the whole set again:\n${errors.map((e) => `- ${e}`).join("\n")}`;
+  if (!touched.size) return "Nothing to change.";
+
+  const after = [...work.values()];
+  if (!confirmed) {
+    const issues = await planLoadIssues(ctx, plan, before, after);
+    if (issues.length) return `Not changed yet. Checking the plan as a whole:\n${issues.map((i) => `- ${i}`).join("\n")}\nExplain the risks to the athlete with their numbers and offer a safer version; only call again with confirmed true if they still want it.`;
+  }
+
+  // apply
+  const changed = after.filter((r) => touched.has(r.id));
+  const inserts = changed.filter((r) => String(r.id).startsWith("new-"));
+  const updates = changed.filter((r) => !String(r.id).startsWith("new-"));
+  for (const r of updates)
+    await check(
+      ctx.db
+        .from("planned_workouts")
+        .update({ date: r.date, type: r.type, title: r.title, objective: r.objective, why: r.why, steps: r.steps, duration_s: r.duration_s, distance_m: r.distance_m, key: r.key, locked: r.locked, status: r.status, source: r.source })
+        .eq("id", r.id)
+        .eq("plan_id", plan.id),
+    );
+  if (inserts.length) await check(ctx.db.from("planned_workouts").insert(inserts.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== "id")))));
+  const summary = reason.trim().replace(/\.$/, "");
+  await snapshot(ctx.db, ctx.userId, plan.id, `${summary} (${changed.length} session${changed.length === 1 ? "" : "s"})`, "athlete");
+  ctx.actions.push({ kind: "plan", summary: `${summary} (${changed.length} session${changed.length === 1 ? "" : "s"} changed)`, planId: plan.id, versionBefore: plan.current_version });
+  const weeks = weekTotals(after, ctx.today).slice(0, 8);
+  return [`Done: ${done.length} change${done.length === 1 ? "" : "s"}.`, ...done.slice(0, 40).map((d) => `- ${d}`), done.length > 40 ? `- … and ${done.length - 40} more` : "", "Planned minutes per week now:", ...weeks.map((w) => `- ${w.start}: ${w.minutes} min, ${w.runs} runs`)].filter(Boolean).join("\n");
+}
+
+function sessionFields(type: WorkoutType, b: ReturnType<typeof buildSession>, why: string) {
+  return { type, title: b.title, objective: b.objective, why, steps: b.steps, duration_s: Math.round(b.durationS), distance_m: b.distanceM, key: HARD_TYPES.includes(type) || isLong(type), source: "athlete" };
+}
+
+/** Planned minutes and runs per Monday-based week, from today's week on. */
+function weekTotals(rows: any[], today: string) {
+  const m = new Map<string, { start: string; minutes: number; runs: number; longest: number }>();
+  for (const r of rows) {
+    if (r.type === "rest" || r.status === "skipped" || r.status === "missed") continue;
+    const ws = mondayOf(r.date);
+    if (ws < mondayOf(today)) continue;
+    const e = m.get(ws) ?? { start: ws, minutes: 0, runs: 0, longest: 0 };
+    e.minutes += Math.round(r.duration_s / 60);
+    e.runs += 1;
+    e.longest = Math.max(e.longest, Math.round(r.duration_s / 60));
+    m.set(ws, e);
+  }
+  return [...m.values()].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+const mondayOf = (d: string) => addDaysIso(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
+
+/** Problems the change creates that weren't there before: schedule rules and load jumps. */
+async function planLoadIssues(ctx: ToolContext, plan: any, before: any[], after: any[]): Promise<string[]> {
+  const unavailable = plan.config?.unavailableDays ?? [];
+  const sched = (rows: any[]) => validateSchedule(rows.filter((r) => r.date >= ctx.today).map((r) => ({ id: r.id, date: r.date, type: r.type, status: r.status })) as any, unavailable).map((i) => i.message);
+  const old = new Set(sched(before));
+  const out = sched(after).filter((m) => !old.has(m));
+
+  const runs = await loadRuns(ctx.db, ctx.userId, addDaysIso(ctx.today, -35), ctx.today, 400);
+  const hist = weeklyTotals(runs, ctx.today, 5).slice(0, 4);
+  const avg = hist.reduce((a, w) => a + w.minutes, 0) / Math.max(1, hist.length);
+  const longestRecent = Math.max(0, ...runs.map((r) => (r.movingS ?? 0) / 60));
+  const wa = weekTotals(after, ctx.today);
+  const wb = new Map(weekTotals(before, ctx.today).map((w) => [w.start, w]));
+  for (const [i, w] of wa.entries()) {
+    const was = wb.get(w.start);
+    if (was && w.minutes <= was.minutes && w.longest <= was.longest) continue; // not made harder
+    const prev = i > 0 ? wa[i - 1].minutes : avg;
+    const ref = i > 0 ? `the week before (${wa[i - 1].minutes} min)` : `the recent 4-week average (${Math.round(avg)} min)`;
+    if (prev > 0 && w.minutes > prev * 1.15 && w.minutes - prev > 15) out.push(`week of ${w.start}: ${w.minutes} min planned, ${Math.round((w.minutes / prev - 1) * 100)} % more than ${ref}.`);
+    if (i < 4 && longestRecent > 0 && w.longest > Math.max(longestRecent * 1.15, longestRecent + 10) && (!was || w.longest > was.longest))
+      out.push(`week of ${w.start}: a ${w.longest} min run, while the longest run of the last 5 weeks was ${Math.round(longestRecent)} min.`);
+  }
+  return out;
+}
+
+async function scalePlanTool(ctx: ToolContext, input: z.infer<(typeof schemas)["scale_plan"]>): Promise<string> {
+  const plan = await loadActivePlan(ctx.db, ctx.userId);
+  if (!plan) return "There is no active plan.";
+  const from = input.from < ctx.today ? ctx.today : input.from;
+  const { data } = await ctx.db.from("planned_workouts").select("*").eq("plan_id", plan.id).gte("date", from).lte("date", input.to).order("date");
+  const f = 1 + input.percent / 100;
+  const ops: PlanOp[] = [];
+  for (const w of (data ?? []) as any[]) {
+    if (w.status !== "planned" || w.locked || w.type === "race" || w.type === "rest" || w.type === "strides") continue;
+    const endurance = ENDURANCE.includes(w.type);
+    if (input.sessions === "easy" && !(w.type === "easy" || w.type === "recovery")) continue;
+    if (input.sessions === "long" && !isLong(w.type)) continue;
+    if (endurance) ops.push({ action: "resize", workout_id: w.id, date: null, type: null, minutes: Math.max(10, Math.min(300, Math.round((w.duration_s / 60) * f))), intensity: null });
+    else ops.push({ action: "resize", workout_id: w.id, date: null, type: null, minutes: null, intensity: Math.max(0, Math.min(1, 0.5 + input.percent / 100)) });
+  }
+  if (!ops.length) return `No sessions to change between ${from} and ${input.to}.`;
+  return editPlanTool(ctx, ops, input.reason, input.confirmed);
 }

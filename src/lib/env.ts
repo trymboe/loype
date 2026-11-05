@@ -15,7 +15,7 @@ export const env = {
   garminBaseUrl: () => process.env.GARMIN_API_BASE_URL || undefined,
   /** OpenAI API key for the coach; the Coach tab explains how to add it when missing. */
   openaiApiKey: () => process.env.OPENAI_API_KEY || null,
-  coachModel: () => process.env.COACH_MODEL || "gpt-6-luna",
+  coachModel: () => process.env.COACH_MODEL || "gpt-6.1-luna",
 };
 
 export function isConfigured(): boolean {

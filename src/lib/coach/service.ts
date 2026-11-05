@@ -22,7 +22,7 @@ export type CoachEvent =
   | { type: "error"; message: string };
 
 /** Tool-call rounds per athlete message; plenty for look up, change, check, answer. */
-const MAX_ROUNDS = 10;
+const MAX_ROUNDS = 16;
 
 export const coachConfigured = () => Boolean(env.openaiApiKey());
 
@@ -225,11 +225,11 @@ async function* streamOnce(client: OpenAI, input: Item[], finalRound: boolean, c
     // on the last allowed round the coach must answer with what it has
     tool_choice: finalRound ? "none" : "auto",
     parallel_tool_calls: true,
-    reasoning: { effort: "medium" },
+    reasoning: { effort: "high" },
     // nothing is kept at OpenAI; reasoning comes back encrypted so it can be replayed
     store: false,
     include: ["reasoning.encrypted_content"],
-    max_output_tokens: 16000,
+    max_output_tokens: 32000,
     prompt_cache_key: `loype-coach-${conversationId}`,
   });
   for await (const event of stream) {
