@@ -330,6 +330,7 @@ export async function refreshFutureWeeks(
     recentWeeks: fresh.recentWeeks,
     recentRunCounts: fresh.recentRunCounts,
     habitualRunMinutes: fresh.habitualRunMinutes,
+    recentRuns: fresh.recentRuns,
   };
   const goal = goalFromRow(plan.goal);
   const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase) };

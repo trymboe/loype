@@ -198,7 +198,7 @@ export function FrequencyPicker({
             {noHistory
               ? "No runs synced lately, so tell Løype how often you run now and it starts from there. "
               : `Auto: you have averaged ${recentRuns} runs a week lately${runMinutes ? `, usually about ${runMinutes} min each` : ""}, so the plan starts from that. `}
-            It only adds time and runs as fast as is considered safe (about 10 % a week, and never more than 1.3× your last four weeks), and each week it is recalculated from what you actually ran.
+            Your long run starts from your recent long runs and easy runs from your usual run. It adds time and runs as fast as is considered safe (no run more than 10 % further than your furthest in the last 30 days, about 10 % a week, one extra run at a time), and each week it is recalculated from what you actually ran.
           </p>
           <Field label="How often do you run now?" hint={noHistory ? "Times per week. Leave empty if you're starting from scratch." : "Optional. Replaces the measured frequency, e.g. if not all your runs are synced."}>
             <input name="usual_runs" inputMode="decimal" defaultValue={initialUsual} className="input" placeholder={noHistory ? "e.g. 2" : String(recentRuns)} />

@@ -52,6 +52,11 @@ export function buildBaseline(asOf: string, fitness: BaselineFitness | null, run
   const longest30 = Math.max(0, ...runs.filter((r) => r.date >= addDaysIso(asOf, -29) && r.date <= asOf).map((r) => (r.movingS ?? 0) / 60));
   const longest = Math.max(0, ...runs.filter((r) => r.date >= from56 && r.date <= asOf).map((r) => (r.movingS ?? 0) / 60));
 
+  const runList = runs
+    .filter((r) => r.date >= from56 && r.date <= asOf && (r.movingS ?? 0) >= 600)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((r) => ({ date: r.date, minutes: Math.round(r.movingS! / 60), km: r.distanceM ? Math.round(r.distanceM / 10) / 100 : null }));
+
   const e = fitness?.estimate;
   const has = e && !e.withheld && e.vdot != null;
   return {
@@ -71,6 +76,7 @@ export function buildBaseline(asOf: string, fitness: BaselineFitness | null, run
     recentWeeks,
     recentRunCounts: recentRuns,
     habitualRunMinutes,
+    recentRuns: runList,
     predictions: has ? (fitness!.predictions ?? []).map((p) => ({ distanceM: p.distanceM, timeS: p.timeS })) : [],
   };
 }
