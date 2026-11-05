@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { CalendarDays, ChevronRight, Compass, Download, HeartPulse, KeyRound, Link2, LogOut, Trash2 } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronRight, Compass, Download, HeartPulse, KeyRound, Link2, LogOut, Trash2 } from "lucide-react";
 import { IconTile, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "More" };
 
 const ROWS = [
-  { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations", hint: "Garmin Connect, sync and history import" },
+  { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations", hint: "Garmin, Strava, Intervals.icu, sync and history import" },
   { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile", hint: "Max and resting heart rate, birth year, sex" },
   { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password", hint: "Set a password to sign in on new browsers and the home-screen app" },
   { href: "/more/calendar", icon: CalendarDays, color: "var(--accent)", label: "Calendar", hint: "Subscribe to your plan in Google, Apple or Outlook calendar" },
-  { href: "/welcome", icon: Compass, color: "var(--good)", label: "Guided setup", hint: "Garmin, history import, baseline, training background and goal" },
+  { href: "/guide", icon: BookOpen, color: "var(--pace)", label: "How Løype works", hint: "What each tab does and how to connect your watch" },
+  { href: "/welcome", icon: Compass, color: "var(--good)", label: "Guided setup", hint: "Connect, history import, baseline, training background and goal" },
   { href: "/api/export", icon: Download, color: "var(--cadence)", label: "Export my data", hint: "Download activities, laps, splits, check-ins and wellness as JSON", download: true },
   { href: "/more/data", icon: Trash2, color: "var(--danger)", label: "Delete my data", hint: "Remove training data or everything Løype stores" },
 ];

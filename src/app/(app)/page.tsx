@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SetupPrompt } from "@/components/setup-prompt";
@@ -18,6 +19,7 @@ import { addDaysIso, formatDay, localTime, relativeDay, todayIn, weekStart } fro
 import { isRun, weeklyVolume } from "@/lib/analytics/volume";
 import { formatDuration, formatKm, formatPaceFromSpeed } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
+import { readOnboarding, showWelcomeGuide } from "@/lib/onboarding/state";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,12 @@ export default async function TodayPage() {
     db.from("training_plans").select("id, weeks, goal:goals(*)").eq("status", "active").maybeSingle(),
     db.from("adaptation_proposals").select("title").eq("status", "pending").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
+  const connected = (integration && integration.status !== "not_configured") || (strava && strava.status !== "not_configured");
+  if (!connected && acts.length === 0) {
+    // A brand-new account starts on the welcome guide.
+    const { data: profile } = await db.from("athlete_profile").select("preferences").maybeSingle();
+    if (showWelcomeGuide({ connected: false, hasRuns: false, prefs: readOnboarding(profile?.preferences) })) redirect("/guide?first=1");
+  }
   const out = fitness?.output ?? null;
   const est = out?.estimate && !out.estimate.withheld ? out.estimate : null;
   const race = raceGoalFromRow((plan as { goal?: unknown } | null)?.goal);
@@ -71,7 +79,6 @@ export default async function TodayPage() {
   for (const a of runs) if (a.local_date >= thisWeek) dayDist.set(a.local_date, (dayDist.get(a.local_date) ?? 0) + (a.distance_m ?? 0));
   const maxDay = Math.max(1, ...dayDist.values());
   const maxWeek = Math.max(1, ...weeks.map((w) => w.distanceM));
-  const connected = (integration && integration.status !== "not_configured") || (strava && strava.status !== "not_configured");
   const weekPct = priorAvg > 0 ? Math.min(100, (current.distanceM / priorAvg) * 100) : 0;
 
   return (
@@ -87,7 +94,14 @@ export default async function TodayPage() {
         <EmptyState
           icon={<Watch size={22} />}
           title="Let's get your training history in"
-          action={<ButtonLink href="/welcome">Set up Løype</ButtonLink>}
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <ButtonLink href="/welcome">Set up Løype</ButtonLink>
+              <Link href="/guide" className="text-sm font-medium text-accent underline-offset-2 hover:underline">
+                How Løype works
+              </Link>
+            </div>
+          }
         >
           Løype builds everything from your real runs. Connect Garmin, or Strava for an Apple Watch, and import at least 3–6 months of history to establish
           a baseline.

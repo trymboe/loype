@@ -45,7 +45,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
 }
 
 const SUBTITLE: Record<StepKey | "done", string> = {
-  connect: "Løype builds everything from your real runs. It reads them from Garmin Connect; nothing is ever written back.",
+  connect: "Løype builds everything from your real runs. It reads them from Garmin Connect or Strava; nothing is ever written back.",
   import: "Bring in your history so Løype can see how you actually train.",
   baseline: "What your history says about you as a runner right now.",
   about: "A few things the data can't tell Løype.",
@@ -83,8 +83,10 @@ async function body(step: StepKey | "done", c: Ctx) {
   switch (step) {
     case "connect":
       return (
-        <Card>
-          <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
+        <>
+          <Card>
+            <CardHeader title="Garmin watch" className="mb-3" />
+            <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-sm leading-snug text-muted marker:font-semibold marker:text-fg-2">
             <li>
               Open{" "}
               <a className="font-medium text-accent underline underline-offset-2" href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer">
@@ -95,15 +97,26 @@ async function body(step: StepKey | "done", c: Ctx) {
             <li>Create a key (choose the longest expiry), accept the terms and copy it. It is only shown once.</li>
             <li>Paste it below.</li>
           </ol>
-          <GarminKeyForm replacing={false} />
-          <p className="mt-4 text-sm text-muted">
-            Apple Watch or another watch?{" "}
-            <Link href="/more/integrations#strava" className="font-medium text-accent underline underline-offset-2">
-              Connect Strava instead
+            <GarminKeyForm replacing={false} />
+          </Card>
+          <Card>
+            <CardHeader title="Apple Watch or another watch" className="mb-2" />
+            <p className="text-sm leading-snug text-muted">
+              Løype reads those runs from Strava. You create a free Strava API app once and paste its two codes; the Strava page walks you through it.
+            </p>
+            <div className="mt-4">
+              <ButtonLink href="/more/integrations#strava" variant="secondary">
+                Connect Strava
+              </ButtonLink>
+            </div>
+          </Card>
+          <p className="px-1 text-center text-xs text-muted">
+            New here?{" "}
+            <Link href="/guide" className="font-medium text-accent underline-offset-2 hover:underline">
+              See how Løype works
             </Link>
-            .
           </p>
-        </Card>
+        </>
       );
     case "import": {
       const { data: jobs } = await c.db
@@ -158,6 +171,17 @@ async function body(step: StepKey | "done", c: Ctx) {
         <Card>
           <p className="text-sm leading-relaxed text-muted">
             Everything is in place. You can revisit any step above, change your goal from the Plan tab, and add the plan to your calendar under More.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-muted">
+            Garmin watch? Connect{" "}
+            <Link href="/more/integrations" className="font-medium text-accent underline underline-offset-2">
+              Intervals.icu
+            </Link>{" "}
+            to get planned workouts on the watch. Not sure where things are?{" "}
+            <Link href="/guide" className="font-medium text-accent underline underline-offset-2">
+              How Løype works
+            </Link>
+            .
           </p>
           <div className="mt-5 grid grid-cols-2 gap-2">
             <ButtonLink href="/">Go to Today</ButtonLink>
