@@ -40,14 +40,14 @@ const config = (over: Partial<PlanConfig> = {}): PlanConfig => ({
 const half: Goal = { kind: "half", name: null, distanceM: null, raceDate: "2027-03-14", targetTimeS: 6600, targetWeeklyKm: null };
 
 /**
- * The weekly load rules: week 1 at most the larger of 1.3× the 4-week average + 10 min and 120 % of the best recent
- * week; after that a loading week grows at most 15 % (or 15 min, or one added easy run of ≤ 60 min) over the last one.
+ * The weekly load rules: week 1 at most the larger of 1.3× the 4-week average + 10 min and the best recent week; after
+ * that a loading week grows at most 10 % (or 10 min), plus one short easy run (≤ 30 min) when a run is added.
  * 5 % slack for the week-fitting tolerance, 3 min for rounding.
  */
 function expectLoadRules(p: ReturnType<typeof generatePlan>, chronic: number, best: number) {
-  expect(p.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(chronic * ACWR_MAX + 10, best * 1.2) * 1.05 + 3);
+  expect(p.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(chronic * ACWR_MAX + 10, best) * 1.05 + 3);
   const load = p.weeks.filter((w) => ["base", "build", "specific"].includes(w.phase)).map((w) => w.targetMinutes);
-  for (let i = 1; i < load.length; i++) expect(load[i]).toBeLessThanOrEqual(Math.max(load[i - 1] * 1.15, load[i - 1] + 15, load[i - 1] + 51) * 1.05 + 3);
+  for (let i = 1; i < load.length; i++) expect(load[i]).toBeLessThanOrEqual((Math.max(load[i - 1] * 1.1, load[i - 1] + 10) + 30) * 1.05 + 3);
 }
 
 describe("plan generator", () => {
@@ -372,6 +372,12 @@ describe("sessions seeded from your own runs (planner@2)", () => {
   it("keeps your recent runs in the baseline", () => {
     expect(b.recentRuns?.length).toBe(raw.length);
     expect(b.recentRuns?.at(-1)).toEqual({ date: "2026-11-02", minutes: 31, km: 4.73 });
+  });
+
+  it("starts week 1 at about your best recent week (~16.6 km here), not far above it", () => {
+    const w1 = p.workouts.filter((x) => x.date <= addDaysIso(p.weeks[0].start, 6)).reduce((a, x) => a + km(x), 0);
+    expect(w1).toBeLessThanOrEqual(16.6 * 1.05 + 0.5);
+    expect(w1).toBeGreaterThanOrEqual(14);
   });
 
   it("starts the long run from your recent long runs, within 10 % of your longest in the last 30 days", () => {

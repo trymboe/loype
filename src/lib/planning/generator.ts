@@ -282,9 +282,9 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const minEasyBase = Math.round(Math.max(20, Math.min(30, easy0 * 0.7)));
 
   // --- weekly ceiling -------------------------------------------------------------
-  // The first week may reach the larger of 1.3× your 4-week average (+10 min) and 120 % of your best recent week
-  // (110 % with patchy training); then at most one step (10 %, 10–30 min) a week, half after a recovery week.
-  const firstCap = Math.max(40, chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 1.1 : 1.2));
+  // The first week may reach the larger of 1.3× your 4-week average (+10 min) and your best recent week
+  // (90 % of it with patchy training); then at most one step (10 %, 10–30 min) a week, half after a recovery week.
+  const firstCap = Math.max(40, chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 0.9 : 1));
   let peak = PEAK_MINUTES[dk ?? goal.kind] ?? 300;
   if (goal.kind === "volume" && goal.targetWeeklyKm) peak = Math.round((goal.targetWeeklyKm * (easyPace ?? 390)) / 60);
   if (goal.kind === "maintain") peak = Math.max(chronic0, 45);
@@ -374,8 +374,10 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       else if (ph === "recovery") cap = (lastActual ?? Math.min(firstCap, peak)) * 0.75;
       else {
         cap = Math.min(peak, lastLoad == null ? firstCap : lastLoad + weeklyStep(lastLoad, lowConsistency) * (phases[i - 1] === "recovery" ? 0.5 : 1));
-        // and planned running never grows more than 15 % (or 15 min, or one added easy run) over the last loading week
-        if (lastActual != null) cap = Math.min(cap, Math.max(lastActual * 1.15, lastActual + 15, lastActual + 0.85 * E));
+        // and planned running never grows more than 10 % (or 10 min) over the last loading week, except to add one easy
+        // run when the frequency may step up (auto)
+        const adding = fixedRuns == null && lastRuns > 0 && sinceMore >= 3;
+        if (lastActual != null) cap = Math.min(cap, Math.max(lastActual * 1.1, lastActual + 10) + (adding ? minEasyBase : 0));
       }
 
       // runs this week (auto): as many as fit under the ceiling at about your easy-run length, starting at most one
@@ -386,9 +388,15 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       const goalMax = Math.max(dk === "half" || dk === "marathon" ? 6 : 5, Math.round(runHist0.reduce((a, b) => a + b, 0) / 4));
       // a run is only added when the week has room for it at a proper length (hard sessions count as 1.25 easy runs)
       const hardFor = (k: number) => (chronic0 < 90 && i < 2 ? 0 : Math.min(ph === "base" ? 1 : 2, k >= 4 ? 2 : k === 3 ? 1 : 0));
-      const fits = (k: number) => L + hardFor(k) * 1.25 * E + (k - 1 - hardFor(k)) * 0.85 * E <= cap * 1.05;
+      // a run added to last week's frequency starts short, and no hard session is added in the same week
+      const prevRuns = lastRuns;
+      const steps = (k: number) => (prevRuns > 0 && k > prevRuns ? k - prevRuns : 0);
+      const hardIn = (k: number) => hardFor(steps(k) ? prevRuns : k);
+      const fits = (k: number) => L + hardIn(k) * 1.25 * E + (k - 1 - hardIn(k) - steps(k)) * 0.85 * E + steps(k) * minEasyBase <= cap * 1.05;
       let runsW = Math.max(2, Math.min(allowed, goalMax, freqCap()));
       while (runsW > 2 && !fits(runsW)) runsW--;
+      // once added, a run stays (in loading weeks): the week's ceiling shortens the easy runs instead
+      if (loading(ph)) runsW = Math.max(runsW, Math.min(prevRuns, avail.length));
       if (ph === "recovery") runsW = Math.max(2, Math.min(runsW, lastRuns || runsW) - 1);
       if (ph === "taper" || ph === "race") runsW = Math.min(avail.length, Math.max(runsW, lastRuns));
       else if (ph !== "recovery") {
@@ -425,6 +433,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       let hardAllowed = runsW >= 4 ? 2 : runsW === 3 ? 1 : 0;
       if (ph === "base") hardAllowed = Math.min(hardAllowed, 1);
       if (lowBase && i < 2) hardAllowed = 0;
+      if (fixedRuns == null && loading(ph)) hardAllowed = Math.min(hardAllowed, hardIn(runsW));
       const types = qualityTypes(goal, dk, ph, config, altern);
       let hardList = types.filter((t) => isHard(t));
       // one hard session a week: alternate the phase's two session types instead of repeating the first
