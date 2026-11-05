@@ -114,6 +114,7 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
           </Field>
         </div>
         <FrequencyPicker dayCount={runDays.length} recentRuns={defaults.recentRuns} runMinutes={defaults.runMinutes} />
+        <TrainingStylePicker />
       </section>
 
       <section className="grid grid-cols-2 gap-3">
@@ -198,7 +199,7 @@ export function FrequencyPicker({
             {noHistory
               ? "No runs synced lately, so tell Løype how often you run now and it starts from there. "
               : `Auto: you have averaged ${recentRuns} runs a week lately${runMinutes ? `, usually about ${runMinutes} min each` : ""}, so the plan starts from that. `}
-            Your long run starts from your recent long runs and easy runs from your usual run. It adds time and runs as fast as is considered safe (no run more than 10 % further than your furthest in the last 30 days, about 10 % a week, one extra run at a time), and each week it is recalculated from what you actually ran.
+            Auto picks one run more than you do now (at least 3) and keeps it. Your long run starts from your recent long runs and easy runs from your usual run, and each week it is recalculated from what you actually ran.
           </p>
           <Field label="How often do you run now?" hint={noHistory ? "Times per week. Leave empty if you're starting from scratch." : "Optional. Replaces the measured frequency, e.g. if not all your runs are synced."}>
             <input name="usual_runs" inputMode="decimal" defaultValue={initialUsual} className="input" placeholder={noHistory ? "e.g. 2" : String(recentRuns)} />
@@ -206,7 +207,7 @@ export function FrequencyPicker({
         </>
       ) : (
         <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-          Every week has {fixed} run{fixed === 1 ? "" : "s"}, spread over the days you ticked. The weekly time still builds safely from what you actually run, so it&apos;s divided over {fixed} run{fixed === 1 ? "" : "s"}.
+          {fixed} run{fixed === 1 ? "" : "s"} a week, spread over the days you ticked. If that is more than you run now, the plan starts with fewer and adds runs as your weekly running grows, so no run is too short to be worth doing.
         </p>
       )}
     </div>
@@ -229,5 +230,46 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
       {children}
       {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
     </label>
+  );
+}
+
+const VOLUME_OPTIONS = [
+  { v: "gradual", label: "Gradual", hint: "Lower volume, a lighter week every 3rd week. Long run up to ~1.1× a 10 km." },
+  { v: "steady", label: "Steady", hint: "Medium volume, a lighter week every 4th. Long run up to ~1.2× a 10 km." },
+  { v: "progressive", label: "Progressive", hint: "Higher volume, faster build. Long run up to ~1.4× a 10 km." },
+] as const;
+const INTENSITY_OPTIONS = [
+  { v: "comfortable", label: "Comfortable", hint: "One gentler session a week, no fast intervals." },
+  { v: "balanced", label: "Balanced", hint: "One quality session a week (two with 4+ runs)." },
+  { v: "challenging", label: "Challenging", hint: "Two quality sessions a week from 3 runs, full-length sets." },
+] as const;
+
+/** Training volume and session intensity (like Runna's Training Preferences). */
+export function TrainingStylePicker({ initialVolume = "steady", initialIntensity = "balanced" }: { initialVolume?: string; initialIntensity?: string }) {
+  const [volume, setVolume] = useState(initialVolume);
+  const [intensity, setIntensity] = useState(initialIntensity);
+  const group = (name: string, label: string, opts: readonly { v: string; label: string; hint: string }[], value: string, set: (v: string) => void) => (
+    <div>
+      <span className="mb-1.5 block text-sm font-semibold">{label}</span>
+      <div className="grid grid-cols-3 gap-1.5">
+        {opts.map((o) => (
+          <label key={o.v} className={clsx("cursor-pointer rounded-xl py-2.5 text-center text-xs font-semibold transition-colors", value === o.v ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-fg")}>
+            <input type="radio" name={name} value={o.v} checked={value === o.v} onChange={() => set(o.v)} className="sr-only" />
+            {o.label}
+          </label>
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs leading-snug text-muted">{opts.find((o) => o.v === value)?.hint}</p>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      {group("volume", "Training volume", VOLUME_OPTIONS, volume, setVolume)}
+      {group("intensity", "Session intensity", INTENSITY_OPTIONS, intensity, setIntensity)}
+      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+        Whatever you pick, weekly running builds to a peak and then holds there, every run stays within 10 % of your biggest in the last 30 days, and
+        at most 20 % of your running is hard.
+      </p>
+    </div>
   );
 }

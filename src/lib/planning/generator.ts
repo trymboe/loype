@@ -1,5 +1,5 @@
 /**
- * Deterministic plan generator (`planner@2`). Pure: goal + availability +
+ * Deterministic plan generator (`planner@3`). Pure: goal + availability +
  * baseline in, dated structured workouts out. Every rule here is documented
  * in docs/PLANNING.md; no LLM is involved.
  */
@@ -16,11 +16,13 @@ import {
   type GeneratedPlan,
   type Goal,
   type GoalKind,
+  type IntensityPref,
   type Phase,
   type PlanConfig,
   type PlanWeek,
   type PlannedWorkout,
   type Step,
+  type VolumePref,
   type WorkoutType,
 } from "./types";
 import { buildWorkout, finalize, stepsDistance, stepsDuration, type TargetContext } from "./workouts";
@@ -29,10 +31,6 @@ import { project, volumeFactor, type Projection } from "./projection";
 export const MIN_WEEKS = 2;
 export const MAX_WEEKS = 24;
 
-/** Highest weekly running time the plan builds to, by goal (minutes). */
-const PEAK_MINUTES: Record<string, number> = { "5k": 240, "10k": 300, half: 360, marathon: 480, race: 360, general: 300, endurance: 360, consistency: 240, maintain: 300, volume: 420 };
-/** Longest long run, minutes. */
-const LONG_CAP: Record<string, number> = { "5k": 75, "10k": 90, half: 120, marathon: 150, race: 120, general: 90, endurance: 120, consistency: 75, maintain: 90, volume: 120 };
 /** Weeks of taper including race week. */
 // ~2 weeks is the best-supported taper length (Bosquet 2007; 2023 endurance meta-analysis), 3 for the marathon
 const TAPER_WEEKS: Record<string, number> = { "5k": 2, "10k": 2, half: 2, marathon: 3, race: 2 };
@@ -126,7 +124,7 @@ function planWeeks(goal: Goal, config: PlanConfig): { start: string; weeks: numb
   return { start, weeks: Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, config.weeks)), warnings };
 }
 
-function assignPhases(goal: Goal, n: number, lowConsistency: boolean): Phase[] {
+function assignPhases(goal: Goal, n: number, every: number): Phase[] {
   const phases: Phase[] = new Array(n).fill("base");
   const race = isRaceGoal(goal);
   let taper = 0;
@@ -149,8 +147,7 @@ function assignPhases(goal: Goal, n: number, lowConsistency: boolean): Phase[] {
     const base = Math.ceil(rest * 0.4);
     for (let i = 0; i < rest; i++) phases[i] = i < base ? "base" : "build";
   }
-  // recovery weeks: every 4th (every 3rd with patchy recent training), never right before the taper
-  const every = lowConsistency ? 3 : 4;
+  // recovery weeks: every 3rd or 4th week (by volume; every 3rd with patchy recent training), never right before the taper
   for (let i = every - 1; i < rest - 1; i += every) phases[i] = "recovery";
   return phases;
 }
@@ -190,35 +187,72 @@ export function hardMinutes(steps: Step[]): number {
   return s / 60;
 }
 
-/** Largest allowed week-over-week step, minutes. */
-const weeklyStep = (level: number, low: boolean) => (low ? Math.min(20, Math.max(6, level * 0.06)) : Math.min(30, Math.max(10, level * 0.1)));
-/** Acute:chronic workload ratio ceiling (week vs the 4 weeks before it). */
+/** Acute:chronic workload ratio ceiling (week vs the 4 weeks before it), used for the first week. */
 export const ACWR_MAX = 1.3;
 /** Share of weekly time at threshold or harder (the "80/20" rule, with some room for warm-ups). */
 export const HARD_SHARE_MAX = 0.2;
 
 /** Taper long runs as a share of the longest long run, one per taper week before race week. */
 const TAPER_LONG: Record<number, number[]> = { 1: [], 2: [0.65], 3: [0.75, 0.6] };
+
 /**
- * Longest long run as a multiple of the race distance (also capped in minutes by LONG_CAP). 5 and 10 km are
- * ~90 % aerobic, so modest over-distance long runs build the endurance to hold pace to the line; for the half
- * and the marathon the long run approaches or stays under race distance (Daniels, Pfitzinger).
+ * Training volume, as in Runna's "Gradual / Steady / Progressive": how fast the week grows, how often a lighter week
+ * comes, and how long the long run and the easy runs get at their peak. The week then *holds* at that peak; it never
+ * keeps growing just because there are weeks left.
  */
-export const LONG_KM_FACTOR: Record<"5k" | "10k" | "half" | "marathon", number> = { "5k": 2.4, "10k": 1.3, half: 1.1, marathon: 0.76 };
-/** Easy runs build towards this share of the peak long run (60 min at most), so the long run stays clearly the long one. */
-const EASY_OF_LONG = 0.55;
+export const VOLUME_PREFS: Record<VolumePref, { rate: number; deloadEvery: number; deload: number; idx: 0 | 1 | 2 }> = {
+  gradual: { rate: 0.07, deloadEvery: 3, deload: 0.7, idx: 0 },
+  steady: { rate: 0.1, deloadEvery: 4, deload: 0.75, idx: 1 },
+  progressive: { rate: 0.12, deloadEvery: 4, deload: 0.75, idx: 2 },
+};
+/**
+ * Longest long run in km by race distance and volume (gradual, steady, progressive). 5 and 10 km are ~90 % aerobic, so
+ * modest over-distance long runs build the endurance to hold pace to the line (10 km: 1.1–1.4× race distance); for the
+ * half and the marathon the long run approaches or stays under race distance (Daniels, Pfitzinger, Runna's plans).
+ */
+export const LONG_KM: Record<"5k" | "10k" | "half" | "marathon", [number, number, number]> = {
+  "5k": [8, 10, 12],
+  "10k": [11, 12, 14],
+  half: [17, 19, 21],
+  marathon: [28, 30, 32],
+};
+/** …and in minutes, which also caps it for slower runners. Non-race goals use `other`. */
+const LONG_MIN: Record<string, [number, number, number]> = { "5k": [60, 70, 80], "10k": [75, 85, 95], half: [120, 135, 150], marathon: [150, 165, 180], other: [60, 75, 90] };
+/** Longest easy run, minutes: easy runs stay short and clearly below the long run. */
+const EASY_MAX: Record<string, [number, number, number]> = { "5k": [35, 40, 50], "10k": [35, 40, 50], half: [40, 45, 55], marathon: [45, 55, 65], other: [35, 40, 50] };
 
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0;
 };
 
+/** Hard sessions a week, by runs per week, phase and the intensity you chose (Runna's Comfortable / Balanced / Challenging). */
+export function hardSessions(runs: number, ph: Phase, intensity: IntensityPref): number {
+  if (ph === "recovery" || ph === "race") return 0;
+  if (ph === "taper") return runs >= 3 ? 1 : 0;
+  if (ph === "base") return intensity === "comfortable" ? 0 : runs >= 3 ? 1 : 0;
+  if (intensity === "comfortable") return runs >= 3 ? 1 : 0;
+  if (intensity === "balanced") return runs >= 4 ? 2 : runs >= 2 ? 1 : 0;
+  return runs >= 3 ? 2 : runs === 2 ? 1 : 0;
+}
+/** How far quality sessions progress, by intensity (1 = the full session at the end of a phase). */
+const INTENSITY_PROGRESS: Record<IntensityPref, number> = { comfortable: 0.5, balanced: 0.8, challenging: 1 };
+
+/** Runs a week when you leave it on auto: one more than you run now, at least 3 and at most 4 (more only if you already run more). */
+export function autoRuns(habit: number, avail: number): number {
+  const h = Math.round(habit);
+  return Math.max(1, Math.min(avail, h >= 4 ? Math.min(6, h) : Math.max(3, h + 1)));
+}
+
 export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline): GeneratedPlan {
   const warnings: string[] = [];
   const { start, weeks: n, warnings: w0 } = planWeeks(goal, config);
   warnings.push(...w0);
   const lowConsistency = baseline.consistency < 0.6;
-  const phases = config.phases && config.phases.length === n ? config.phases : assignPhases(goal, n, lowConsistency);
+  const volume: VolumePref = config.volume ?? "steady";
+  const intensity: IntensityPref = config.intensity ?? "balanced";
+  const pref = VOLUME_PREFS[volume];
+  const phases = config.phases && config.phases.length === n ? config.phases : assignPhases(goal, n, lowConsistency ? 3 : pref.deloadEvery);
   const dist = goalDistance(goal);
   const dk = distanceKey(dist);
   if (!baseline.paceZones) warnings.push(baseline.hrZones ? "No fitness estimate yet, so sessions use heart-rate targets only. Paces are added once the estimate is available." : "No fitness estimate or heart-rate zones yet, so sessions are described by effort.");
@@ -228,10 +262,13 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const avail = [...new Set(config.runDays)].filter((d) => d >= 0 && d <= 6 && !unavailable.has(d)).sort((a, b) => a - b);
   if (avail.length === 0) avail.push(1, 3, 5, 6);
   const usual = config.usualRunsPerWeek != null && config.usualRunsPerWeek > 0 ? Math.min(7, config.usualRunsPerWeek) : null;
-  const runHist0 = usual != null ? [usual, usual, usual, usual] : baseline.recentRunCounts?.length === 4 ? [...baseline.recentRunCounts] : [1, 1, 1, 1].map(() => Math.round(baseline.runsPerWeek));
-  // a fixed number of runs a week, if you chose one (never more than the days you can run)
+  const habit = usual ?? (baseline.recentRunCounts?.length === 4 ? baseline.recentRunCounts.reduce((a, b) => a + b, 0) / 4 : baseline.runsPerWeek);
+  // a fixed number of runs a week (never more than the days you can run); auto picks one number for the whole plan
   const fixedRuns = config.runsPerWeek != null && config.runsPerWeek >= 1 ? Math.min(avail.length, Math.round(config.runsPerWeek)) : null;
   if (fixedRuns != null && config.runsPerWeek! > avail.length) warnings.push(`You asked for ${config.runsPerWeek} runs a week but ticked ${avail.length} days, so the plan uses ${avail.length}.`);
+  const runs = fixedRuns ?? autoRuns(habit, avail.length);
+  if (fixedRuns != null && fixedRuns > autoRuns(habit, avail.length))
+    warnings.push(`${fixedRuns} runs a week is a big step from the ${Math.round(habit * 10) / 10} you have averaged lately. The plan starts with fewer runs and adds them as your weekly running grows, so no run is too short to be worth doing.`);
   const longDay = config.includeLongRuns ? (config.longRunDay != null && avail.includes(config.longRunDay) ? config.longRunDay : avail.includes(6) ? 6 : avail.includes(5) ? 5 : avail[avail.length - 1]) : null;
 
   // --- your running, measured ------------------------------------------------
@@ -250,6 +287,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     return stepsDuration(steps) / 60;
   };
   const toKm = (min: number) => (easyPace ? (min * 60) / easyPace : null);
+  const fromKm = (km: number) => (easyPace ? (km * easyPace) / 60 : null);
   const week0 = weekStart(baseline.asOf);
   const recent = byDistance
     ? [4, 3, 2, 1].map((k) => {
@@ -263,64 +301,58 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const chronic0 = recent.reduce((a, b) => a + b, 0) / 4;
   const best0 = Math.max(...recent);
 
-  // session lengths start from your own runs: the long run from your longest recent runs, easy runs from your usual run
+  // --- session targets: where each kind of run starts (from your runs) and where it peaks (from the race and volume) ---
+  const key = dk ?? "other";
   const from42 = addDaysIso(baseline.asOf, -41);
   const longest6 = hist.filter((r) => r.date >= from42).sort((a, b) => runSize(b) - runSize(a));
-  const lastLongest = Math.max(0, ...hist.filter((r) => r.date >= addDaysIso(baseline.asOf, -13)).map(runSize));
   const usualRun = hist.length ? median(hist.map(runSize)) : (baseline.habitualRunMinutes ?? 30);
-  const easy0 = Math.round(Math.max(20, Math.min(60, usualRun)));
+  // (never shorter than the easy runs you already do, up to an hour)
+  let easyPeak = goal.kind === "maintain" ? Math.max(25, Math.min(60, usualRun)) : Math.max(EASY_MAX[key][pref.idx], Math.min(60, usualRun));
+  const easy0 = Math.round(Math.max(20, Math.min(easyPeak, usualRun)));
   const longSeen = longest6.length >= 2 ? (runSize(longest6[0]) + runSize(longest6[1])) / 2 : longest6.length ? runSize(longest6[0]) : baseline.longestRunMinutes * 0.9;
-  const long0 = Math.max(longSeen, lastLongest, easy0 * 1.25, 30);
-  // how far the long run builds, by goal: minutes, and for races also a multiple of the race distance
-  const longCapMin = LONG_CAP[dk ?? goal.kind] ?? 90;
-  let longPeak = longCapMin;
-  if (dk && dist && easyPace) longPeak = Math.min(longPeak, Math.max(45, (LONG_KM_FACTOR[dk] * (dist / 1000) * easyPace) / 60));
-  if (goal.kind === "maintain") longPeak = Math.min(longCapMin, long0);
-  longPeak = Math.round(Math.max(longPeak, Math.min(long0, longCapMin)));
-  const easyPeak = goal.kind === "maintain" ? easy0 : Math.round(Math.max(easy0, Math.min(60, longPeak * EASY_OF_LONG)));
-  // shortest runs: about 70 % of your usual run (20–30 min), lower when a fixed frequency spreads a small week thin
-  const minEasyBase = Math.round(Math.max(20, Math.min(30, easy0 * 0.7)));
+  let longPeak = LONG_MIN[key][pref.idx];
+  if (dk) {
+    const km = fromKm(LONG_KM[dk][pref.idx]);
+    if (km != null) longPeak = Math.min(longPeak, km);
+  }
+  if (goal.kind === "maintain") longPeak = Math.max(40, Math.min(longPeak, longSeen));
+  longPeak = Math.round(longPeak);
+  // a weekly-volume goal: easy runs grow so the peak week reaches the volume you asked for
+  const targetMin = goal.kind === "volume" && goal.targetWeeklyKm ? fromKm(goal.targetWeeklyKm) : null;
+  if (targetMin != null && runs > 1) easyPeak = Math.round(Math.max(25, Math.min(75, (targetMin - longPeak) / (runs - 1))));
+  // the long run starts a little under your recent long runs (the week around it is still small), at least clearly longer than an easy run
+  const long0 = Math.round(Math.min(longPeak, Math.max(0.8 * longSeen, easy0 * 1.25, 30)));
 
   // --- weekly ceiling -------------------------------------------------------------
-  // The first week may reach the larger of 1.3× your 4-week average (+10 min) and your best recent week
-  // (90 % of it with patchy training); then at most one step (10 %, 10–30 min) a week, half after a recovery week.
-  const firstCap = Math.max(40, chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 0.9 : 1));
-  let peak = PEAK_MINUTES[dk ?? goal.kind] ?? 300;
-  if (goal.kind === "volume" && goal.targetWeeklyKm) peak = Math.round((goal.targetWeeklyKm * (easyPace ?? 390)) / 60);
-  if (goal.kind === "maintain") peak = Math.max(chronic0, 45);
-  if (config.maxWeeklyMinutes) {
-    if (chronic0 > config.maxWeeklyMinutes) warnings.push(`You have averaged ${Math.round(chronic0)} min a week lately, more than your limit of ${config.maxWeeklyMinutes} min. The plan stays at your limit.`);
-    peak = Math.min(peak, config.maxWeeklyMinutes);
-  }
-  peak = Math.max(peak, 45);
-  if (fixedRuns != null && Math.min(firstCap, peak) / fixedRuns < 20)
-    warnings.push(`Weekly time starts from what you have run lately (about ${Math.round(Math.min(firstCap, peak))} min), so ${fixedRuns} runs a week means short runs at first (about ${Math.round(Math.min(firstCap, peak) / fixedRuns)} min). They get longer as the weekly time builds.`);
+  // Week 1 may reach the larger of 1.3× your 4-week average (+10 min) and your best recent week (90 % of it with
+  // patchy training); then a loading week grows at most `rate` (at least 6 min) over the last loading week, half that
+  // after a lighter week. A lighter week is 70–75 % of the week before it.
+  // (with next to no recorded running, enough for the runs you chose at about 20 min each)
+  const firstCap = Math.max(chronic0 < 30 ? runs * 22 + 10 : 60, chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 0.9 : 1));
+  const userMax = config.maxWeeklyMinutes ?? Infinity;
+  if (config.maxWeeklyMinutes && chronic0 > config.maxWeeklyMinutes) warnings.push(`You have averaged ${Math.round(chronic0)} min a week lately, more than your limit of ${config.maxWeeklyMinutes} min. The plan stays at your limit.`);
 
-  // --- shape: the long run and easy runs build to their peak by the end of the build phase, then hold ----------
+  // --- shape: sessions build to their peak by the end of the build phase, then hold ----------
   const loading = (p: Phase) => p === "base" || p === "build" || p === "specific";
   let peakIdx = phases.lastIndexOf("build");
   if (peakIdx < 0) peakIdx = phases.indexOf("specific");
   if (peakIdx < 0) peakIdx = Math.max(0, phases.map(loading).lastIndexOf(true));
   const loadCount = (i: number) => phases.slice(0, i + 1).filter(loading).length;
-  const K = Math.max(1, loadCount(peakIdx));
-  const frac = (i: number) => Math.min(1, loadCount(i) / K);
+  // sessions reach their peak within about 10 loading weeks (a long plan then holds there longer instead of creeping up)
+  const K = Math.max(1, Math.min(10, loadCount(peakIdx) - 1));
+  const frac = (i: number) => Math.min(1, Math.max(0, (loadCount(i) - 1) / K));
   const peakWeekStart = addDaysIso(start, peakIdx * 7);
   const taperIdx = phases.map((p, i) => (p === "taper" || p === "race" ? i : -1)).filter((i) => i >= 0);
   const taperFactors = goal.raceDate ? (TAPER_FACTORS[taperIdx.length] ?? []) : [0.7];
   const taperLong = TAPER_LONG[taperIdx.length] ?? [0.65];
 
   const raceLabel = raceLabelFor(goal);
-  const longCtx: LongCtx = { baseline, hist: longest6.slice(0, 2), byDistance, toKm, longPeak, peakWeekStart, dk, dist };
+  const longCtx: LongCtx = { baseline, hist: longest6.slice(0, 2), byDistance, toKm, longPeak, peakWeekStart, dk, dist, volume };
 
   // planned weeks, built twice: once to project the race time, then with the race pace that projection gives
   const buildWeeks = (ctx: TargetContext, paceNote: string | null) => {
     const workouts: PlannedWorkout[] = [];
     const weekRows: PlanWeek[] = [];
-    const runHist = [...runHist0];
-    const freqCap = () => {
-      const m = runHist.slice(-4).reduce((a, b) => a + b, 0) / 4;
-      return Math.min(avail.length, Math.max(2, Math.floor(m * ACWR_MAX + 0.5), m < 4 ? Math.round(m) + 1 : 0));
-    };
     const phaseStart = (i: number) => {
       let s = i;
       while (s > 0 && (phases[s - 1] === phases[i] || phases[s - 1] === "recovery")) s--;
@@ -341,78 +373,62 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       const legacy = hist.length === 0 && from <= baseline.asOf ? ref30 : 0;
       return Math.max(SPIKE_FLOOR_MIN, Math.floor(SPIKE_MAX * Math.max(legacy, ...prior)));
     };
-    let lastRuns = 0;
-    let sinceMore = 0;
     let altern = 0;
-    let lastLoad: number | null = null;
+    let lastRuns = 0;
+    const rotIdx: Record<Phase, number> = { base: 0, build: 0, specific: 0, taper: 0, recovery: 0, race: 0 };
     let lastActual: number | null = null;
+    let afterDeload = false;
     let peakLoad = 0;
     let lastLong = long0;
     let peakLong = 0;
     for (let i = 0; i < n; i++) {
       const ws = addDaysIso(start, i * 7);
       const ph = phases[i];
-      const progress = phaseLen(i) > 1 ? (i - phaseStart(i)) / (phaseLen(i) - 1) : 0.5;
+      const progress = (phaseLen(i) > 1 ? (i - phaseStart(i)) / (phaseLen(i) - 1) : 0.5) * INTENSITY_PROGRESS[intensity];
       const raceDay = ph === "race" && goal.raceDate ? daysBetween(ws, goal.raceDate) : null;
       const inPhase = i - phaseStart(i);
 
-      // session lengths from the shape
+      // this week's ceiling
+      let cap: number;
+      if (ph === "taper" || ph === "race") cap = (peakLoad || firstCap) * (taperFactors[taperIdx.indexOf(i)] ?? 0.6);
+      else if (ph === "recovery") cap = (lastActual ?? firstCap) * pref.deload;
+      else if (lastActual == null) cap = firstCap;
+      else cap = afterDeload ? Math.max(lastActual * (1 + pref.rate / 2), lastActual + 3) : Math.max(lastActual * (1 + pref.rate), lastActual + 6);
+      cap = Math.min(cap, userMax);
+
+      // session lengths from the shape: straight lines from where you are to the peak, held after it
       const f = frac(i);
       let L = long0 + (longPeak - long0) * f;
       let E = easy0 + (easyPeak - easy0) * f;
+      if (loading(ph)) L = Math.min(L, Math.max(lastLong * 1.1, lastLong + 5)); // never more than 10 % (or 5 min) over the last long run
       if (ph === "recovery") {
-        L = lastLong * 0.7;
-        E *= 0.8;
+        L = lastLong * pref.deload;
+        E *= 0.85;
       } else if (ph === "taper") {
         L = (peakLong || lastLong) * (taperLong[taperIdx.indexOf(i)] ?? 0.65);
-        E *= 0.75;
+        E *= 0.8;
       } else if (ph === "specific" && inPhase % 2 === 1) L *= 0.9; // lighter, faster-finishing long run every other week
 
-      // this week's ceiling
-      let cap: number;
-      if (ph === "taper" || ph === "race") cap = (peakLoad || Math.min(firstCap, peak)) * (taperFactors[taperIdx.indexOf(i)] ?? 0.6);
-      else if (ph === "recovery") cap = (lastActual ?? Math.min(firstCap, peak)) * 0.75;
-      else {
-        cap = Math.min(peak, lastLoad == null ? firstCap : lastLoad + weeklyStep(lastLoad, lowConsistency) * (phases[i - 1] === "recovery" ? 0.5 : 1));
-        // and planned running never grows more than 10 % (or 10 min) over the last loading week, except to add one easy
-        // run when the frequency may step up (auto)
-        const adding = fixedRuns == null && lastRuns > 0 && sinceMore >= 3;
-        if (lastActual != null) cap = Math.min(cap, Math.max(lastActual * 1.1, lastActual + 10) + (adding ? minEasyBase : 0));
-      }
-
-      // runs this week (auto): as many as fit under the ceiling at about your easy-run length, starting at most one
-      // above your habit, then adding at most one run every 3 loading weeks (a new frequency is held before the next
-      // step, as with any load increase), up to 5 a week (6 for the half and marathon) unless you already run more
-      const habit = Math.round(runHist.slice(-4).reduce((a, b) => a + b, 0) / 4);
-      const allowed = lastRuns === 0 ? Math.max(3, habit < 4 ? habit + 1 : habit) : lastRuns + (sinceMore >= 3 ? 1 : 0);
-      const goalMax = Math.max(dk === "half" || dk === "marathon" ? 6 : 5, Math.round(runHist0.reduce((a, b) => a + b, 0) / 4));
-      // a run is only added when the week has room for it at a proper length (hard sessions count as 1.25 easy runs)
-      const hardFor = (k: number) => (chronic0 < 90 && i < 2 ? 0 : Math.min(ph === "base" ? 1 : 2, k >= 4 ? 2 : k === 3 ? 1 : 0));
-      // a run added to last week's frequency starts short, and no hard session is added in the same week
-      const prevRuns = lastRuns;
-      const steps = (k: number) => (prevRuns > 0 && k > prevRuns ? k - prevRuns : 0);
-      const hardIn = (k: number) => hardFor(steps(k) ? prevRuns : k);
-      const fits = (k: number) => L + hardIn(k) * 1.25 * E + (k - 1 - hardIn(k) - steps(k)) * 0.85 * E + steps(k) * minEasyBase <= cap * 1.05;
-      let runsW = Math.max(2, Math.min(allowed, goalMax, freqCap()));
-      while (runsW > 2 && !fits(runsW)) runsW--;
-      // once added, a run stays (in loading weeks): the week's ceiling shortens the easy runs instead
-      if (loading(ph)) runsW = Math.max(runsW, Math.min(prevRuns, avail.length));
-      if (ph === "recovery") runsW = Math.max(2, Math.min(runsW, lastRuns || runsW) - 1);
-      if (ph === "taper" || ph === "race") runsW = Math.min(avail.length, Math.max(runsW, lastRuns));
-      else if (ph !== "recovery") {
-        sinceMore = runsW > lastRuns && lastRuns > 0 ? 1 : sinceMore + 1;
-        lastRuns = runsW;
-      }
-      if (fixedRuns != null) runsW = fixedRuns;
+      // the long run's share of the week (60 % with 2 runs, 50 % with 3, 40 % with 4, 35 % with 5+; 5–10 points more for the
+      // half and the marathon, where the long run is the key session), so it can't eat all the growth
+      const longShare = (runs <= 2 ? 0.6 : runs === 3 ? 0.5 : runs === 4 ? 0.4 : 0.35) + (dk === "marathon" ? 0.1 : dk === "half" ? 0.05 : 0);
+      if (ph !== "race") L = Math.min(L, cap * longShare);
       const sCap = spikeCap(ws);
-      const minEasy = fixedRuns != null ? Math.max(10, Math.min(minEasyBase, Math.floor(cap / runsW) - 3)) : minEasyBase;
-      const minLong = minEasy + 5;
+      // runs this week: the number you chose, once the week is big enough for each run to be at least ~20 min next to
+      // the long run (a run joins as the weekly volume grows, rather than every run being cut short)
+      const need = (k: number) => Math.min(L, sCap) * 0.9 + (k - 1) * 20;
+      let runsW = runs;
+      if (ph !== "race") while (runsW > Math.min(2, runs) && need(runsW) > cap) runsW--;
+      // lighter and taper weeks keep the rhythm of runs you have reached (each run is shorter instead)
+      if ((ph === "recovery" || ph === "taper") && lastRuns > 0) runsW = Math.min(runs, Math.max(runsW, lastRuns));
+      if (loading(ph)) lastRuns = runsW;
+      const minEasy = Math.max(12, Math.min(20, Math.floor(cap / runsW) - 3));
+      const minLong = Math.min(Math.max(minEasy + 10, L * 0.9), L);
       const days = spreadDays(avail, runsW, longDay);
       const wLong = longDay != null && days.includes(longDay) ? longDay : null;
 
       const list: { dow: number; spec: Parameters<typeof buildWorkout>[0]; why: string; key: boolean }[] = [];
       const size = (l: (typeof list)[number]) => stepsSize(buildWorkout(l.spec, ctx).steps);
-      const mins = (l: (typeof list)[number]) => stepsDuration(buildWorkout(l.spec, ctx).steps) / 60;
 
       // long run
       let longItem: (typeof list)[number] | null = null;
@@ -421,35 +437,38 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         const progressive = !withRacePace && ((ph === "build" && i % 2 === 1) || (ph === "specific" && inPhase % 2 === 1));
         longItem = {
           dow: wLong,
-          spec: { type: progressive ? "progressive_long" : "long", minutes: Math.round(Math.max(minLong, Math.min(L, sCap))), withRacePace, goalKey: dk, progress },
+          spec: { type: progressive ? "progressive_long" : "long", minutes: Math.round(Math.max(minEasy + 5, Math.min(L, sCap))), withRacePace, goalKey: dk, progress },
           why: "",
           key: ph !== "recovery",
         };
         list.push(longItem);
       }
 
-      // quality: hard sessions allowed by frequency, phase and how much you run now
-      const lowBase = chronic0 < 90;
-      let hardAllowed = runsW >= 4 ? 2 : runsW === 3 ? 1 : 0;
-      if (ph === "base") hardAllowed = Math.min(hardAllowed, 1);
-      if (lowBase && i < 2) hardAllowed = 0;
-      if (fixedRuns == null && loading(ph)) hardAllowed = Math.min(hardAllowed, hardIn(runsW));
-      const types = qualityTypes(goal, dk, ph, config, altern);
-      let hardList = types.filter((t) => isHard(t));
-      // one hard session a week: alternate the phase's two session types instead of repeating the first
-      if (hardAllowed === 1 && hardList.length > 1 && altern % 2 === 1) hardList = [hardList[1], hardList[0], ...hardList.slice(2)];
+      // quality: hard sessions by runs per week, phase and intensity; none in the first two weeks if you run little now
+      let hardAllowed = hardSessions(runsW, ph, intensity);
+      if (chronic0 < 90 && i < 2) hardAllowed = 0;
+      const types = qualityTypes(goal, dk, ph, config, altern, intensity);
+      // hard sessions rotate through the phase's session types, so each week differs from the last
+      const rot = hardRotation(goal, dk, ph, config, intensity) ?? types.filter((t) => isHard(t));
+      const hardTypes: WorkoutType[] = [];
+      for (let k = 0; hardTypes.length < hardAllowed && k < rot.length; k++) {
+        const t = rot[(rotIdx[ph] + k) % rot.length];
+        if (!hardTypes.includes(t)) hardTypes.push(t);
+      }
+      if (hardTypes.length) rotIdx[ph] += hardTypes.length;
       altern++;
-      const hardTypes = hardList.slice(0, hardAllowed);
       const spare = days.length - (wLong != null ? 1 : 0) - hardTypes.length;
-      const extras = types.filter((t) => !isHard(t)).slice(0, Math.max(0, spare - 1));
+      const extras = types.filter((t) => !isHard(t)).slice(0, Math.max(0, Math.min(1, spare - 1)));
       let q = [...hardTypes, ...extras];
       let qDays = ph === "race" ? [] : pickQualityDays(days, wLong, q.length);
       if (qDays.length < q.length) q = q.slice(0, qDays.length);
       // 80/20: shrink, then drop, hard sessions until the hard share fits
       let prog = q.map(() => progress);
-      const compact = cap < 150;
+      // short warm-up and cool-down (10 + 5 min) for 5 and 10 km plans and small weeks; longer for the half and marathon
+      const compact = cap < 180 || !(dk === "half" || dk === "marathon");
       const hardShare = () => q.reduce((a, t, k) => a + (isHard(t) ? hardMinutes(buildWorkout({ type: t, progress: prog[k], goalKey: dk, compact }, ctx).steps) : 0), 0);
-      while (q.some(isHard) && hardShare() > Math.max(12, cap * HARD_SHARE_MAX)) {
+      // (in the taper, volume drops but the intensity stays: up to 30 %)
+      while (q.some(isHard) && hardShare() > Math.max(12, cap * (ph === "taper" ? 0.3 : HARD_SHARE_MAX))) {
         if (prog.some((p) => p > 0)) prog = prog.map((p) => Math.max(0, p - 0.25));
         else {
           const last = q.map(isHard).lastIndexOf(true);
@@ -477,51 +496,49 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         const primer = avail.filter((d) => d < rd && rd - d >= 2 && rd - d <= 4).pop();
         if (primer != null) list.push({ dow: primer, spec: { type: "easy", minutes: 25, strides: true }, why: "A short run with strides keeps your legs sharp without tiring them before the race.", key: false });
         const opener = avail.filter((d) => primer != null && d < primer - 1).pop();
-        if (opener != null) list.push({ dow: opener, spec: { type: "easy", minutes: 30 }, why: "Easy running to stay loose in race week.", key: false });
-        for (const d of [...avail].reverse()) {
-          if (list.length >= runsW) break;
-          if (d >= rd - 1 || list.some((l) => l.dow === d)) continue;
-          list.push({ dow: d, spec: { type: "easy", minutes: 20 }, why: "A short easy run: in a taper you cut volume but keep your usual rhythm of runs.", key: false });
-        }
+        if (opener != null && list.length < runsW) list.push({ dow: opener, spec: { type: "easy", minutes: 30 }, why: "Easy running to stay loose in race week.", key: false });
       }
 
-      // easy runs: your usual run, growing slowly, always clearly shorter than the long run
+      // easy runs: your usual run, growing slowly to the volume's easy-run length, always clearly shorter than the long run
       const used = new Set(list.map((l) => l.dow));
       const flexible = (l: (typeof list)[number]) => l.spec.type === "strides" || ((l.spec.type === "easy" || l.spec.type === "recovery") && ph !== "race");
-      const easyMax = () => Math.max(minEasy, Math.min(60, sCap, longItem ? Math.round((longItem.spec.minutes ?? 0) * 0.8) : 60));
+      const easyMax = () => Math.max(minEasy, Math.min(easyPeak, sCap, longItem ? Math.round((longItem.spec.minutes ?? 0) * 0.75) : easyPeak));
       const each = Math.round(Math.max(minEasy, Math.min(easyMax(), E)));
       for (const l of list) if (flexible(l)) l.spec.minutes = each;
       for (const d of ph === "race" ? [] : days.filter((x) => !used.has(x))) {
         const afterHard = list.some((l) => isHard(l.spec.type) && (l.dow === d - 1 || (d === 0 && l.dow === 6)));
         list.push({
           dow: d,
-          spec: { type: afterHard ? "recovery" : "easy", minutes: afterHard ? Math.max(minEasy, Math.min(each, 35)) : each, strides: false },
+          spec: { type: afterHard ? "recovery" : "easy", minutes: afterHard ? Math.max(minEasy, Math.min(each, 30)) : each, strides: false },
           why: afterHard ? "The day after a hard session: keep it short and very easy so you absorb the work." : "",
           key: false,
         });
       }
 
-      // fit the week under its ceiling: shorten easy runs, then the long run, then ease and drop hard sessions
+      // fit the week under its ceiling: shorten easy runs, then ease hard sessions, then the long run, then swap a hard session for easy
       const total = () => list.reduce((a, l) => a + size(l), 0);
-      for (let guard = 0; guard < 200 && ph !== "race"; guard++) {
-        if (total() <= cap * 1.05) break;
+      for (let guard = 0; guard < 300 && ph !== "race"; guard++) {
+        if (total() <= cap * 1.01) break;
         const easy = list.filter((l) => flexible(l) && (l.spec.minutes ?? 0) > minEasy).sort((a, b) => (b.spec.minutes ?? 0) - (a.spec.minutes ?? 0))[0];
         const long = longItem && (longItem.spec.minutes ?? 0) > minLong ? longItem : null;
         const hard = list.filter((l) => isHard(l.spec.type) && l.spec.type !== "race");
-        if (easy) easy.spec.minutes = Math.max(minEasy, (easy.spec.minutes ?? minEasy) - 2);
-        else if (long) long.spec.minutes = Math.max(minLong, (long.spec.minutes ?? minLong) - 2);
+        // in a tight week the long run matters more than a squeezed-in hard session
+        if (easy) easy.spec.minutes = Math.max(minEasy, (easy.spec.minutes ?? minEasy) - 1);
         else if (hard.some((h) => (h.spec.progress ?? 0) > 0)) for (const h of hard) h.spec.progress = Math.max(0, (h.spec.progress ?? 0) - 0.25);
         else if (hard.length) {
           const h = hard[hard.length - 1];
           h.spec = { type: "easy", minutes: minEasy + 5, strides: config.includeStrides };
           h.key = false;
-          h.why = "An easy run with strides instead of a hard session, to keep this week's total within a safe step from the last.";
-        } else break;
+          h.why = "An easy run with strides instead of a hard session: this week is still small, and the long run matters more.";
+        } else if (long) long.spec.minutes = Math.max(minLong, (long.spec.minutes ?? minLong) - 1);
+        else if (longItem && (longItem.spec.minutes ?? 0) > minEasy + 5) longItem.spec.minutes = (longItem.spec.minutes ?? 0) - 1;
+        else break;
       }
-      // and don't drop below what you already run: lengthen easy runs (up to 80 % of the long run) to your recent average
+
+      // and a loading week doesn't drop below what you already run: lengthen easy runs (up to their peak length) to your recent average
       const floor = Math.min(cap, chronic0);
-      for (let guard = 0; guard < 200 && loading(ph) && total() < floor; guard++) {
-        const easy = list.filter((l) => flexible(l) && (l.spec.minutes ?? 0) < easyMax()).sort((a, b) => (a.spec.minutes ?? 0) - (b.spec.minutes ?? 0))[0];
+      for (let guard = 0; guard < 300 && loading(ph) && total() < floor; guard++) {
+        const easy = list.filter((l) => flexible(l) && (l.spec.minutes ?? 0) < Math.max(easyMax(), 60 * Math.min(1, chronic0 / 240))).sort((a, b) => (a.spec.minutes ?? 0) - (b.spec.minutes ?? 0))[0];
         if (!easy) break;
         easy.spec.minutes = (easy.spec.minutes ?? 0) + 1;
       }
@@ -542,15 +559,14 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       const weekSize = total();
       for (const l of list) if (l.spec.type !== "race" && addDaysIso(ws, l.dow) >= config.startDate) sessions.push({ date: addDaysIso(ws, l.dow), size: size(l) });
       if (loading(ph)) {
-        // the ceiling keeps rising by a step a week even when the sessions don't fill it (they follow their own shape)
-        lastLoad = Math.max(weekSize, cap);
         lastActual = weekSize;
+        afterDeload = false;
         peakLoad = Math.max(peakLoad, weekSize);
         if (longItem) {
           lastLong = longItem.spec.minutes ?? lastLong;
           peakLong = Math.max(peakLong, lastLong);
         }
-      }
+      } else if (ph === "recovery") afterDeload = true;
 
       for (const l of list.sort((a, b) => a.dow - b.dow)) {
         const date = addDaysIso(ws, l.dow);
@@ -558,14 +574,15 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         if (goal.raceDate && date > goal.raceDate) continue;
         workouts.push(finalize(buildWorkout(l.spec, ctx), date, l.why, l.key));
       }
-      void mins;
-      weekRows.push({ index: i, start: ws, phase: ph, targetMinutes: Math.round(cap), note: weekNote(ph, i, n, list.length) });
-      runHist.push(list.filter((l) => addDaysIso(ws, l.dow) >= config.startDate).length || runsW);
+      weekRows.push({ index: i, start: ws, phase: ph, targetMinutes: Math.round(cap), note: "" });
     }
-    // planned minutes per week (structured sessions don't divide exactly)
+    // planned minutes and distance per week (structured sessions don't divide exactly)
     for (const w of weekRows) {
       const end = addDaysIso(w.start, 6);
-      w.targetMinutes = Math.round(workouts.filter((x) => x.date >= w.start && x.date <= end).reduce((a, x) => a + x.durationS / 60, 0));
+      const ws = workouts.filter((x) => x.date >= w.start && x.date <= end);
+      w.targetMinutes = Math.round(ws.reduce((a, x) => a + x.durationS / 60, 0));
+      const km = ws.every((x) => x.distanceM != null) ? ws.reduce((a, x) => a + (x.distanceM ?? 0), 0) / 1000 : null;
+      w.note = weekNote(w.phase, w.index, n, ws.length, km, w.index === peakIdx);
     }
     return { workouts, weekRows };
   };
@@ -599,11 +616,11 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   return {
     version: PLANNER_VERSION,
     goal,
-    config: { ...config, runDays: avail, longRunDay: longDay, phases: undefined },
+    config: { ...config, runDays: avail, longRunDay: longDay, phases: undefined, volume, intensity },
     baseline,
     weeks: weekRows,
     workouts,
-    summary: summarize(goal, baseline, weekRows, workouts, pace, projection, longCtx),
+    summary: summarize(goal, baseline, weekRows, workouts, pace, projection, longCtx, { runs, volume, intensity, auto: fixedRuns == null, deloadEvery: lowConsistency ? 3 : pref.deloadEvery, rate: pref.rate }),
     warnings,
     racePace: pace.racePace,
     projection,
@@ -635,8 +652,32 @@ export function pickQualityDays(days: number[], longDay: number | null, want: nu
   return best.sort((a, b) => a - b);
 }
 
-function qualityTypes(goal: Goal, dk: string | null, ph: Phase, c: PlanConfig, alt: number): WorkoutType[] {
-  const iv = c.includeIntervals;
+/**
+ * The order hard sessions come in for a race goal, by phase: base is tempo and hills, build alternates threshold and
+ * VO2max, race-specific mixes race pace with threshold and fast repetitions. Comfortable leaves out the fastest work.
+ * Null for other goals (they use qualityTypes).
+ */
+function hardRotation(goal: Goal, dk: string | null, ph: Phase, c: PlanConfig, intensity: IntensityPref): WorkoutType[] | null {
+  if (!dk) return null;
+  const iv = c.includeIntervals && intensity !== "comfortable";
+  const speedy = dk === "5k" || dk === "10k";
+  switch (ph) {
+    case "base":
+      return iv ? ["tempo", "hills"] : ["tempo"];
+    case "build":
+      return speedy ? (iv ? ["threshold", "vo2max"] : ["threshold", "tempo"]) : iv ? ["threshold", "tempo", "threshold", "vo2max"] : ["threshold", "tempo"];
+    case "specific":
+      return speedy ? (iv ? ["race_pace", "threshold", "race_pace", "repetitions"] : ["race_pace", "threshold"]) : ["race_pace", "threshold"];
+    case "taper":
+      return ["race_pace"];
+    default:
+      return [];
+  }
+}
+
+function qualityTypes(goal: Goal, dk: string | null, ph: Phase, c: PlanConfig, alt: number, intensity: IntensityPref = "balanced"): WorkoutType[] {
+  // Comfortable keeps to threshold-type work: no VO2max intervals or fast repetitions
+  const iv = c.includeIntervals && intensity !== "comfortable";
   const flip = alt % 2 === 1;
   const st: WorkoutType[] = c.includeStrides ? ["strides"] : [];
   if (ph === "recovery") return st;
@@ -702,6 +743,7 @@ interface LongCtx {
   peakWeekStart: string;
   dk: "5k" | "10k" | "half" | "marathon" | null;
   dist: number | null;
+  volume: VolumePref;
 }
 
 const kmText = (km: number | null) => (km == null ? "" : `${km < 10 ? km.toFixed(1) : Math.round(km)} km`);
@@ -730,8 +772,8 @@ function whyLong(min: number, ph: Phase, first: boolean, racePace: boolean, prog
 }
 
 const LONG_REASON: Record<"5k" | "10k" | "half" | "marathon", string> = {
-  "5k": "A 5 km is mostly aerobic, so long runs well past race distance (up to about 12 km) build the engine; more than that adds fatigue without helping a 5 km.",
-  "10k": "A 10 km is about 90 % aerobic, so long runs a bit past race distance (up to about 1.3×) build the endurance to hold your pace through the last kilometres. Longer than that mostly adds fatigue for this distance.",
+  "5k": "A 5 km is mostly aerobic, so long runs well past race distance build the engine; more than about 10–12 km adds fatigue without helping a 5 km.",
+  "10k": "A 10 km is about 90 % aerobic, so long runs a little past race distance build the endurance to hold your pace through the last kilometres. Longer than that mostly adds fatigue for this distance.",
   half: "For the half, the long run approaches race distance so the distance itself holds no surprises on race day.",
   marathon: "For the marathon, the long run stops around 32 km or 2.5 hours: beyond that, recovery costs more than the run gives.",
 };
@@ -742,8 +784,8 @@ function whyEasy(min: number, longMin: number, b: Baseline, toKm: (m: number) =>
   return `Easy running builds the aerobic base everything else rests on: ${min} min${aboutKm(min, toKm)}, conversational${hr}.${vsLong}`;
 }
 
-function weekNote(ph: Phase, i: number, n: number, runs: number): string {
-  const r = `${runs} run${runs === 1 ? "" : "s"}`;
+function weekNote(ph: Phase, i: number, n: number, runs: number, km: number | null, peak: boolean): string {
+  const r = `${runs} run${runs === 1 ? "" : "s"}${km != null ? `, about ${Math.round(km)} km` : ""}`;
   switch (ph) {
     case "recovery":
       return `Lighter week to absorb the training: ${r}.`;
@@ -752,19 +794,43 @@ function weekNote(ph: Phase, i: number, n: number, runs: number): string {
     case "race":
       return "Race week.";
     default:
-      return i === 0 ? `First week: close to what you run now. ${r}.` : i === n - 1 ? `Last week. ${r}.` : `${r}.`;
+      return i === 0 ? `First week: close to what you run now. ${r}.` : peak ? `Peak week: from here the volume holds while the sessions get more race-specific. ${r}.` : i === n - 1 ? `Last week. ${r}.` : `${r}.`;
   }
 }
 
-function summarize(goal: Goal, b: Baseline, weeks: PlanWeek[], workouts: PlannedWorkout[], pace: Pace, proj: Projection | null, c: LongCtx): string[] {
+const VOLUME_LABEL: Record<VolumePref, string> = { gradual: "Gradual", steady: "Steady", progressive: "Progressive" };
+const INTENSITY_LABEL: Record<IntensityPref, string> = { comfortable: "Comfortable", balanced: "Balanced", challenging: "Challenging" };
+
+interface Shape {
+  runs: number;
+  volume: VolumePref;
+  intensity: IntensityPref;
+  auto: boolean;
+  deloadEvery: number;
+  rate: number;
+}
+
+function summarize(goal: Goal, b: Baseline, weeks: PlanWeek[], workouts: PlannedWorkout[], pace: Pace, proj: Projection | null, c: LongCtx, sh: Shape): string[] {
   const out: string[] = [];
   const counts = new Map<Phase, number>();
   for (const w of weeks) counts.set(w.phase, (counts.get(w.phase) ?? 0) + 1);
   const order: Phase[] = ["base", "build", "specific", "recovery", "taper", "race"];
   const label: Record<Phase, string> = { base: "base", build: "build", specific: "race-specific", recovery: "recovery", taper: "taper", race: "race" };
   out.push(`${weeks.length} weeks: ${order.filter((p) => counts.get(p)).map((p) => `${counts.get(p)} ${label[p]}`).join(", ")}.`);
-  const peak = weeks.reduce((a, w) => (w.targetMinutes > a.targetMinutes ? w : a), weeks[0]);
-  if (peak) out.push(`Weekly running goes from ${hm(weeks[0].targetMinutes)} to a peak of ${hm(peak.targetMinutes)} in week ${peak.index + 1}; you have averaged ${hm(b.weeklyMinutes)} over the last 4 weeks.`);
+  out.push(`${sh.runs} runs a week${sh.auto ? " (one more than you run now, at least 3)" : ""}, ${VOLUME_LABEL[sh.volume].toLowerCase()} volume, ${INTENSITY_LABEL[sh.intensity].toLowerCase()} intensity.`);
+  const wkm = (w: PlanWeek) => {
+    const end = addDaysIso(w.start, 6);
+    const ws = workouts.filter((x) => x.date >= w.start && x.date <= end);
+    return ws.length && ws.every((x) => x.distanceM != null) ? ws.reduce((a, x) => a + (x.distanceM ?? 0), 0) / 1000 : null;
+  };
+  const training = weeks.filter((w) => w.phase !== "taper" && w.phase !== "race");
+  const peak = training.reduce((a, w) => (w.targetMinutes > a.targetMinutes ? w : a), training[0] ?? weeks[0]);
+  if (peak) {
+    const k0 = wkm(weeks[0]);
+    const kp = wkm(peak);
+    const amt = (w: PlanWeek, km: number | null) => (km != null ? `${Math.round(km)} km (${hm(w.targetMinutes)})` : hm(w.targetMinutes));
+    out.push(`Weekly running goes from ${amt(weeks[0], k0)} to ${amt(peak, kp)} at most, then holds there instead of growing further; you have averaged ${hm(b.weeklyMinutes)} over the last 4 weeks.`);
+  }
   const longs = workouts.filter((w) => w.type === "long" || w.type === "progressive_long");
   if (longs.length) {
     const km = (w: PlannedWorkout) => (w.distanceM ? ` (${kmText(w.distanceM / 1000)})` : "");
@@ -780,7 +846,7 @@ function summarize(goal: Goal, b: Baseline, weeks: PlanWeek[], workouts: Planned
     if (bits.length) out.push(`${goal.name ?? GOAL_LABEL[goal.kind]}: ${bits.join(", ")}.`);
   }
   if (proj) out.push(`If you follow it: ${proj.label} ${fmtTime(proj.nowS)} now → about ${fmtTime(proj.projectedS)} (range ${fmtTime(proj.slowS)}–${fmtTime(proj.fastS)}). This projection is a heuristic based on typical gains; it is updated from your actual fitness as you train.`);
-  out.push(`Load limits: no run more than 10 % bigger than your biggest in the previous 30 days, at most +10 % (or +10–30 min) a week, a lighter week every ${b.consistency < 0.6 ? 3 : 4} weeks, and at most ${Math.round(HARD_SHARE_MAX * 100)} % of running time at threshold or harder.`);
+  out.push(`Load limits: weekly running grows at most ${Math.round(sh.rate * 100)} % a week, a lighter week every ${sh.deloadEvery} weeks, no run more than 10 % bigger than your biggest in the previous 30 days, and at most ${Math.round(HARD_SHARE_MAX * 100)} % of running time at threshold or harder.`);
   if (pace.note) out.push(pace.note);
   return out;
 }

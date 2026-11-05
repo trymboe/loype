@@ -68,6 +68,8 @@ export default async function GoalPage() {
               includeIntervals: cfg.includeIntervals !== false,
               includeLongRuns: cfg.includeLongRuns !== false,
               includeStrides: cfg.includeStrides !== false,
+              volume: cfg.volume ?? "steady",
+              intensity: cfg.intensity ?? "balanced",
               runsPerWeek: cfg.runsPerWeek ?? null,
               usualRuns: cfg.usualRunsPerWeek != null ? String(cfg.usualRunsPerWeek) : "",
               recentRuns: (plan.baseline as Baseline | null)?.runsPerWeek ?? 0,

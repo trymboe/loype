@@ -121,7 +121,7 @@ describe("coach tools", async () => {
 
   it("flags a jump in runs per week against recent training before changing settings", async () => {
     const db = seed();
-    const r = await call(db, "change_plan_settings", { run_days: [0, 1, 2, 3, 4, 5, 6], runs_per_week: 6, long_run_day: null, max_weekly_hours: null, include_intervals: null, include_long_runs: null, include_strides: null, target_time: null, target_weekly_km: null, race_name: null, confirmed: false });
+    const r = await call(db, "change_plan_settings", { run_days: [0, 1, 2, 3, 4, 5, 6], runs_per_week: 6, long_run_day: null, max_weekly_hours: null, include_intervals: null, include_long_runs: null, include_strides: null, volume: null, intensity: null, target_time: null, target_weekly_km: null, race_name: null, confirmed: false });
     expect(r.out).toMatch(/^Not changed yet[\s\S]*6 runs a week/);
     expect(db.rows("training_plans")[0].config.runsPerWeek).toBeNull();
   });

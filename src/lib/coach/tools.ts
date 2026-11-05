@@ -102,6 +102,8 @@ const schemas = {
     include_intervals: z.boolean().nullable(),
     include_long_runs: z.boolean().nullable(),
     include_strides: z.boolean().nullable(),
+    volume: z.enum(["gradual", "steady", "progressive"]).nullable(),
+    intensity: z.enum(["comfortable", "balanced", "challenging"]).nullable(),
     target_time: z.string().nullable(),
     target_weekly_km: z.number().min(0).max(200).nullable(),
     race_name: z.string().max(80).nullable(),
@@ -216,6 +218,8 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
       include_intervals: { type: ["boolean", "null"] },
       include_long_runs: { type: ["boolean", "null"] },
       include_strides: { type: ["boolean", "null"] },
+      volume: { type: ["string", "null"], enum: ["gradual", "steady", "progressive", null], description: "Training volume: gradual (lower, lighter week every 3rd), steady (default), progressive (higher, longer long runs), or null" },
+      intensity: { type: ["string", "null"], enum: ["comfortable", "balanced", "challenging", null], description: "Quality sessions: comfortable (one gentle session, no fast intervals), balanced (default), challenging (two a week from 3 runs), or null" },
       target_time: ns("Race target as h:mm:ss or mm:ss (race goals only), 'none' to remove it, or null"),
       target_weekly_km: { type: ["number", "null"], description: "Weekly km target (volume goals only), 0 to remove, or null" },
       race_name: ns("Race name (custom race goals only), or null"),
@@ -594,6 +598,8 @@ async function settingsTool(ctx: ToolContext, input: z.infer<(typeof schemas)["c
   if (input.include_intervals != null) config.includeIntervals = input.include_intervals;
   if (input.include_long_runs != null) config.includeLongRuns = input.include_long_runs;
   if (input.include_strides != null) config.includeStrides = input.include_strides;
+  if (input.volume != null) config.volume = input.volume;
+  if (input.intensity != null) config.intensity = input.intensity;
   const edit: GoalEdit = { config };
   if (input.target_time != null) {
     if (!RACE_KINDS.includes(g.kind)) errors.push("A target time only applies to race goals.");
@@ -649,6 +655,8 @@ async function settingsRisks(ctx: ToolContext, cfg: PlanConfig, g: any, config: 
   const cap = config.maxWeeklyMinutes;
   if (cap && cap > (cfg.maxWeeklyMinutes ?? 0) && cap > avgMin * 1.2)
     out.push(`a weekly cap of ${Math.round(cap / 60 * 10) / 10} h allows more than 20 % above the recent average of ${Math.round(avgMin)} min a week (the planner still ramps gradually, but the cap no longer protects them).`);
+  if (config.volume === "progressive" && (cfg.volume ?? "steady") !== "progressive") out.push("progressive volume builds faster to more weekly running and longer long runs.");
+  if (config.intensity === "challenging" && (cfg.intensity ?? "balanced") !== "challenging") out.push("challenging intensity adds a second hard session a week.");
   if (config.includeIntervals && !cfg.includeIntervals) out.push("adds interval sessions; check that recent easy runs feel easy and nothing hurts.");
   if (config.includeLongRuns && !cfg.includeLongRuns) out.push("adds long runs back into the plan.");
   if (edit.targetWeeklyKm && edit.targetWeeklyKm > (g.target_weekly_km ?? 0) && edit.targetWeeklyKm > avgKm * 1.3)

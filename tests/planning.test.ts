@@ -146,7 +146,7 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
   it("grows when you run more than planned (re-anchored on your actual weeks)", () => {
     const quiet = generatePlan(tenK, all, base({ ...low, recentWeeks: [50, 50, 50, 50], recentRunCounts: [2, 2, 2, 2] }));
     const keen = generatePlan(tenK, all, base({ ...low, weeklyMinutes: 120, recentWeeks: [100, 110, 125, 140], recentRunCounts: [3, 4, 4, 4], runsPerWeek: 3.75 }));
-    expect(keen.weeks[0].targetMinutes).toBeGreaterThan(quiet.weeks[0].targetMinutes * 1.8);
+    expect(keen.weeks[0].targetMinutes).toBeGreaterThan(quiet.weeks[0].targetMinutes * 1.7);
     expect(keen.weeks[0].targetMinutes).toBeLessThanOrEqual(Math.max(140, 119 * ACWR_MAX) + 20);
     const n = (p: typeof keen) => p.workouts.filter((x) => x.date <= addDaysIso(p.weeks[0].start, 6)).length;
     expect(n(keen)).toBeGreaterThan(n(quiet));
@@ -159,8 +159,9 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
     expect(firstWeek(sixDay)).toBeLessThanOrEqual(7);
     expect(sixDay.weeks[0].targetMinutes).toBeGreaterThan(250);
     const nothing = generatePlan(tenK, all, base({ weeklyMinutes: 0, runsPerWeek: 0, consistency: 0, longestRunMinutes: 0, recentWeeks: [0, 0, 0, 0], recentRunCounts: [0, 0, 0, 0], habitualRunMinutes: null }));
-    expect(firstWeek(nothing)).toBe(2);
-    expect(nothing.weeks[0].targetMinutes).toBeLessThanOrEqual(60);
+    // starting from nothing: three short runs (a couch-to-5k-like week)
+    expect(firstWeek(nothing)).toBe(3);
+    expect(nothing.weeks[0].targetMinutes).toBeLessThanOrEqual(80);
   });
 
   it("never plans a run more than 10 % longer than the longest in the previous 30 days", () => {
@@ -179,7 +180,9 @@ describe("load safety (a low-volume runner who ticks every day)", () => {
     const peak = Math.max(...p.weeks.map((w) => w.targetMinutes));
     const [taper, race] = p.weeks.slice(-2);
     expect(taper.phase).toBe("taper");
-    expect(race.targetMinutes / peak).toBeLessThanOrEqual(0.65);
+    expect(taper.targetMinutes / peak).toBeLessThanOrEqual(0.8);
+    const raceRun = p.workouts.find((x) => x.type === "race")!;
+    expect((race.targetMinutes - raceRun.durationS / 60) / peak).toBeLessThanOrEqual(0.5);
     const count = (w: (typeof p.weeks)[number]) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length;
     const lastBuild = p.weeks.filter((w) => w.phase === "specific").at(-1)!;
     expect(count(taper)).toBeGreaterThanOrEqual(count(lastBuild));
@@ -320,17 +323,24 @@ describe("runs per week: fixed or auto", () => {
   const tenK: Goal = { kind: "10k", name: null, distanceM: null, raceDate: "2027-04-24", targetTimeS: null, targetWeeklyKm: null };
   const runs = (pl: ReturnType<typeof generatePlan>) => pl.weeks.map((w) => pl.workouts.filter((x) => x.type !== "rest" && x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length);
 
-  it("holds a fixed number every week, including recovery and taper", () => {
+  it("uses the number you chose once the week has room for it, never more, and keeps it", () => {
     const p = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, runsPerWeek: 3 }), low);
     const counts = runs(p);
-    // the race week may hold the race on top; all other weeks have exactly 3
-    counts.slice(0, -1).forEach((c) => expect(c).toBe(3));
+    counts.forEach((c) => expect(c).toBeLessThanOrEqual(3));
+    // from the first build week on, every week has exactly 3
+    const firstBuild = p.weeks.findIndex((w) => w.phase === "build");
+    counts.slice(firstBuild, -1).forEach((c) => expect(c).toBe(3));
+    // a run once added stays in the loading weeks
+    const load = p.weeks.map((w, i) => (["base", "build", "specific"].includes(w.phase) ? counts[i] : null)).filter((c) => c != null) as number[];
+    for (let i = 1; i < load.length; i++) expect(load[i]).toBeGreaterThanOrEqual(load[i - 1]);
   });
 
-  it("keeps the same load limits whatever the frequency", () => {
+  it("keeps the same load limits whatever the frequency, and says when runs join later", () => {
     const four = generatePlan(tenK, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 6, runsPerWeek: 4 }), low);
     expectLoadRules(four, 50, 50);
-    expect(runs(four).slice(0, -1).every((c) => c === 4)).toBe(true);
+    expect(Math.max(...runs(four))).toBe(4);
+    expect(runs(four)[0]).toBeLessThan(4);
+    expect(four.warnings.some((w) => w.includes("adds them as your weekly running grows"))).toBe(true);
   });
 
   it("never uses more days than you ticked, and warns", () => {
@@ -348,7 +358,7 @@ describe("runs per week: fixed or auto", () => {
   });
 });
 
-describe("sessions seeded from your own runs (planner@2)", () => {
+describe("sessions seeded from your own runs (planner@3)", () => {
   // Trym's last 8 weeks before 2026-11-05: mostly 4.5–7 km, with recent long runs of 10.05 km and 8.65 km
   const raw: [string, number, number][] = [
     ["2026-09-13", 6.09, 34], ["2026-09-15", 5.61, 39], ["2026-09-26", 5.35, 31], ["2026-10-05", 6.27, 31], ["2026-10-08", 10.05, 61],
@@ -382,7 +392,8 @@ describe("sessions seeded from your own runs (planner@2)", () => {
 
   it("starts the long run from your recent long runs, within 10 % of your longest in the last 30 days", () => {
     const first = p.workouts.find((w) => isLong(w.type))!;
-    expect(km(first)).toBeGreaterThanOrEqual(8.5);
+    // a little under your recent long runs while the week around it is still small
+    expect(km(first)).toBeGreaterThanOrEqual(7);
     expect(km(first)).toBeLessThanOrEqual(8.65 * 1.1 + 0.1);
     expect(first.why).toMatch(/10 km and 8\.7 km/);
   });
@@ -395,11 +406,11 @@ describe("sessions seeded from your own runs (planner@2)", () => {
     }
   });
 
-  it("builds the long run to about 1.3× race distance by the end of the build phase, holds it, then tapers", () => {
+  it("builds the long run to about 1.2× race distance (steady) by the end of the build phase, holds it, then tapers", () => {
     const longs = p.workouts.filter((w) => isLong(w.type));
     const top = Math.max(...longs.map(km));
-    expect(top).toBeGreaterThanOrEqual(10);
-    expect(top).toBeLessThanOrEqual(13.5);
+    expect(top).toBeGreaterThanOrEqual(11);
+    expect(top).toBeLessThanOrEqual(12.5);
     const lastBuild = p.weeks.filter((w) => w.phase === "build").at(-1)!;
     const peakAt = longs.find((w) => km(w) === top)!;
     expect(peakAt.date <= addDaysIso(lastBuild.start, 6)).toBe(true);
@@ -421,6 +432,72 @@ describe("sessions seeded from your own runs (planner@2)", () => {
   });
 
   it("explains the long-run distance for the race", () => {
-    expect(p.summary.join(" ")).toMatch(/1\.3×/);
+    expect(p.summary.join(" ")).toMatch(/a little past race distance/);
+  });
+});
+
+describe("volume and intensity options (planner@3)", () => {
+  const raw: [string, number, number][] = [
+    ["2026-09-13", 6.09, 34], ["2026-09-15", 5.61, 39], ["2026-09-26", 5.35, 31], ["2026-10-05", 6.27, 31], ["2026-10-08", 10.05, 61],
+    ["2026-10-17", 5.44, 29], ["2026-10-21", 7.01, 39], ["2026-10-23", 4.61, 23], ["2026-11-01", 8.65, 45], ["2026-11-02", 4.73, 31],
+  ];
+  const fit = {
+    estimate: { withheld: false, vdot: 41.5, lower: 41.5, upper: 44, confidence: "medium" as const },
+    paceZones: trainingPaces(41.5),
+    hrZones,
+    threshold: { hr: 175 },
+    predictions: [5000, 10000, 21097.5, 42195].map((d) => ({ distanceM: d, timeS: predictTimeS(41.5, d) })),
+  };
+  const b = buildBaseline("2026-11-05", fit, raw.map(([date, km, min]) => ({ date, distanceM: km * 1000, movingS: min * 60 })));
+  const tenK: Goal = { kind: "10k", name: null, distanceM: null, raceDate: "2027-04-24", targetTimeS: 2700, targetWeeklyKm: null };
+  const mk = (over: Partial<PlanConfig>) => generatePlan(tenK, config({ startDate: "2026-11-05", runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 3, runsPerWeek: 3, ...over }), b);
+  const weekKm = (p: ReturnType<typeof generatePlan>) =>
+    p.weeks.map((w) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).reduce((a, x) => a + (x.distanceM ?? 0), 0) / 1000);
+  const peakKm = (p: ReturnType<typeof generatePlan>) => Math.max(...weekKm(p).slice(0, -1));
+  const longKm = (p: ReturnType<typeof generatePlan>) => Math.max(...p.workouts.filter((w) => w.type === "long" || w.type === "progressive_long").map((w) => (w.distanceM ?? 0) / 1000));
+
+  it("peaks at a realistic volume for 3 runs a week and then holds, instead of growing every week", () => {
+    const p = mk({});
+    expect(peakKm(p)).toBeLessThanOrEqual(30);
+    expect(peakKm(p)).toBeGreaterThanOrEqual(22);
+    // the last 8 loading weeks stay within ~15 % of each other: a plateau, not a climb
+    const load = weekKm(p).filter((_, i) => ["base", "build", "specific"].includes(p.weeks[i].phase)).slice(-8);
+    expect(Math.max(...load) / Math.min(...load)).toBeLessThan(1.2);
+  });
+
+  it("orders gradual < steady < progressive in peak volume and long run", () => {
+    const [g, s, pr] = (["gradual", "steady", "progressive"] as const).map((v) => mk({ volume: v }));
+    expect(peakKm(g)).toBeLessThan(peakKm(s));
+    expect(peakKm(s)).toBeLessThan(peakKm(pr));
+    expect(longKm(g)).toBeLessThanOrEqual(11.3);
+    expect(longKm(s)).toBeLessThanOrEqual(12.5);
+    expect(longKm(pr)).toBeLessThanOrEqual(14.5);
+    expect(longKm(pr)).toBeGreaterThan(longKm(g));
+    // gradual takes a lighter week every 3 weeks
+    expect(g.weeks.slice(0, 3).map((w) => w.phase)).toContain("recovery");
+  });
+
+  it("comfortable leaves out the fastest sessions; challenging has more hard sessions than balanced", () => {
+    const hard = (p: ReturnType<typeof generatePlan>) => p.workouts.filter((w) => isHard(w.type) && w.type !== "race");
+    const comfy = mk({ intensity: "comfortable" });
+    expect(hard(comfy).some((w) => w.type === "vo2max" || w.type === "repetitions")).toBe(false);
+    expect(hard(mk({ intensity: "challenging" })).length).toBeGreaterThan(hard(mk({})).length);
+    expect(hard(comfy).length).toBeLessThanOrEqual(hard(mk({})).length);
+  });
+
+  it("keeps every week inside the load rules for every option", () => {
+    for (const volume of ["gradual", "steady", "progressive"] as const)
+      for (const runsPerWeek of [2, 3, 4, 5]) {
+        const p = mk({ volume, runsPerWeek });
+        const load = p.weeks.filter((w) => ["base", "build", "specific"].includes(w.phase)).map((w) => w.targetMinutes);
+        for (let i = 1; i < load.length; i++) expect(load[i]).toBeLessThanOrEqual(Math.max(load[i - 1] * 1.13, load[i - 1] + 10) * 1.05 + 3);
+        expect(validateSchedule(p.workouts)).toEqual([]);
+      }
+  });
+
+  it("auto picks one more run than you do now (at least 3) and keeps it", () => {
+    const p = mk({ runsPerWeek: null });
+    const counts = p.weeks.slice(0, -1).map((w) => p.workouts.filter((x) => x.date >= w.start && x.date <= addDaysIso(w.start, 6)).length);
+    expect(Math.max(...counts)).toBe(3);
   });
 });
