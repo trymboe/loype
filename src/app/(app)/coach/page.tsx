@@ -100,7 +100,7 @@ function NeedsKey() {
         </div>
         <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Add an OpenAI API key to turn on the coach</p>
         <p className="mt-1 text-sm leading-relaxed text-muted">
-          The coach talks with you about your runs, fitness, plan and routes, and changes your plan when you ask. It runs on OpenAI&apos;s GPT-6.1 Luna, which needs an API key stored on the server.
+          The coach talks with you about your runs, fitness, plan and routes, and changes your plan when you ask. It runs on OpenAI&apos;s GPT-6 Luna, which needs an API key stored on the server.
         </p>
         <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-fg-2 marker:text-subtle">
           <li>
