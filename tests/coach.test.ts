@@ -305,7 +305,7 @@ describe("coach conversation loop", async () => {
 
     // the data snapshot is in the user message, not the instructions; storage and replay settings
     const first = client.requests[0];
-    expect(first.model).toBe("gpt-6.1-luna");
+    expect(first.model).toBe("gpt-6-luna");
     expect(first.store).toBe(false);
     expect(first.include).toEqual(["reasoning.encrypted_content"]);
     expect(first.input[0].content[0].text).toMatch(/<athlete_data>[\s\S]*Morning run[\s\S]*Threshold/);

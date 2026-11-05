@@ -4,7 +4,7 @@ A chat coach on the Coach tab (floating button on phones, side menu on desktop).
 
 ## Model and API
 
-- OpenAI Responses API, model `gpt-6.1-luna` (override with `COACH_MODEL`), reasoning effort `high`, streamed.
+- OpenAI Responses API, model `gpt-6-luna` (override with `COACH_MODEL`), reasoning effort `high`, streamed.
 - Key: `OPENAI_API_KEY` in Vercel. Without it the tab explains how to add one.
 - `store: false`: nothing is kept at OpenAI. Reasoning comes back as encrypted content (`include: ["reasoning.encrypted_content"]`) and is stored with the conversation, so every turn replays exactly what the model saw.
 - `prompt_cache_key` per conversation; the instructions and tool list are fixed so the prefix caches.
