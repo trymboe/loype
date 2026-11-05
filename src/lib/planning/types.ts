@@ -1,9 +1,14 @@
-/** Planning types (`planner@2`). Durations in seconds, distances in metres, paces in s/km. */
+/** Planning types (`planner@3`). Durations in seconds, distances in metres, paces in s/km. */
 import type { HrZone } from "../analytics/fitness/physiology";
 import type { PaceZone } from "../analytics/fitness/vdot";
 import type { Projection } from "./projection";
 
-export const PLANNER_VERSION = "planner@2";
+export const PLANNER_VERSION = "planner@3";
+
+/** How much running the plan builds to (Runna-style): lower, medium or higher weekly volume and long runs. */
+export type VolumePref = "gradual" | "steady" | "progressive";
+/** How hard the quality sessions are and how many there are a week. */
+export type IntensityPref = "comfortable" | "balanced" | "challenging";
 
 export type GoalKind = "5k" | "10k" | "half" | "marathon" | "race" | "general" | "endurance" | "consistency" | "maintain" | "volume";
 
@@ -51,6 +56,10 @@ export interface PlanConfig {
    * choose from how often you have been running.
    */
   runsPerWeek?: number | null;
+  /** training volume; missing means steady */
+  volume?: VolumePref | null;
+  /** session intensity; missing means balanced */
+  intensity?: IntensityPref | null;
   /** how often you run now, entered by hand: replaces the measured frequency (e.g. without a watch connected) */
   usualRunsPerWeek?: number | null;
   longRunDay: number | null;

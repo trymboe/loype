@@ -104,7 +104,7 @@ export interface GoalEdit {
   targetTimeS?: number | null;
   targetWeeklyKm?: number | null;
   config?: Partial<
-    Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">
+    Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides" | "volume" | "intensity">
   >;
 }
 

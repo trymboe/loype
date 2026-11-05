@@ -45,7 +45,7 @@ function parseTargets(form: FormData, k: GoalKind): { targetTimeS: number | null
 function parseSettings(
   form: FormData,
 ):
-  | Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides">
+  | Pick<PlanConfig, "runDays" | "runsPerWeek" | "usualRunsPerWeek" | "longRunDay" | "unavailableDays" | "maxWeeklyMinutes" | "includeIntervals" | "includeLongRuns" | "includeStrides" | "volume" | "intensity">
   | { error: string } {
   const s = (k: string) => String(form.get(k) ?? "").trim();
   const runDays = form
@@ -75,6 +75,8 @@ function parseSettings(
     includeIntervals: form.get("intervals") === "on",
     includeLongRuns: form.get("long_runs") === "on",
     includeStrides: form.get("strides") === "on",
+    volume: (["gradual", "steady", "progressive"] as const).find((v) => v === s("volume")) ?? "steady",
+    intensity: (["comfortable", "balanced", "challenging"] as const).find((v) => v === s("intensity")) ?? "balanced",
   };
 }
 

@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import clsx from "clsx";
 import { deletePlanAction, updateGoalAction, type GoalEditState } from "../actions";
 import { DAYS } from "../goal-options";
-import { Field, FrequencyPicker, Toggle } from "../plan-form";
+import { Field, FrequencyPicker, Toggle, TrainingStylePicker } from "../plan-form";
 
 export interface GoalFormInitial {
   name: string;
@@ -16,6 +16,8 @@ export interface GoalFormInitial {
   includeIntervals: boolean;
   includeLongRuns: boolean;
   includeStrides: boolean;
+  volume: string;
+  intensity: string;
   runsPerWeek: number | null;
   usualRuns: string;
   recentRuns: number;
@@ -76,6 +78,7 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
           ))}
         </div>
         <FrequencyPicker dayCount={runDays.length} recentRuns={initial.recentRuns} initialFixed={initial.runsPerWeek} initialUsual={initial.usualRuns} />
+        <TrainingStylePicker initialVolume={initial.volume} initialIntensity={initial.intensity} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Long run day">
             <select name="long_run_day" defaultValue={initial.longRunDay} className="input">
