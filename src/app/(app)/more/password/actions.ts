@@ -1,27 +1,46 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
 import { createUserClient, getSessionUser } from "@/lib/db/server";
+import { env } from "@/lib/env";
 
-export interface SetPasswordState {
+export interface ChangePasswordState {
   ok?: boolean;
   error?: string;
 }
 
-export async function setPassword(_prev: SetPasswordState, form: FormData): Promise<SetPasswordState> {
+const MIN_LENGTH = 10;
+
+/** Throwaway client: checks the current password without touching the browser's session cookies. */
+async function isCurrentPassword(email: string, password: string): Promise<boolean> {
+  const probe = createClient(env.supabaseUrl(), env.supabaseAnonKey(), {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await probe.auth.signInWithPassword({ email, password });
+  if (error) return false;
+  // End only the probe session; the user's own sign-in stays.
+  await probe.auth.signOut({ scope: "local" });
+  return true;
+}
+
+export async function changePassword(_prev: ChangePasswordState, form: FormData): Promise<ChangePasswordState> {
   const user = await getSessionUser();
-  if (!user) return { error: "Not signed in" };
+  if (!user?.email) return { error: "Not signed in." };
+  const current = String(form.get("current") ?? "");
   const password = String(form.get("password") ?? "");
   const confirm = String(form.get("confirm") ?? "");
-  if (password.length < 10) return { error: "Use at least 10 characters." };
-  if (password !== confirm) return { error: "The two passwords don't match." };
+
+  if (!current) return { error: "Enter your current password." };
+  if (password.length < MIN_LENGTH) return { error: `New password must be at least ${MIN_LENGTH} characters.` };
+  if (password !== confirm) return { error: "New passwords don't match." };
+  if (password === current) return { error: "New password must be different from the current one." };
+  if (!(await isCurrentPassword(user.email, current))) return { error: "Current password is incorrect." };
+
   const supabase = await createUserClient();
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
-    if (error.code === "weak_password") return { error: "Supabase rejected that password as too weak. Try a longer one." };
-    if (error.code === "same_password") return { ok: true };
-    if (error.code === "reauthentication_needed")
-      return { error: "Supabase wants a fresh sign-in first. Sign out, sign in with an email link, then set the password." };
-    return { error: `Could not save the password (${error.message}).` };
+    if (error.code === "weak_password") return { error: "New password is too weak." };
+    return { error: "Could not change the password. Try again." };
   }
   return { ok: true };
 }
