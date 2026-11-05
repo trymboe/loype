@@ -126,6 +126,64 @@ describe("coach tools", async () => {
     expect(db.rows("training_plans")[0].config.runsPerWeek).toBeNull();
   });
 
+  it("reworks many sessions at once as one version, checking the plan as a whole", async () => {
+    const db = seed();
+    const v0 = db.rows("plan_versions").length;
+    const ops = [
+      { action: "replace", workout_id: id(1), date: null, type: "long", minutes: 55, intensity: null },
+      { action: "move", workout_id: id(3), date: "2026-11-07", type: null, minutes: null, intensity: null },
+      { action: "move", workout_id: id(2), date: "2026-11-08", type: null, minutes: null, intensity: null },
+      { action: "resize", workout_id: id(3), date: null, type: null, minutes: 50, intensity: null },
+      { action: "add", workout_id: null, date: "2026-11-12", type: "easy", minutes: 30, intensity: null },
+    ];
+    const { out, actions } = await call(db, "edit_plan", { reason: "Lighter, simpler week", operations: ops, confirmed: false });
+    expect(out, out).toMatch(/^Done: 5 changes/);
+    expect(workoutRow(db, 1).type).toBe("long");
+    expect(workoutRow(db, 2).date).toBe("2026-11-08");
+    expect(workoutRow(db, 3).date).toBe("2026-11-07");
+    expect(Math.round(workoutRow(db, 3).duration_s / 60)).toBe(50);
+    expect(db.rows("planned_workouts")).toHaveLength(7);
+    expect(db.rows("plan_versions").length).toBe(v0 + 1);
+    expect(actions).toHaveLength(1);
+    expect(actions[0].summary).toMatch(/Lighter, simpler week \(4 sessions changed\)/);
+  });
+
+  it("changes nothing when one operation is invalid", async () => {
+    const db = seed();
+    const ops = [
+      { action: "skip", workout_id: id(2), date: null, type: null, minutes: null, intensity: null },
+      { action: "skip", workout_id: id(0), date: null, type: null, minutes: null, intensity: null },
+      { action: "resize", workout_id: id(4), date: null, type: null, minutes: 30, intensity: null },
+    ];
+    const { out, actions } = await call(db, "edit_plan", { reason: "x", operations: ops, confirmed: false });
+    expect(out).toMatch(/Nothing changed[\s\S]*#2 skip[\s\S]*completed[\s\S]*#3 resize[\s\S]*locked/);
+    expect(workoutRow(db, 2).status).toBe("planned");
+    expect(actions).toHaveLength(0);
+  });
+
+  it("warns before a big jump in weekly time and applies it once confirmed", async () => {
+    const db = seed();
+    const input = { from: today, to: "2026-11-08", percent: 60, sessions: "all", reason: "More volume", confirmed: false };
+    const first = await call(db, "scale_plan", input);
+    expect(first.out).toMatch(/Not changed yet[\s\S]*week of 2026-11-02/);
+    expect(Math.round(workoutRow(db, 3).duration_s / 60)).toBe(60);
+    const second = await call(db, "scale_plan", { ...input, confirmed: true });
+    expect(second.out).toMatch(/^Done/);
+    expect(Math.round(workoutRow(db, 3).duration_s / 60)).toBe(96);
+    expect(workoutRow(db, 4).duration_s).toBe(row(4, "2026-11-10", "vo2max", 50).duration_s); // locked and outside the range
+  });
+
+  it("shows the whole plan week by week", async () => {
+    const db = seed();
+    db.rows("training_plans")[0].weeks = [
+      { index: 0, start: "2026-11-02", phase: "base", targetMinutes: 150 },
+      { index: 1, start: "2026-11-09", phase: "build", targetMinutes: 160 },
+    ];
+    const { out } = await call(db, "get_plan_overview", {});
+    expect(out).toMatch(/Week 1 \(2026-11-02, base, this week\): target 150 min/);
+    expect(out).toMatch(/2026-11-10 \w+ vo2max .*\[locked\]/);
+  });
+
   it("rejects invalid input instead of guessing", async () => {
     const db = seed();
     await expect(call(db, "edit_workout", { workout_id: "nope", action: "skip", date: null, confirmed: false })).rejects.toThrow(/workout_id/);
@@ -247,7 +305,7 @@ describe("coach conversation loop", async () => {
 
     // the data snapshot is in the user message, not the instructions; storage and replay settings
     const first = client.requests[0];
-    expect(first.model).toBe("gpt-6-luna");
+    expect(first.model).toBe("gpt-6.1-luna");
     expect(first.store).toBe(false);
     expect(first.include).toEqual(["reasoning.encrypted_content"]);
     expect(first.input[0].content[0].text).toMatch(/<athlete_data>[\s\S]*Morning run[\s\S]*Threshold/);
@@ -373,6 +431,22 @@ describe("coach conversation loop", async () => {
     expect(tctx.actions).toHaveLength(0);
   });
 
+  it("undoes a whole-plan rework in one go", async () => {
+    const db = seed();
+    const before = structuredClone(db.rows("planned_workouts"));
+    const ops = [
+      { action: "replace", workout_id: id(1), date: null, type: "easy", minutes: 30, intensity: null },
+      { action: "skip", workout_id: id(2), date: null, type: null, minutes: null, intensity: null },
+      { action: "add", workout_id: null, date: "2026-11-12", type: "easy", minutes: 30, intensity: null },
+    ];
+    await turn(db, fakeClient([[{ type: "call", name: "edit_plan", args: { reason: "Easier week", operations: ops, confirmed: false } }], [{ type: "text", text: "Done." }]]), "Make this week easier");
+    expect(workoutRow(db, 1).type).toBe("easy");
+    const t = await loadTranscript(db as any, U, db.rows("coach_conversations")[0].id);
+    expect(await undoCoachActions(db as any, U, t[1].actionMessageIds, today)).toEqual({ undone: 1 });
+    const key = (rows: any[]) => rows.map((w) => `${w.id} ${w.date} ${w.type} ${w.status}`).sort();
+    expect(key(db.rows("planned_workouts"))).toEqual(key(before));
+  });
+
   it("returns invalid tool input to the model instead of acting on it", async () => {
     const db = seed();
     const client = fakeClient([[{ type: "call", name: "edit_workout", args: { workout_id: id(2), action: "explode" } }], [{ type: "text", text: "Sorry." }]]);
@@ -384,11 +458,11 @@ describe("coach conversation loop", async () => {
 
   it("forbids tools on the last round so a turn always ends with an answer", async () => {
     const db = seed();
-    const loop: Out[][] = Array.from({ length: 9 }, () => [{ type: "call", name: "get_weekly_volume", args: { weeks: 4 } }]);
+    const loop: Out[][] = Array.from({ length: 15 }, () => [{ type: "call", name: "get_weekly_volume", args: { weeks: 4 } }]);
     const client = fakeClient([...loop, [{ type: "text", text: "Here's what I found." }]]);
     await turn(db, client, "Volume?");
-    expect(client.requests).toHaveLength(10);
-    expect(client.requests[9].tool_choice).toBe("none");
+    expect(client.requests).toHaveLength(16);
+    expect(client.requests[15].tool_choice).toBe("none");
     expect(client.requests[0].tool_choice).toBe("auto");
   });
 });

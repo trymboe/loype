@@ -4,7 +4,7 @@ A chat coach on the Coach tab (floating button on phones, side menu on desktop).
 
 ## Model and API
 
-- OpenAI Responses API, model `gpt-6-luna` (override with `COACH_MODEL`), reasoning effort `medium`, streamed.
+- OpenAI Responses API, model `gpt-6.1-luna` (override with `COACH_MODEL`), reasoning effort `high`, streamed.
 - Key: `OPENAI_API_KEY` in Vercel. Without it the tab explains how to add one.
 - `store: false`: nothing is kept at OpenAI. Reasoning comes back as encrypted content (`include: ["reasoning.encrypted_content"]`) and is stored with the conversation, so every turn replays exactly what the model saw.
 - `prompt_cache_key` per conversation; the instructions and tool list are fixed so the prefix caches.
@@ -24,6 +24,10 @@ Everything the athlete can do in the app for their plan, routes and runs, and a 
 | `add_workout` | add a session on a day |
 | `set_workout_steps` | rewrite a session's structure |
 | `change_plan_settings` | run days, runs per week, long-run day, weekly cap, intervals / long runs / strides, target time, weekly km, race name; recalculates the weeks ahead |
+| `get_plan_overview` | the whole plan week by week (phase, target and planned minutes, every session with id) |
+| `edit_plan` | up to 150 operations (move, skip, restore, replace, resize, add, lock, unlock) across the whole plan, checked as a whole (schedule, week-to-week jumps, first week vs recent running, long runs vs longest recent run), one version, one Undo |
+| `scale_plan` | make every session in a date range ±% longer (all / easy / long sessions), same checks |
+| `start_plan_earlier` | move a not-yet-started plan's start earlier and rebuild it from that week |
 | `restore_plan_version` | go back to an earlier plan version |
 | `respond_to_proposal` | accept or decline a pending adaptation proposal |
 | `update_route`, `link_route_to_workout`, `save_run_as_route`, `delete_route` | routes |
