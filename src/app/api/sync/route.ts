@@ -33,7 +33,7 @@ export async function GET() {
       lastSuccessAt: integration.last_success_at,
       lastError: integration.last_error,
       apiKeyExpiresAt: integration.api_key_expires_at,
-      hasKey: Boolean(integration.api_key_ciphertext) || Boolean(process.env.GARMIN_PERSONAL_API_KEY),
+      hasKey: Boolean(integration.api_key_ciphertext),
     },
     jobs: jobs ?? [],
   });

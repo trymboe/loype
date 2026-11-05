@@ -1,7 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { createUserClient } from "@/lib/db/server";
-import { env } from "@/lib/env";
+import { isAllowedEmail } from "@/lib/auth/allowlist";
 
 /**
  * Email-link sign-in via token_hash (see docs/SETUP.md for the email template).
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createUserClient();
   if (tokenHash) {
     const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
-    if (!error && data.user?.email?.toLowerCase() === env.allowedEmail()) {
+    if (!error && isAllowedEmail(data.user?.email)) {
       return NextResponse.redirect(new URL("/", request.url));
     }
     await supabase.auth.signOut();

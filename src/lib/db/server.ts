@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { env } from "../env";
+import { isAllowedEmail } from "../auth/allowlist";
 
 /** Supabase client acting as the signed-in user (RLS applies). */
 export async function createUserClient(): Promise<SupabaseClient> {
@@ -33,6 +34,6 @@ export async function getSessionUser() {
   const supabase = await createUserClient();
   const { data } = await supabase.auth.getUser();
   const user = data.user;
-  if (!user || user.email?.toLowerCase() !== env.allowedEmail()) return null;
+  if (!user || !isAllowedEmail(user.email)) return null;
   return user;
 }
