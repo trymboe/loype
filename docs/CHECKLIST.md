@@ -5,7 +5,7 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 ## Phase 1 — Foundations & Garmin ingestion
 - ✅ Architecture, data model, feasibility, plan, risks (`docs/ARCHITECTURE.md`)
 - ✅ Next.js app shell, mobile bottom nav / desktop side nav, dark & light themes, PWA manifest
-- ✅ Single-user magic-link auth (Supabase) restricted to `ALLOWED_EMAIL`, RLS on all tables
+- ✅ Magic-link / password auth (Supabase) restricted to the addresses in `ALLOWED_EMAIL` (one or several), RLS on all tables, per-user integrations
 - ✅ Supabase schema 0001 applied to project `loype`; private bucket for original files; security advisor clean
 - ✅ Garmin Personal API client: key→token exchange, encrypted token cache, renewal < 1 h, 401 re-auth, retries/backoff with Retry-After, ZIP→FIT extraction
 - ✅ Historical import from chosen date; incremental sync with 3-day overlap; resumable time-boxed ticks; per-item backoff; unavailable vs failed vs skipped; idempotent; cross-source dedupe; provenance

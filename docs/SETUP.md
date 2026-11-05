@@ -32,15 +32,20 @@ See `.env.example`. Set them in Vercel (Project → Settings → Environment Var
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase API settings | no |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase API settings (anon / publishable) | no |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase API settings (service_role / secret) | **yes** |
-| `ALLOWED_EMAIL` | your email; only this address can sign in | no |
+| `ALLOWED_EMAIL` | who may sign in: one email, or several separated by commas (e.g. `me@x.no,friend@y.no`). Each person gets their own private account | no |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` — encrypts the Garmin key and tokens at rest | **yes** |
 | `CRON_SECRET` | `openssl rand -hex 32` | **yes** |
-| `GARMIN_PERSONAL_API_KEY` | optional; normally pasted in the app instead | **yes** |
 | `GARMIN_API_BASE_URL` | optional override if Garmin's data host differs | no |
 | `OPENAI_API_KEY` | <https://platform.openai.com/api-keys>; turns on the Coach (set a monthly spend limit there) | **yes** |
 | `COACH_MODEL` | optional; OpenAI model for the coach (default `gpt-6.1-luna`) | no |
 | `ROUTING_VALHALLA_URL` | Valhalla server for the route planner (routing + elevation); defaults to the keyless FOSSGIS server `https://valhalla1.openstreetmap.de` | no |
 | `NEXT_PUBLIC_MAPTILER_KEY` | enables the Outdoor (contours, hill shading) and Satellite map styles. Free account at maptiler.com → API keys; restrict the key to your app's domain. Without it, maps use OpenFreeMap Liberty only | no |
+
+### Adding another person
+
+1. Add their email to `ALLOWED_EMAIL` in Vercel (comma-separated) and redeploy.
+2. Without custom SMTP, Supabase's built-in mailer only emails the Supabase organization's team, so a friend's sign-in email fails with "email address not authorized". Either set up custom SMTP (Authentication → Emails → SMTP, e.g. Resend's free tier), or create their account by hand: Supabase → Authentication → Users → Add user → Create new user, with a password and **Auto Confirm User** ticked. They then sign in with email + password.
+3. They connect their own Garmin key, Strava API app and/or Intervals.icu key under More → Integrations. Nothing is shared between accounts; the Coach uses the server's `OPENAI_API_KEY`, so their chats count toward your OpenAI bill.
 
 Changing `TOKEN_ENCRYPTION_KEY` makes stored Garmin secrets unreadable; just paste the Garmin key again.
 

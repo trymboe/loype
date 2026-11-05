@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAllowedEmail } from "@/lib/auth/allowlist";
 
 const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/api/calendar/", "/api/strava/callback", "/api/strava/webhook", "/manifest.webmanifest", "/icon.svg"];
 
-/** Refreshes the Supabase session cookie and keeps the app private to ALLOWED_EMAIL. */
+/** Refreshes the Supabase session cookie and keeps the app private to the addresses in ALLOWED_EMAIL. */
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -26,8 +27,7 @@ export async function middleware(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getUser();
-  const allowed = (process.env.ALLOWED_EMAIL ?? "").toLowerCase();
-  const ok = !!data.user && !!allowed && data.user.email?.toLowerCase() === allowed;
+  const ok = !!data.user && isAllowedEmail(data.user.email);
 
   if (!ok && !isPublic) {
     if (request.nextUrl.pathname.startsWith("/api/")) {

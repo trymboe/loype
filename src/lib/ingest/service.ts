@@ -80,11 +80,10 @@ function tokenStore(db: SupabaseClient, userId: string): TokenStore {
 
 export async function buildGarminClient(db: SupabaseClient, userId: string, opts: { deadline?: number } = {}): Promise<GarminPersonalApiClient | null> {
   const row = await getGarminIntegration(db, userId);
-  let apiKey: string | null = null;
-  if (row?.api_key_ciphertext) apiKey = decryptSecret(row.api_key_ciphertext);
-  apiKey ??= env.garminApiKey();
-  if (!apiKey) return null;
-  if (!row) await ensureIntegrationRow(db, userId);
+  // Each user's own key only. No env-level fallback: with several users it
+  // would import one person's Garmin data into everyone's account.
+  if (!row?.api_key_ciphertext) return null;
+  const apiKey = decryptSecret(row.api_key_ciphertext);
   return new GarminPersonalApiClient({ apiKey, tokenStore: tokenStore(db, userId), baseUrl: env.garminBaseUrl(), deadline: opts.deadline });
 }
 

@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/db/server";
 import { env } from "@/lib/env";
 import { syncTickForUser } from "@/lib/ingest/service";
+import { userBudgetMs } from "@/lib/ingest/budget";
 import { todayIn } from "@/lib/dates";
 import { pushPlannedWorkouts } from "@/lib/outbound/service";
 
@@ -24,9 +25,14 @@ export async function GET(request: NextRequest) {
   }
   const { data: rows, error } = await db.from("integrations").select("user_id").in("provider", ["garmin", "strava"]).neq("status", "not_configured");
   if (error) return NextResponse.json({ error: "database error" }, { status: 500 });
+  const started = Date.now();
+  const users = [...new Set((rows ?? []).map((r) => r.user_id as string))];
   const results = [];
-  for (const userId of new Set((rows ?? []).map((r) => r.user_id as string))) {
-    const out = await syncTickForUser(db, userId, { budgetMs: 50_000, createIncremental: true });
+  for (const [i, userId] of users.entries()) {
+    // Share the 60 s function limit fairly, so one user's long import can't starve the next.
+    const budgetMs = userBudgetMs(started, Date.now(), users.length - i);
+    if (budgetMs < 3_000) break; // the next tick (30 min) picks the rest up
+    const out = await syncTickForUser(db, userId, { budgetMs, createIncremental: true });
     await markScheduledRun(db, userId);
     results.push({
       configured: out.configured,
