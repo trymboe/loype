@@ -9,7 +9,10 @@ import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { FitnessSnapshotCard, InsightCard, RaceGoalCard } from "@/components/today/cards";
 import { activitiesSince, getFitnessState, getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
-import { createUserClient } from "@/lib/db/server";
+import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
+import { ensureWeeklyRecap, type WeeklyRecapRow } from "@/lib/recap/service";
+import { RecapDialog } from "@/components/recap/recap-dialog";
+import { RecapView } from "@/components/recap/recap-view";
 import { loadProgressMotivation } from "@/lib/progress/service";
 import { pickInsight } from "@/lib/progress/insight";
 import { raceGoalFromRow } from "@/lib/race/goal";
@@ -22,6 +25,18 @@ import { userTimezone } from "@/lib/user-tz";
 import { readOnboarding, showWelcomeGuide } from "@/lib/onboarding/state";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+/** Last week's recap, created on the first visit of a new week if the scheduled sync hasn't made it yet. */
+async function weeklyRecap(today: string): Promise<WeeklyRecapRow | null> {
+  try {
+    const user = await getSessionUser();
+    if (!user) return null;
+    return await ensureWeeklyRecap(createAdminClient(), user.id, today, { maintain: true });
+  } catch {
+    return null;
+  }
+}
 
 export default async function TodayPage() {
   const tz = await userTimezone();
@@ -29,6 +44,8 @@ export default async function TodayPage() {
   const thisWeek = weekStart(today);
   const from = addDaysIso(thisWeek, -7 * 7);
   const db = await createUserClient();
+  // first: it may recalculate the plan for the new week, which the rest of the page then shows
+  const recap = await weeklyRecap(today);
   const [acts, integration, strava, fitness, { data: plan }, { data: proposal }] = await Promise.all([
     activitiesSince(from),
     getIntegrationStatus(),
@@ -89,6 +106,11 @@ export default async function TodayPage() {
         action={connected ? <SyncButton className="mb-1" /> : undefined}
       />
       <SyncBanner integration={integration} strava={strava} />
+      {recap && !recap.seen_at && (
+        <RecapDialog weekStart={recap.week_start} title="Last week">
+          <RecapView recap={recap.recap} estimates={recap.estimates} compact />
+        </RecapDialog>
+      )}
 
       {!connected && acts.length === 0 ? (
         <EmptyState

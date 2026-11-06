@@ -1,4 +1,4 @@
-import { LineChart } from "lucide-react";
+import { CalendarRange, ChevronRight, LineChart } from "lucide-react";
 import { ButtonLink, Card, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { VolumeChart } from "@/components/volume-chart";
 import { weeklyVolume } from "@/lib/analytics/volume";
@@ -81,6 +81,16 @@ export default async function ProgressPage() {
             <Stat label="Longest run" value={formatKm(longest, 1)} unit="km" hint="last 4 weeks" />
             <Stat label="Weeks with runs" value={`${weeksWithRuns}/${last12.length}`} hint={`last ${last12.length} weeks`} />
           </div>
+        </Card>
+        <Card href="/progress/weeks" className="flex items-center gap-3.5 p-4">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.625rem] bg-accent/12 text-accent">
+            <CalendarRange size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[0.9375rem] font-semibold">Weekly recaps</p>
+            <p className="text-[0.8125rem] leading-snug text-muted">Each week reviewed, and your estimates saved week by week to compare over time.</p>
+          </div>
+          <ChevronRight size={18} className="shrink-0 text-subtle" />
         </Card>
         <ChartRangeSelector />
         <Card>
