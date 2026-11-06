@@ -1,5 +1,5 @@
 import { CalendarRange, ChevronRight, LineChart } from "lucide-react";
-import { ButtonLink, Card, EmptyState, PageHeader, Stat } from "@/components/ui";
+import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { VolumeChart } from "@/components/volume-chart";
 import { weeklyVolume } from "@/lib/analytics/volume";
 import { ChartRangeProvider, ChartRangeSelector } from "@/components/progress/chart-range";
@@ -25,9 +25,7 @@ export default async function ProgressPage() {
     return (
       <>
         <PageHeader title="Progress" />
-        <EmptyState icon={<LineChart size={22} />} title="Nothing to chart yet" action={<ButtonLink href="/more/integrations">Import history</ButtonLink>}>
-          Progress is built from your imported runs. Import at least a few months to see trends.
-        </EmptyState>
+        <EmptyState icon={<LineChart size={22} />} title="Nothing to chart yet" action={<ButtonLink href="/more/integrations">Import history</ButtonLink>} />
       </>
     );
   }
@@ -53,12 +51,13 @@ export default async function ProgressPage() {
 
   return (
     <>
-      <PageHeader title="Progress" subtitle="Training volume and consistency, calculated from your imported runs." />
+      <PageHeader title="Progress" />
       <ChartRangeProvider today={today}>
       <div className="stagger space-y-3">
         <PayingOffCard payoff={motivation.payoff} />
         <MilestonesCard milestones={motivation.milestones.slice(0, 6)} />
         <Card>
+          <CardHeader title="Last 4 weeks" className="mb-4" />
           <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
             <Stat
               label="Avg weekly km"
@@ -70,26 +69,21 @@ export default async function ProgressPage() {
                     <span className={kmNow >= kmPrev ? "font-semibold text-good" : "font-semibold text-warn"}>
                       {kmNow >= kmPrev ? "↑" : "↓"} {formatKm(Math.abs(kmNow - kmPrev), 1)}
                     </span>{" "}
-                    vs prior 4 wks
+                    vs 4 wks before
                   </span>
-                ) : (
-                  "last 4 weeks"
-                )
+                ) : undefined
               }
             />
-            <Stat label="Runs / week" value={(sum(last4, "runs") / Math.max(1, last4.length)).toFixed(1)} hint={`last ${last4.length} weeks`} />
-            <Stat label="Longest run" value={formatKm(longest, 1)} unit="km" hint="last 4 weeks" />
-            <Stat label="Weeks with runs" value={`${weeksWithRuns}/${last12.length}`} hint={`last ${last12.length} weeks`} />
+            <Stat label="Runs / week" value={(sum(last4, "runs") / Math.max(1, last4.length)).toFixed(1)} />
+            <Stat label="Longest run" value={formatKm(longest, 1)} unit="km" />
+            <Stat label={`Weeks run, last ${last12.length}`} value={`${weeksWithRuns}/${last12.length}`} />
           </div>
         </Card>
         <Card href="/progress/weeks" className="flex items-center gap-3.5 p-4">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.625rem] bg-accent/12 text-accent">
             <CalendarRange size={18} />
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.9375rem] font-semibold">Weekly recaps</p>
-            <p className="text-[0.8125rem] leading-snug text-muted">Each week reviewed, and your estimates saved week by week to compare over time.</p>
-          </div>
+          <p className="min-w-0 flex-1 text-[0.9375rem] font-semibold">Weekly recaps</p>
           <ChevronRight size={18} className="shrink-0 text-subtle" />
         </Card>
         <ChartRangeSelector />
@@ -102,7 +96,7 @@ export default async function ProgressPage() {
         ) : (
           <Card>
             <h2 className="section-title">Fitness estimates</h2>
-            <p className="mt-2 text-sm text-muted">Your fitness model has not been computed yet. It runs after each sync; reload in a minute.</p>
+            <p className="mt-2 text-sm text-muted">Not calculated yet.</p>
           </Card>
         )}
       </div>

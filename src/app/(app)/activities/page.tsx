@@ -20,9 +20,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     return (
       <>
         <PageHeader title="Activities" />
-        <EmptyState icon={<Activity size={22} />} title="No runs imported yet" action={<ButtonLink href="/more/integrations">Connect Garmin</ButtonLink>}>
-          Connect your Garmin account and import your history. Runs appear here automatically after every sync.
-        </EmptyState>
+        <EmptyState icon={<Activity size={22} />} title="No runs imported yet" action={<ButtonLink href="/more/integrations">Connect your watch</ButtonLink>} />
       </>
     );
   }

@@ -115,7 +115,7 @@ export default async function TodayPage() {
       {!connected && acts.length === 0 ? (
         <EmptyState
           icon={<Watch size={22} />}
-          title="Let's get your training history in"
+          title="Connect your watch to get started"
           action={
             <div className="flex flex-col items-center gap-3">
               <ButtonLink href="/welcome">Set up Løype</ButtonLink>
@@ -124,10 +124,7 @@ export default async function TodayPage() {
               </Link>
             </div>
           }
-        >
-          Løype builds everything from your real runs. Connect Garmin, or Strava for an Apple Watch, and import at least 3–6 months of history to establish
-          a baseline.
-        </EmptyState>
+        />
       ) : (
         <div className="stagger space-y-3">
           <SetupPrompt />
@@ -160,7 +157,7 @@ export default async function TodayPage() {
               </div>
             </Link>
           ) : (
-            <EmptyState title="No runs in the last 8 weeks">Runs appear here after your next Garmin sync.</EmptyState>
+            <EmptyState title="No runs in the last 8 weeks" />
           )}
 
           <Card>
@@ -228,7 +225,6 @@ export default async function TodayPage() {
                 </span>
               }
             />
-            <p className="mt-0.5 text-xs text-muted">Last 8 weeks</p>
             <div className="mt-4 flex h-24 items-end gap-2">
               {weeks.map((w) => {
                 const isCurrent = w.weekStart === thisWeek;

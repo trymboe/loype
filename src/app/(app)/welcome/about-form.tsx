@@ -32,7 +32,6 @@ export function AboutForm({ initial, background, detected }: { initial: Initial;
             >
               <input type="radio" name="experience" value={k} checked={exp === k} onChange={() => setExp(k)} className="sr-only" />
               <span className="block text-sm font-semibold">{EXPERIENCE_LABEL[k].label}</span>
-              <span className="mt-0.5 block text-xs leading-snug text-muted">{EXPERIENCE_LABEL[k].hint}</span>
             </label>
           ))}
         </div>
@@ -41,13 +40,10 @@ export function AboutForm({ initial, background, detected }: { initial: Initial;
       <section className="space-y-3">
         <h2 className="section-title">What training suits you?</h2>
         <div className="divide-hairline overflow-hidden rounded-2xl bg-surface-2 text-[0.9375rem]">
-          <Toggle name="intervals" label="Interval and threshold sessions" hint="Hard, structured efforts once or twice a week" checked={background.intervals} />
-          <Toggle name="long_runs" label="Long runs" hint="One longer, easy run each week" checked={background.longRuns} />
+          <Toggle name="intervals" label="Interval and threshold sessions" checked={background.intervals} />
+          <Toggle name="long_runs" label="A weekly long run" checked={background.longRuns} />
           <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 bg-surface-2 px-4 py-3">
-            <span>
-              An injury or niggle to work around
-              <span className="mt-0.5 block text-xs text-muted">Shown when you build or change a plan, so you can pick days and sessions around it</span>
-            </span>
+            <span>An injury or niggle to work around</span>
             <input type="checkbox" name="injury" checked={injury} onChange={(e) => setInjury(e.target.checked)} className="switch" />
           </label>
         </div>
@@ -60,21 +56,18 @@ export function AboutForm({ initial, background, detected }: { initial: Initial;
       </section>
 
       <section className="space-y-4">
-        <div>
-          <h2 className="section-title">Heart rate and body</h2>
-          <p className="mt-1 text-[0.8125rem] leading-snug text-muted">All optional. Leave a field empty and Løype works it out from your runs.</p>
-        </div>
+        <h2 className="section-title">Heart rate and body (optional)</h2>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Max heart rate" hint={detected.maxHr ? `Detected: ${detected.maxHr}` : undefined}>
-            <input name="max_hr" type="number" inputMode="numeric" min={100} max={240} defaultValue={initial.max_hr ?? ""} placeholder="bpm" className="input" />
+          <Field label="Max HR (bpm)">
+            <input name="max_hr" type="number" inputMode="numeric" min={100} max={240} defaultValue={initial.max_hr ?? ""} placeholder={detected.maxHr ? `Auto: ${detected.maxHr}` : "Auto"} className="input" />
           </Field>
-          <Field label="Resting heart rate" hint={detected.restHr ? `Detected: ${detected.restHr}` : undefined}>
-            <input name="resting_hr" type="number" inputMode="numeric" min={25} max={120} defaultValue={initial.resting_hr ?? ""} placeholder="bpm" className="input" />
+          <Field label="Resting HR (bpm)">
+            <input name="resting_hr" type="number" inputMode="numeric" min={25} max={120} defaultValue={initial.resting_hr ?? ""} placeholder={detected.restHr ? `Auto: ${detected.restHr}` : "Auto"} className="input" />
           </Field>
           <Field label="Birth year">
             <input name="birth_year" type="number" inputMode="numeric" defaultValue={initial.birth_year ?? ""} placeholder="e.g. 1994" className="input" />
           </Field>
-          <Field label="Sex" hint="For the training-load formula">
+          <Field label="Sex">
             <select name="sex" defaultValue={initial.sex ?? ""} className="input">
               <option value="">Not set</option>
               <option value="male">Male</option>
@@ -93,24 +86,20 @@ export function AboutForm({ initial, background, detected }: { initial: Initial;
   );
 }
 
-function Toggle({ name, label, hint, checked }: { name: string; label: string; hint: string; checked: boolean }) {
+function Toggle({ name, label, checked }: { name: string; label: string; checked: boolean }) {
   return (
     <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 bg-surface-2 px-4 py-3">
-      <span>
-        {label}
-        <span className="mt-0.5 block text-xs text-muted">{hint}</span>
-      </span>
+      <span>{label}</span>
       <input type="checkbox" name={name} defaultChecked={checked} className="switch" />
     </label>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold">{label}</span>
       {children}
-      {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
     </label>
   );
 }

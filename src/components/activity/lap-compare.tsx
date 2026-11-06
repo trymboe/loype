@@ -43,7 +43,7 @@ export function LapCompare({ laps, points, selected, onSelect }: { laps: LapLike
       </div>
 
       {!cmp ? (
-        <p className="mt-3 text-sm text-muted">Pick two or more laps in the table. The first one you pick is the reference.</p>
+        <p className="mt-3 text-sm text-muted">Pick 2 or more laps to compare.</p>
       ) : (
         <>
           <table className="tabular mt-4 w-full text-sm">
@@ -79,8 +79,8 @@ export function LapCompare({ laps, points, selected, onSelect }: { laps: LapLike
           {cmp.consistency && (
             <div className="mt-3 grid grid-cols-3 gap-3 rounded-xl bg-surface p-3 text-sm">
               <Fact label="Pace spread" value={`±${cmp.consistency.paceCvPct.toFixed(1)} %`} hint={cmp.consistency.paceCvPct <= 2 ? "very even" : cmp.consistency.paceCvPct <= 4 ? "fairly even" : "uneven"} />
-              <Fact label="Last vs first third" value={`${signed(cmp.consistency.fadeSPerKm)} s/km`} hint={cmp.consistency.fadeSPerKm > 5 ? "slowed down" : cmp.consistency.fadeSPerKm < -5 ? "got faster" : "held pace"} />
-              <Fact label="HR rise" value={cmp.consistency.hrRiseBpm != null ? `${signed(cmp.consistency.hrRiseBpm)} bpm` : "–"} hint="last vs first third" />
+              <Fact label="Pace, last vs first third" value={`${signed(cmp.consistency.fadeSPerKm)} s/km`} hint={cmp.consistency.fadeSPerKm > 5 ? "slowed down" : cmp.consistency.fadeSPerKm < -5 ? "got faster" : "held pace"} />
+              <Fact label="HR, last vs first third" value={cmp.consistency.hrRiseBpm != null ? `${signed(cmp.consistency.hrRiseBpm)} bpm` : "–"} />
             </div>
           )}
 
@@ -145,12 +145,12 @@ export function LapCompare({ laps, points, selected, onSelect }: { laps: LapLike
   );
 }
 
-function Fact({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Fact({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0">
       <div className="text-[0.6875rem] text-muted">{label}</div>
       <div className="tabular font-semibold">{value}</div>
-      <div className="text-[0.6875rem] text-muted">{hint}</div>
+      {hint && <div className="text-[0.6875rem] text-muted">{hint}</div>}
     </div>
   );
 }

@@ -53,7 +53,6 @@ export function ElevationProfile({ data, onHover }: { data: P[]; onHover?: (p: [
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-[0.6875rem] text-subtle">Estimated from an OpenStreetMap-based elevation model, not measured.</p>
     </section>
   );
 }

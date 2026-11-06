@@ -7,10 +7,10 @@ import { JobList } from "@/components/sync/job-list";
 import { useSyncDriver, type SyncJob } from "@/components/sync/use-sync-driver";
 
 const CHOICES = [
-  { months: 3, label: "3 months", hint: "Minimum for a baseline" },
-  { months: 6, label: "6 months", hint: "Good" },
-  { months: 12, label: "12 months", hint: "Recommended" },
-  { months: 24, label: "2 years", hint: "Long-term trends" },
+  { months: 3, label: "3 months" },
+  { months: 6, label: "6 months" },
+  { months: 12, label: "12 months" },
+  { months: 24, label: "2 years" },
 ];
 
 function monthsAgo(n: number) {
@@ -32,10 +32,6 @@ export function ImportStep({ initialJobs }: { initialJobs: SyncJob[] }) {
     <div className="space-y-3">
       <div className="card p-5">
         <p className="section-title">How far back?</p>
-        <p className="mt-1 text-[0.8125rem] leading-snug text-muted">
-          Løype needs at least 12–16 weeks to judge your fitness and normal training; 6–12 months is better. Only runs are analysed, other activities count
-          towards training load.
-        </p>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {CHOICES.map((c) => (
             <button
@@ -52,7 +48,6 @@ export function ImportStep({ initialJobs }: { initialJobs: SyncJob[] }) {
               )}
             >
               <span className="block text-sm font-semibold">{c.label}</span>
-              <span className="mt-0.5 block text-xs text-muted">{c.hint}</span>
             </button>
           ))}
         </div>
@@ -68,9 +63,8 @@ export function ImportStep({ initialJobs }: { initialJobs: SyncJob[] }) {
           />
         </label>
         <button onClick={() => drive({ action: "historical", from })} disabled={running} className="btn btn-primary btn-block mt-4 min-h-12">
-          {running ? "Importing… keep this page open" : `Import from ${from}`}
+          {running ? "Importing…" : `Import from ${from}`}
         </button>
-        {running && <p className="mt-2 text-center text-xs text-muted">You can close the app; the import carries on in the background, just slower.</p>}
       </div>
       {error && <p className="rounded-2xl bg-danger/10 p-4 text-sm ring-1 ring-danger/25 ring-inset">{error}</p>}
       <JobList jobs={jobs} />

@@ -29,7 +29,6 @@ export function WatchCard({ id, sync, connected, sendable, thresholdMissing }: {
 
       {connected ? (
         <>
-          <p className="text-sm leading-relaxed text-muted">{st ? st.detail : sendable ? "Not sent yet. Workouts in the next two weeks are sent automatically when Løype syncs." : "Only upcoming runs are sent to the watch."}</p>
           {sync?.parse_check && !sync.parse_check.ok && (
             <ul className="space-y-1">
               {sync.parse_check.problems.map((p, i) => (
@@ -41,7 +40,7 @@ export function WatchCard({ id, sync, connected, sendable, thresholdMissing }: {
           )}
           {sync?.state === "failed" && sync.last_error && <p className="rounded-xl bg-danger/10 px-3 py-2 text-xs leading-snug text-danger">{sync.last_error}</p>}
           {sync?.target_mode === "HR" && thresholdMissing && (
-            <p className="text-xs leading-snug text-warn">Sent with heart-rate targets because Intervals.icu has no Run threshold pace. Set one there to get pace targets on the watch.</p>
+            <p className="text-xs leading-snug text-warn">Sent with heart-rate targets: Intervals.icu has no Run threshold pace.</p>
           )}
           <form action={action} className="flex flex-wrap gap-2">
             <input type="hidden" name="id" value={id} />
@@ -63,20 +62,15 @@ export function WatchCard({ id, sync, connected, sendable, thresholdMissing }: {
           </form>
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-muted">
-          Connect Intervals.icu under{" "}
-          <a href="/more/integrations" className="font-medium text-accent underline underline-offset-2">
-            More → Integrations
-          </a>{" "}
-          to send workouts to Garmin Connect automatically, or download the file below.
-        </p>
+        <a href="/more/integrations" className="btn btn-secondary btn-sm">
+          Connect Intervals.icu
+        </a>
       )}
 
       <div className="border-t border-[var(--hairline)] pt-4">
         <a href={`/api/workouts/${id}/fit`} download className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent">
           <Download size={15} /> Download .FIT workout
         </a>
-        <p className="mt-1 text-xs leading-relaxed text-muted">Manual fallback: connect the watch by USB and copy the file into its GARMIN/NewFiles folder. Pace steps carry pace targets, other steps heart rate.</p>
       </div>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm font-medium text-good">Updated.</p>}

@@ -126,11 +126,7 @@ export function RecapView({ recap, estimates, compact = false }: { recap: WeekRe
           )}
         </div>
         {r.changes.length === 0 ? (
-          <p className="mt-2 text-[0.875rem] leading-snug text-muted">
-            {estimates.vdot
-              ? `Fitness estimate ${estimates.vdot.value.toFixed(1)}. This is the first snapshot, so next week's recap shows what moved.`
-              : "No fitness estimate yet: it needs a few runs with reliable GPS and heart rate. A hard effort or time trial helps most."}
-          </p>
+          <p className="mt-2 text-[0.875rem] leading-snug text-muted">{estimates.vdot ? `VDOT ${estimates.vdot.value.toFixed(1)} · first snapshot` : "No fitness estimate yet"}</p>
         ) : (
           <ul className="mt-3 divide-y divide-[var(--hairline)]">
             {[...moved, ...(compact ? [] : same)].map((c) => (
@@ -139,12 +135,11 @@ export function RecapView({ recap, estimates, compact = false }: { recap: WeekRe
           </ul>
         )}
         {compact && same.length > 0 && <p className="mt-2 text-xs text-muted">{same.length} more unchanged.</p>}
-        <p className="mt-3 text-xs leading-snug text-muted">
-          Estimates are calculated from your runs and saved every week, so you can compare them over time.{" "}
-          <Link href="/progress/weeks" className="font-medium text-accent">
-            Estimate history
+        {compact && (
+          <Link href="/progress/weeks" className="mt-3 inline-flex items-center gap-0.5 text-sm font-medium text-accent">
+            Estimate history <ChevronRight size={15} />
           </Link>
-        </p>
+        )}
       </section>
     </div>
   );
@@ -226,6 +221,7 @@ function WeekBars({ weeks }: { weeks: WeekRecap["weeklyKm"] }) {
   const max = Math.max(1, ...weeks.map((w) => w.km));
   return (
     <div className="mt-5">
+      <p className="label mb-2">Last 8 weeks</p>
       <div className="flex h-16 items-end gap-1.5" aria-label="Weekly distance, last 8 weeks">
         {weeks.map((w, i) => (
           <div key={w.weekStart} className="flex h-full flex-1 flex-col justify-end" title={`${formatDay(w.weekStart, { day: "numeric", month: "short" })}: ${w.km} km`}>
@@ -236,7 +232,6 @@ function WeekBars({ weeks }: { weeks: WeekRecap["weeklyKm"] }) {
           </div>
         ))}
       </div>
-      <p className="mt-1.5 text-xs text-muted">Weekly km, last 8 weeks</p>
     </div>
   );
 }

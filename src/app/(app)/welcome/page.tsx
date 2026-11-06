@@ -3,7 +3,7 @@ import { Check, CircleAlert, Sparkles, TrendingUp } from "lucide-react";
 import clsx from "clsx";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
 import { ButtonLink, Card, CardHeader, PageHeader } from "@/components/ui";
-import { addDaysIso, daysBetween, todayIn } from "@/lib/dates";
+import { daysBetween, todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { loadOnboardingFacts, loadPreferences } from "@/lib/onboarding/facts";
 import { STEP_LABEL, STEP_SHORT, STEPS, canOpen, nextStep, readBackground, type StepKey } from "@/lib/onboarding/state";
@@ -32,7 +32,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader eyebrow="Setup" title={step === "done" ? "You're all set" : STEP_LABEL[step]} subtitle={SUBTITLE[step]} />
+      <PageHeader eyebrow="Setup" title={step === "done" ? "You're all set" : STEP_LABEL[step]} />
       <Stepper current={step} facts={facts} />
       <div className="stagger mt-5 space-y-3">{await body(step, { db, userId: user.id, today, runCount: facts.runCount })}</div>
       {step !== "done" && (
@@ -43,15 +43,6 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
     </>
   );
 }
-
-const SUBTITLE: Record<StepKey | "done", string> = {
-  connect: "Løype builds everything from your real runs. It reads them from Garmin Connect or Strava; nothing is ever written back.",
-  import: "Bring in your history so Løype can see how you actually train.",
-  baseline: "What your history says about you as a runner right now.",
-  about: "A few things the data can't tell Løype.",
-  goal: "What you're training for, and when you can run.",
-  done: "Your plan is ready. New runs sync automatically every 30 minutes.",
-};
 
 function Stepper({ current, facts }: { current: StepKey | "done"; facts: Parameters<typeof canOpen>[1] }) {
   const next = nextStep(facts);
@@ -101,19 +92,15 @@ async function body(step: StepKey | "done", c: Ctx) {
           </Card>
           <Card>
             <CardHeader title="Apple Watch or another watch" className="mb-2" />
-            <p className="text-sm leading-snug text-muted">
-              Løype reads those runs from Strava. You create a free Strava API app once and paste its two codes; the Strava page walks you through it.
-            </p>
-            <div className="mt-4">
+            <div>
               <ButtonLink href="/more/integrations#strava" variant="secondary">
                 Connect Strava
               </ButtonLink>
             </div>
           </Card>
-          <p className="px-1 text-center text-xs text-muted">
-            New here?{" "}
-            <Link href="/guide" className="font-medium text-accent underline-offset-2 hover:underline">
-              See how Løype works
+          <p className="px-1 text-center">
+            <Link href="/guide" className="text-sm font-medium text-accent underline-offset-2 hover:underline">
+              How Løype works
             </Link>
           </p>
         </>
@@ -147,8 +134,8 @@ async function body(step: StepKey | "done", c: Ctx) {
             }}
             background={readBackground(prefs)}
             detected={{
-              maxHr: phys?.maxHr && phys.maxHr.source !== "manual" ? `${phys.maxHr.value} bpm` : null,
-              restHr: phys?.restHr && phys.restHr.source !== "manual" ? `${phys.restHr.value} bpm` : null,
+              maxHr: phys?.maxHr && phys.maxHr.source !== "manual" ? `${phys.maxHr.value}` : null,
+              restHr: phys?.restHr && phys.restHr.source !== "manual" ? `${phys.restHr.value}` : null,
             }}
           />
         </Card>
@@ -169,21 +156,7 @@ async function body(step: StepKey | "done", c: Ctx) {
     case "done":
       return (
         <Card>
-          <p className="text-sm leading-relaxed text-muted">
-            Everything is in place. You can revisit any step above, change your goal from the Plan tab, and add the plan to your calendar under More.
-          </p>
-          <p className="mt-3 text-sm leading-relaxed text-muted">
-            Garmin watch? Connect{" "}
-            <Link href="/more/integrations" className="font-medium text-accent underline underline-offset-2">
-              Intervals.icu
-            </Link>{" "}
-            to get planned workouts on the watch. Not sure where things are?{" "}
-            <Link href="/guide" className="font-medium text-accent underline underline-offset-2">
-              How Løype works
-            </Link>
-            .
-          </p>
-          <div className="mt-5 grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <ButtonLink href="/">Go to Today</ButtonLink>
             <ButtonLink href="/more/calendar" variant="secondary">
               Add to calendar
@@ -208,17 +181,13 @@ async function BaselineStep({ c }: { c: Ctx }) {
     runCount: c.runCount,
     maxHrSource: o?.physiology?.maxHr?.source ?? null,
   });
-  const since = first?.local_date && first.local_date < addDaysIso(c.today, -56) ? "all imported history" : "your recent runs";
   return (
     <>
       <BaselineCard b={baseline} />
-      {!o && <p className="px-1 text-xs text-muted">Fitness is still being calculated from the import; the numbers fill in after the next sync.</p>}
-      <PointList title="Strengths" icon={<Sparkles size={16} />} tone="text-good" points={summary.strengths} empty="Nothing stands out yet. That's normal early on." />
-      <PointList title="Worth developing" icon={<TrendingUp size={16} />} tone="text-accent" points={summary.develop} empty="No obvious gaps in what Løype can see." />
+      {!o && <p className="px-1 text-xs text-muted">Fitness still calculating</p>}
+      <PointList title="Strengths" icon={<Sparkles size={16} />} tone="text-good" points={summary.strengths} empty="Nothing yet" />
+      <PointList title="Worth developing" icon={<TrendingUp size={16} />} tone="text-accent" points={summary.develop} empty="Nothing yet" />
       {summary.caveats.length > 0 && <PointList title="About the data" icon={<CircleAlert size={16} />} tone="text-warn" points={summary.caveats} />}
-      <p className="px-1 text-xs leading-relaxed text-muted">
-        Based on {since}. Every number here is calculated from your runs; how is explained on the Progress tab. It updates with every new run.
-      </p>
       <form action={markBaselineSeenAction}>
         <button className="btn btn-primary btn-block min-h-12">
           <Check size={16} />

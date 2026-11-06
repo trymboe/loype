@@ -5,14 +5,14 @@ import { IconTile, PageHeader } from "@/components/ui";
 export const metadata = { title: "More" };
 
 const ROWS = [
-  { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations", hint: "Garmin, Strava, Intervals.icu, sync and history import" },
-  { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile", hint: "Max and resting heart rate, birth year, sex" },
-  { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password", hint: "Change your password" },
-  { href: "/more/calendar", icon: CalendarDays, color: "var(--accent)", label: "Calendar", hint: "Subscribe to your plan in Google, Apple or Outlook calendar" },
-  { href: "/guide", icon: BookOpen, color: "var(--pace)", label: "How Løype works", hint: "What each tab does and how to connect your watch" },
-  { href: "/welcome", icon: Compass, color: "var(--good)", label: "Guided setup", hint: "Connect, history import, baseline, training background and goal" },
-  { href: "/api/export", icon: Download, color: "var(--cadence)", label: "Export my data", hint: "Download activities, laps, splits, check-ins and wellness as JSON", download: true },
-  { href: "/more/data", icon: Trash2, color: "var(--danger)", label: "Delete my data", hint: "Remove training data or everything Løype stores" },
+  { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations" },
+  { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile" },
+  { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password" },
+  { href: "/more/calendar", icon: CalendarDays, color: "var(--accent)", label: "Calendar" },
+  { href: "/guide", icon: BookOpen, color: "var(--pace)", label: "How Løype works" },
+  { href: "/welcome", icon: Compass, color: "var(--good)", label: "Guided setup" },
+  { href: "/api/export", icon: Download, color: "var(--cadence)", label: "Export my data", download: true },
+  { href: "/more/data", icon: Trash2, color: "var(--danger)", label: "Delete my data" },
 ];
 
 export default function MorePage() {
@@ -20,16 +20,13 @@ export default function MorePage() {
     <>
       <PageHeader title="More" />
       <div className="card rise divide-hairline overflow-hidden">
-        {ROWS.map(({ href, icon: Icon, color, label, hint, download }) => {
+        {ROWS.map(({ href, icon: Icon, color, label, download }) => {
           const inner = (
             <>
               <IconTile color={color}>
                 <Icon size={18} />
               </IconTile>
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.9375rem] font-semibold">{label}</p>
-                <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">{hint}</p>
-              </div>
+              <p className="min-w-0 flex-1 text-[0.9375rem] font-semibold">{label}</p>
               <ChevronRight size={18} className="shrink-0 text-subtle" />
             </>
           );

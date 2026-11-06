@@ -11,10 +11,7 @@ export function IntervalReps({ a }: { a: IntervalAnalysis }) {
   const w = (p: number) => `${Math.max(6, ((hi - p) / (hi - lo)) * 100)}%`;
   return (
     <div className="mt-5 border-t border-[var(--hairline)] pt-4">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold">Rep by rep</h3>
-        <span className="text-xs text-muted">{a.source === "laps" ? "from your watch laps" : "detected from pace"}</span>
-      </div>
+      <h3 className="mb-2 text-sm font-semibold">Rep by rep</h3>
       <div className="relative space-y-1.5">
         {a.target && (
           <div

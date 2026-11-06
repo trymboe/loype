@@ -514,16 +514,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
   };
 
   const canSave = state.segments.length > 0 && !pending && !saving && distanceM >= 50;
-  const hint =
-    mode === "loop"
-      ? state.waypoints.length === 0
-        ? "Tap the map where the loop should start."
-        : state.segments.length === 0
-          ? "Pick a distance and generate a loop."
-          : "Drag the dots to reshape it, or try another direction."
-      : state.waypoints.length === 0
-        ? "Tap the map to place your start."
-        : "Tap to add points. Drag a dot to move it, tap it to remove it.";
+  const hint = state.waypoints.length === 0 ? "Tap the map to start" : null;
 
   return (
     <div className="space-y-3">
@@ -548,9 +539,11 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
             <MapStyleSwitch value={mapStyle} onChange={setMapStyle} />
           </div>
           <MapTilerLogo style={mapStyle} className="right-2 bottom-12" />
-          <p className="pointer-events-none absolute inset-x-3 bottom-3 w-fit max-w-[calc(100%-1.5rem)] rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-fg-2 shadow-[var(--shadow-pop)] backdrop-blur">
-            {busy === "loop" ? (soft ? "Comparing loops for soft ground…" : "Finding a loop…") : pending ? "Following paths…" : hint}
-          </p>
+          {(busy === "loop" || pending || hint) && (
+            <p className="pointer-events-none absolute inset-x-3 bottom-3 w-fit max-w-[calc(100%-1.5rem)] rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-fg-2 shadow-[var(--shadow-pop)] backdrop-blur">
+              {busy === "loop" ? (soft ? "Comparing loops…" : "Finding a loop…") : pending ? "Following paths…" : hint}
+            </p>
+          )}
         </div>
 
         <div className="border-t border-[var(--hairline)] p-4">
@@ -610,9 +603,6 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
               </label>
               {soft && (
                 <div className="space-y-2">
-                  <p className="text-[0.8125rem] leading-snug text-muted">
-                    Compares several loops and keeps the one with the most gravel and trail. Let it start a short walk away to find softer ground.
-                  </p>
                   <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Start within">
                     <span className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
                       <Footprints size={14} /> Start within
@@ -657,7 +647,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
       {profile && <ElevationProfile data={profile} onHover={setHover} />}
       <SurfaceBreakdown data={surface.data} state={surface.state} onMap={surfaceOnMap} onToggleMap={setSurfaceOnMap} />
       {eleState === "failed" && state.segments.length > 0 && (
-        <p className="px-1 text-xs text-muted">Elevation is unavailable right now; it will be looked up again when you save.</p>
+        <p className="px-1 text-xs text-muted">Elevation unavailable</p>
       )}
 
       <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-end">

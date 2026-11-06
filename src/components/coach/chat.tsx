@@ -114,9 +114,6 @@ export function CoachChat({
             <Sparkles size={19} />
           </div>
           <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Ask about your training</p>
-          <p className="mt-1 text-sm leading-relaxed text-muted">
-            Your coach knows your runs, fitness, plan and routes. Ask anything, or tell it what you need: it changes your plan for you, warns you when something looks risky, and every change can be undone.
-          </p>
           <div className="stagger mt-4 flex flex-wrap gap-2">
             {suggestions.map((s) => (
               <button key={s} type="button" className="chip text-left" onClick={() => send(s)} disabled={busy}>

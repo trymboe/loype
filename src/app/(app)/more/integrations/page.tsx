@@ -4,7 +4,6 @@ import { Activity, Send, Watch } from "lucide-react";
 import { Badge, IconTile, PageHeader, type Tone } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";
 import { getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
-import { relativeTime } from "@/lib/dates";
 import { StravaAppForm, StravaControls } from "./strava-panel";
 import { headers } from "next/headers";
 import { userTimezone } from "@/lib/user-tz";
@@ -72,7 +71,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
       <PageHeader back={{ href: "/more", label: "More" }} title="Integrations" />
 
       <section className="card mb-3 p-5">
-        <div className="mb-4 flex items-start gap-3.5">
+        <div className="mb-4 flex items-center gap-3.5">
           <IconTile color="var(--pace)">
             <Watch size={18} />
           </IconTile>
@@ -81,17 +80,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Garmin Connect</p>
               <Badge tone={status.tone}>{status.label}</Badge>
             </div>
-            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Imports runs and wellness data through Garmin&apos;s official Personal API (read-only).</p>
           </div>
         </div>
         {integration?.last_success_at && (
-          <p className="mb-3 text-xs text-muted">Last successful sync: {new Date(integration.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
-        )}
-        {connected && (
-          <p className="mb-3 text-xs text-muted">
-            Background sync every 30 minutes
-            {integration?.settings?.lastScheduledRunAt ? ` · last ran ${relativeTime(integration.settings.lastScheduledRunAt)}` : " · hasn't run yet"}
-          </p>
+          <p className="mb-3 text-xs text-muted">Last sync {new Date(integration.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
         )}
         {integration?.last_error && integration.status !== "connected" && <p className="mb-3 text-sm text-danger">{integration.last_error}</p>}
         <details open={!connected} className="group">
@@ -105,14 +97,14 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               .
             </li>
             <li>Create a key (choose the longest expiry), accept the terms and copy it. It is only shown once.</li>
-            <li>Paste it below. Løype exchanges it for short-lived access tokens automatically.</li>
+            <li>Paste it below.</li>
           </ol>
           <GarminKeyForm replacing={connected} />
         </details>
       </section>
 
       <section id="strava" className="card mb-3 scroll-mt-6 p-5">
-        <div className="mb-4 flex items-start gap-3.5">
+        <div className="mb-4 flex items-center gap-3.5">
           <IconTile color="var(--hr)">
             <Activity size={18} />
           </IconTile>
@@ -121,14 +113,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Strava</p>
               <Badge tone={sStatus.tone}>{sStatus.label}</Badge>
             </div>
-            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
-              Imports runs from Strava, free. Use this for an Apple Watch (or any watch that syncs to Strava): GPS, heart rate, pace, cadence and laps.
-            </p>
           </div>
         </div>
         {stravaFlash && (
           <p className="mb-3 rounded-xl bg-good/10 px-3 py-2 text-sm text-good">
-            {stravaFlash === "connected" ? "Strava connected. New runs arrive within a minute of reaching Strava." : "Strava connected. New runs are picked up by the 30-minute sync."}{" "}
+            Strava connected.{" "}
             <Link href="/welcome" className="font-semibold underline underline-offset-2">
               Continue setup
             </Link>
@@ -137,13 +126,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         {stravaFlashError && <p className="mb-3 rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{stravaFlashError}</p>}
         {sConnected && (
           <div className="mb-4 space-y-2">
-            {sSettings.athleteName && <p className="text-xs text-muted">Signed in as {sSettings.athleteName}.</p>}
+            {sSettings.athleteName && <p className="text-xs text-muted">Signed in as {sSettings.athleteName}</p>}
             {strava?.last_success_at && (
-              <p className="text-xs text-muted">Last successful sync: {new Date(strava.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
+              <p className="text-xs text-muted">Last sync {new Date(strava.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</p>
             )}
-            <p className="text-xs text-muted">
-              {sSettings.webhookId ? "Instant sync is on: Strava tells Løype when a new run is uploaded." : "Instant sync is off, so runs arrive with the 30-minute sync."}
-            </p>
             {strava?.last_error && strava.status !== "connected" && <p className="text-sm text-danger">{strava.last_error}</p>}
             <StravaControls canReconnect />
           </div>
@@ -165,7 +151,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             <li>
               Set <span className="font-medium text-fg-2">Authorization Callback Domain</span> to <span className="font-mono text-fg-2">{callbackDomain}</span>.
             </li>
-            <li>Copy the Client ID and Client Secret below. Strava then asks you to approve read access.</li>
+            <li>Paste the Client ID and Client Secret below.</li>
           </ol>
           <StravaAppForm replacing={sConnected} />
         </details>
@@ -175,12 +161,12 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
       {connected && wellnessErrors.length > 0 && (
         <p className="mt-3 px-1 text-xs text-muted">
-          Some wellness data couldn&apos;t be fetched last time ({wellnessErrors.map((e) => e.source).join(", ")}). Runs are unaffected.
+          Couldn&apos;t fetch some wellness data: {wellnessErrors.map((e) => e.source).join(", ")}
         </p>
       )}
 
       <section className="card mt-3 p-5">
-        <div className="mb-4 flex items-start gap-3.5">
+        <div className="mb-4 flex items-center gap-3.5">
           <IconTile color="var(--accent)">
             <Send size={18} />
           </IconTile>
@@ -189,25 +175,22 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Intervals.icu</p>
               <Badge tone={iStatus.tone}>{iStatus.label}</Badge>
             </div>
-            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
-              Sends your next two weeks of planned workouts to Intervals.icu, which passes them to Garmin Connect and your watch. Kept up to date when the plan changes.
-            </p>
           </div>
         </div>
 
         {iConnected && (
           <div className="mb-4 space-y-3">
-            {intervals?.settings?.athleteName && <p className="text-xs text-muted">Signed in as {intervals.settings.athleteName}.</p>}
+            {intervals?.settings?.athleteName && <p className="text-xs text-muted">Signed in as {intervals.settings.athleteName}</p>}
             {run && !run.hasThresholdPace && (
               <div className="space-y-2.5 rounded-xl bg-warn/10 px-3 py-3">
                 <p className="text-xs leading-snug text-warn">
-                  Intervals.icu has no Run threshold pace, so it leaves pace targets out of the workouts it sends to Garmin.
-                  {thresholds.paceSPerKm ? " Løype can set it to your current estimate and resend your workouts with pace targets." : " Løype doesn't have a threshold estimate yet; set one in Intervals.icu → Settings → Run."}
+                  No Run threshold pace in Intervals.icu, so workouts reach Garmin without pace targets.
+                  {thresholds.paceSPerKm ? "" : " Set one in Intervals.icu → Settings → Run."}
                 </p>
                 {thresholds.paceSPerKm && <ApplyThresholdButton pace={formatPace(thresholds.paceSPerKm)} />}
               </div>
             )}
-            {run?.hasThresholdPace && run.thresholdPaceSPerKm && <p className="text-xs text-muted">Run threshold pace in Intervals.icu: {formatPace(run.thresholdPaceSPerKm)}/km. Workouts are sent with pace targets.</p>}
+            {run?.hasThresholdPace && run.thresholdPaceSPerKm && <p className="text-xs text-muted">Threshold pace {formatPace(run.thresholdPaceSPerKm)}/km</p>}
             {intervals?.last_success_at && (
               <p className="text-xs text-muted">
                 Last checked {new Date(intervals.last_success_at).toLocaleString("en-GB", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}
@@ -232,9 +215,6 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                 })}
               </ul>
             )}
-            <p className="text-xs leading-relaxed text-muted">
-              &quot;On Intervals.icu&quot; means Intervals.icu read every step correctly. Intervals.icu can&apos;t tell Løype whether Garmin received it, so confirm on each workout once you see it on the watch.
-            </p>
             <IntervalsPushControls />
           </div>
         )}
@@ -249,7 +229,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               </a>
               , connect Garmin and switch on <span className="font-medium text-fg-2">Upload planned workouts</span>.
             </li>
-            <li>Under Sport settings → Run, set a threshold pace (needed for pace targets on Garmin).</li>
+            <li>Under Sport settings → Run, set a threshold pace.</li>
             <li>Under Developer settings, copy the API key and your athlete ID, and paste them below.</li>
           </ol>
           <IntervalsKeyForm replacing={iConnected} />

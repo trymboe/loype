@@ -14,12 +14,12 @@ export default async function ProfilePage() {
   ]);
   const phys = state?.output?.physiology;
   const detected = {
-    maxHr: phys?.maxHr && phys.maxHr.source !== "manual" ? `${phys.maxHr.value} bpm (${phys.maxHr.note})` : null,
-    restHr: phys?.restHr && phys.restHr.source !== "manual" ? `${phys.restHr.value} bpm (${phys.restHr.note})` : null,
+    maxHr: phys?.maxHr && phys.maxHr.source !== "manual" ? `${phys.maxHr.value}` : null,
+    restHr: phys?.restHr && phys.restHr.source !== "manual" ? `${phys.restHr.value}` : null,
   };
   return (
     <>
-      <PageHeader back={{ href: "/more", label: "More" }} title="Athlete profile" subtitle="Corrections here override what Løype detects" />
+      <PageHeader back={{ href: "/more", label: "More" }} title="Athlete profile" />
       <div className="card p-5">
         <ProfileForm
           initial={{
@@ -32,9 +32,6 @@ export default async function ProfilePage() {
           detected={detected}
         />
       </div>
-      <p className="mt-4 px-1 text-xs leading-relaxed text-muted">
-        Max heart rate matters most: zones, training load and the fitness estimate all scale with it. If you know it from an all-out effort or a lab test, enter it.
-      </p>
     </>
   );
 }

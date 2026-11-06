@@ -36,7 +36,6 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
     intensity: l.intensity,
   }));
   const flags: { code: string; severity: string; message: string }[] = a.quality?.flags ?? [];
-  const prov: Record<string, string> = a.provenance ?? {};
   const fullPaces: number[] = splits.filter((s: any) => !s.partial && s.pace_s_per_km).map((s: any) => s.pace_s_per_km);
   // runs shorter than 1 km have no full split: compare against the partial one instead of Infinity
   const fastestSplit = fullPaces.length ? Math.min(...fullPaces) : (splits[0]?.pace_s_per_km ?? null);
@@ -150,21 +149,6 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
         <FeedbackForm activityId={a.id} initial={feedback} />
       </div>
 
-      <details className="group mt-6 px-1 text-xs leading-relaxed text-muted">
-        <summary className="inline-flex cursor-pointer items-center gap-1 font-medium">
-          <Info size={14} /> How these numbers were produced
-        </summary>
-        <ul className="mt-3 space-y-1.5 rounded-2xl bg-surface-2/60 p-4">
-          {Object.entries(prov).map(([k, v]) => (
-            <li key={k}>
-              <span className="font-medium text-fg">{k}</span>: {v === "device" ? "measured by your watch" : "calculated by Løype from the recorded samples"}
-            </li>
-          ))}
-          <li>Moving time excludes timer pauses and standing still (speed below 0.8 m/s).</li>
-          <li>Splits are interpolated at each kilometre from the distance stream.</li>
-          <li>Methods: {Object.values(a.derivation_versions ?? {}).join(", ")}</li>
-        </ul>
-      </details>
     </>
   );
 }

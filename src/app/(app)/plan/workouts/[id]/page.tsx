@@ -60,11 +60,10 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
           </div>
           <div className="mt-5 grid grid-cols-2 gap-5">
             <Stat label="Time" value={formatDuration(w.duration_s)} />
-            <Stat label="Distance" value={w.distance_m ? `≈ ${(w.distance_m / 1000).toFixed(1)}` : "–"} unit={w.distance_m ? "km" : undefined} hint={w.distance_m ? "estimated from target paces" : undefined} />
+            <Stat label="Distance" value={w.distance_m ? `≈ ${(w.distance_m / 1000).toFixed(1)}` : "–"} unit={w.distance_m ? "km" : undefined} />
           </div>
           <div className="mt-5 border-t border-[var(--hairline)] pt-4">
             <p className="text-[0.9375rem] font-semibold">{w.objective}</p>
-            <p className="mt-1 text-sm leading-relaxed text-muted">{w.why}</p>
           </div>
         </Card>
 
@@ -83,7 +82,7 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
                 ))}
               </ul>
             )}
-            {reps ? <IntervalReps a={reps} /> : <p className="mt-3 text-xs text-muted">Work pace is your fastest stretch matching one work bout, from the recorded data.</p>}
+            {reps && <IntervalReps a={reps} />}
             {w.activity_id && (
               <Link href={`/activities/${w.activity_id}`} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-accent">
                 Open the run <ArrowRight size={15} />

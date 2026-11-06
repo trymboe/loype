@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/db/server";
 import { loadPreferences } from "@/lib/onboarding/facts";
 import { readBackground } from "@/lib/onboarding/state";
 import type { Baseline } from "@/lib/planning/types";
-import { formatPace } from "@/lib/units";
 
 /** Form defaults: every day available, long-run day from where your longest runs fall, runs per week from your history, plus what you told Løype at setup. */
 export async function defaultsFor(userId: string, today: string, b: Baseline) {
@@ -36,21 +35,15 @@ export async function defaultsFor(userId: string, today: string, b: Baseline) {
 }
 
 export function BaselineCard({ b }: { b: Baseline }) {
-  const t = b.paceZones?.find((z) => z.key === "threshold");
   return (
     <Card>
       <CardHeader title="Starting point" aside="Last 4–8 weeks" />
       <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
-        <Stat label="Weekly time" value={b.weeklyMinutes} unit="min" size="md" hint="avg last 4 weeks" />
+        <Stat label="Avg week" value={b.weeklyMinutes} unit="min" size="md" />
         <Stat label="Runs / week" value={b.runsPerWeek.toFixed(1)} size="md" hint={`${Math.round(b.consistency * 8)} of 8 weeks with runs`} />
-        <Stat label="Longest run" value={b.longestRunMinutes} unit="min" size="md" hint="last 8 weeks" />
-        <Stat label="Fitness" value={b.vdot ? b.vdot.toFixed(1) : "–"} size="md" hint={b.vdot ? `VDOT, ${b.vdotConfidence} confidence` : "no estimate yet"} />
+        <Stat label="Longest run" value={b.longestRunMinutes} unit="min" size="md" />
+        <Stat label="VDOT" value={b.vdot ? b.vdot.toFixed(1) : "–"} size="md" hint={b.vdot ? `${b.vdotConfidence} confidence` : undefined} />
       </div>
-      {t && (
-        <p className="mt-4 text-xs leading-relaxed text-muted">
-          Sessions will use your zones, e.g. threshold {formatPace(t.fastSPerKm)}–{formatPace(t.slowSPerKm)}/km. They update as your fitness changes.
-        </p>
-      )}
     </Card>
   );
 }

@@ -20,9 +20,9 @@ const ZONE_COLORS = ["var(--surface-3)", "var(--elev)", "var(--easy)", "var(--go
 export function AnalysisCard({ activityId, score, features, override }: { activityId: string; score: any | null; features: any | null; override: string | null }) {
   if (!score) {
     return (
-      <section className="card mb-3 p-5 text-sm leading-relaxed text-muted">
-        <p className="section-title mb-1">Analysis</p>
-        Workout type, training load and efficiency appear after the fitness model has run (it runs after each sync, or when you open Progress).
+      <section className="card mb-3 flex items-baseline justify-between gap-3 p-5">
+        <h2 className="section-title">Analysis</h2>
+        <span className="text-sm text-muted">Not analysed yet</span>
       </section>
     );
   }
@@ -33,10 +33,7 @@ export function AnalysisCard({ activityId, score, features, override }: { activi
 
   return (
     <section className="card rise mb-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="section-title">Analysis</h2>
-        <span className="text-[0.6875rem] text-subtle">fitness@1</span>
-      </div>
+      <h2 className="section-title">Analysis</h2>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span
           className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-semibold"
@@ -47,7 +44,6 @@ export function AnalysisCard({ activityId, score, features, override }: { activi
         </span>
         <Badge tone="muted">{override ? "Set by you" : `Auto · ${Math.round((score.classification_confidence ?? 0) * 100)} % sure`}</Badge>
       </div>
-      {score.classification_reasons?.length > 0 && <p className="mt-2 text-xs leading-snug text-muted">{score.classification_reasons.join(" · ")}</p>}
       <form action={setClassification} className="mt-3 flex items-center gap-2">
         <input type="hidden" name="activityId" value={activityId} />
         <select name="classification" defaultValue={override ?? ""} className="input input-sm">
@@ -69,22 +65,22 @@ export function AnalysisCard({ activityId, score, features, override }: { activi
           label="Training load"
           value={score.trimp != null ? Math.round(score.trimp) : "–"}
           unit="TRIMP"
-          hint={score.trimp_method === "pace_estimate" ? "estimated from pace (HR unreliable)" : "from heart rate"}
+          hint={score.trimp_method === "pace_estimate" ? "from pace" : undefined}
         />
         <Stat
           size="md"
           label="Intensity"
           value={score.intensity != null ? `${Math.round(score.intensity * 100)}` : "–"}
           unit="% HRR"
-          hint={score.intensity_source === "pace" ? "estimated from pace" : "heart-rate reserve, steady part"}
+          hint={score.intensity_source === "pace" ? "from pace" : undefined}
         />
-        <Stat size="md" label="Efficiency" value={score.ef != null ? score.ef.toFixed(2) : "–"} hint="m/min per bpm" />
+        <Stat size="md" label="Efficiency" value={score.ef != null ? score.ef.toFixed(2) : "–"} />
         <Stat
           size="md"
           label="HR drift"
           value={score.decoupling_pct != null ? `${score.decoupling_pct > 0 ? "+" : ""}${score.decoupling_pct.toFixed(1)}` : "–"}
           unit="%"
-          hint={score.decoupling_pct == null ? "needs 25+ min steady" : score.decoupling_pct > 5 ? "notable drift (heat, fatigue or pace)" : "well coupled"}
+          hint={score.decoupling_pct != null && score.decoupling_pct > 5 ? "high" : undefined}
         />
       </div>
 
@@ -119,7 +115,12 @@ export function AnalysisCard({ activityId, score, features, override }: { activi
           </div>
         </div>
       )}
-      {score.vo2max_from_hr != null && <p className="mt-4 text-xs leading-snug text-muted">This run&apos;s heart rate vs pace implies a VO2max of about {Math.round(score.vo2max_from_hr)} (one noisy reading; the Progress page combines many).</p>}
+      {score.vo2max_from_hr != null && (
+        <div className="mt-5 flex items-baseline justify-between">
+          <p className="label">VO2max from this run</p>
+          <p className="tabular font-semibold">≈ {Math.round(score.vo2max_from_hr)}</p>
+        </div>
+      )}
     </section>
   );
 }

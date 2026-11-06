@@ -21,9 +21,9 @@ export type Experience = "new" | "returning" | "regular" | "experienced";
 
 export const EXPERIENCE_LABEL: Record<Experience, { label: string; hint: string }> = {
   new: { label: "New to running", hint: "Less than a year, or never trained to a plan" },
-  returning: { label: "Coming back", hint: "Ran before, getting going again" },
-  regular: { label: "Regular runner", hint: "A year or more of steady running" },
-  experienced: { label: "Experienced", hint: "Several years, structured training, races" },
+  returning: { label: "Coming back after a break", hint: "Ran before, getting going again" },
+  regular: { label: "Running for 1+ years", hint: "A year or more of steady running" },
+  experienced: { label: "Several years, with races", hint: "Several years, structured training, races" },
 };
 
 /** Training background the athlete tells us (athlete_profile.preferences.athlete). */

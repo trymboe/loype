@@ -52,11 +52,10 @@ export function TimeForm({ startTime }: { startTime: string | null }) {
         <label className="block">
           <span className="mb-1.5 block text-sm font-semibold">Usual start time</span>
           <input name="time" type="time" defaultValue={startTime ?? "07:00"} className="input" />
-          <span className="mt-1.5 block text-xs text-muted">Each event lasts as long as the planned workout.</span>
         </label>
       )}
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      {state.ok && <p className="text-sm text-good">Saved. Calendar apps pick it up on their next refresh.</p>}
+      {state.ok && <p className="text-sm text-good">Saved</p>}
       <button disabled={pending} className="btn btn-secondary btn-block">
         {pending ? "Saving…" : "Save"}
       </button>

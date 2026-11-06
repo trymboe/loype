@@ -45,7 +45,6 @@ export default async function GuidePage({ searchParams }: { searchParams: Promis
       <PageHeader
         eyebrow={first ? "Welcome" : "Guide"}
         title={first ? "Welcome to Løype" : "How Løype works"}
-        subtitle="A running coach that plans your training from the runs you actually do, and adjusts as you go."
       />
       <div className="stagger space-y-3">
         <Card>

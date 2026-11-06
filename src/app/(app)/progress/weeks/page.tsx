@@ -28,10 +28,7 @@ export default async function WeeklyRecapsPage() {
     return (
       <>
         <PageHeader back={{ href: "/progress", label: "Progress" }} title="Weekly recaps" />
-        <EmptyState icon={<CalendarRange size={22} />} title="No recaps yet">
-          After each week, Løype reviews how it went and saves your estimates, so you can compare them over time. The first one appears on your first visit
-          of next week.
-        </EmptyState>
+        <EmptyState icon={<CalendarRange size={22} />} title="No recaps yet" />
       </>
     );
   }
@@ -50,14 +47,10 @@ export default async function WeeklyRecapsPage() {
 
   return (
     <>
-      <PageHeader
-        back={{ href: "/progress", label: "Progress" }}
-        title="Weekly recaps"
-        subtitle="Every week's review, and the estimates as they stood at the time, saved so you can see how they moved."
-      />
+      <PageHeader back={{ href: "/progress", label: "Progress" }} title="Weekly recaps" />
       <div className="stagger space-y-3">
         <Card className="px-0 pb-3">
-          <CardHeader title="Estimate history" aside="newest first" className="px-5" />
+          <CardHeader title="Estimate history" className="px-5" />
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[34rem] text-[0.8125rem] tabular-nums">
               <thead>
@@ -98,7 +91,6 @@ export default async function WeeklyRecapsPage() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 px-5 text-xs leading-snug text-muted">Green: better than the week before. Amber: worse. Fitness is your 6-week training load (CTL).</p>
         </Card>
 
         <Card className="py-2">

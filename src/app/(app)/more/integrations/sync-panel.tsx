@@ -20,10 +20,7 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
     <div className="space-y-3">
       <div className="card p-5">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="section-title">Sync now</p>
-            <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Fetches new runs since your latest import. Runs automatically every 30 minutes.</p>
-          </div>
+          <p className="section-title">Sync new runs</p>
           <button onClick={() => drive({ action: "sync" })} disabled={busy} className="btn btn-secondary shrink-0">
             <RefreshCw size={16} className={clsx(busy && "animate-spin")} />
             {busy ? "Syncing" : "Sync"}
@@ -32,10 +29,7 @@ export function SyncPanel({ initialJobs }: { initialJobs: Job[] }) {
       </div>
 
       <div className="card p-5">
-        <p className="section-title">Import history</p>
-        <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">
-          Import at least 12–16 weeks; 6–12 months gives a much better baseline. Re-importing is safe: runs already imported are skipped.
-        </p>
+        <p className="section-title">Import runs since</p>
         <div className="mt-4 flex gap-2">
           <input
             type="date"

@@ -117,25 +117,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           {d && (
             <Link href="/plan/race" className="-mx-1 mt-5 flex items-center gap-2 rounded-xl px-1 py-1 text-sm font-medium hover:bg-surface-2/50">
               <Flag size={15} className="text-accent" />
-              <span className="flex-1">Race page: prediction, pacing plan and course</span>
+              <span className="flex-1">Race plan and pacing</span>
               <ChevronRight size={16} className="text-subtle" />
             </Link>
           )}
-          <details className="mt-4 border-t border-[var(--hairline)] pt-4 text-sm">
-            <summary className="cursor-pointer font-medium text-accent">How this plan was built</summary>
-            <ul className="mt-3 list-disc space-y-1.5 pl-5 leading-snug text-muted marker:text-subtle">
-              {(plan.summary as string[]).map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-              {plan.config?.refreshedWeek === thisWeek && (
-                <li>Recalculated this week from what you actually ran, so the coming weeks follow your real load. See History to compare or restore.</li>
-              )}
-              <li>
-                Built from your last 4 weeks ({baseline.weeklyMinutes} min/week, {baseline.runsPerWeek} runs/week) and{" "}
-                {baseline.vdot ? `your fitness estimate (VDOT ${baseline.vdot.toFixed(1)}, ${baseline.vdotConfidence} confidence)` : "heart-rate zones (no fitness estimate yet)"}.
-              </li>
-            </ul>
-          </details>
           {(plan.warnings as string[]).length > 0 && (
             <ul className="mt-3 space-y-1">
               {(plan.warnings as string[]).map((w, i) => (
@@ -318,7 +303,7 @@ async function NoPlan({ userId, today }: { userId: string; today: string }) {
   const defaults = await defaultsFor(userId, today, baseline);
   return (
     <>
-      <PageHeader title="Plan" subtitle="Set a goal and Løype builds a plan from your actual training." />
+      <PageHeader title="Plan" />
       <div className="stagger space-y-3">
         <BaselineCard b={baseline} />
         <Card>

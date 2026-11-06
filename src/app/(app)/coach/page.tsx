@@ -30,7 +30,7 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Coach"
-        subtitle={current ? current.title : "Talk through your training. It can change your plan for you."}
+        subtitle={current?.title}
         action={
           <div className="flex shrink-0 gap-2">
             {conversations.length > 0 && (
@@ -99,9 +99,6 @@ function NeedsKey() {
           <KeyRound size={20} />
         </div>
         <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Add an OpenAI API key to turn on the coach</p>
-        <p className="mt-1 text-sm leading-relaxed text-muted">
-          The coach talks with you about your runs, fitness, plan and routes, and changes your plan when you ask. It runs on OpenAI&apos;s GPT-6 Luna, which needs an API key stored on the server.
-        </p>
         <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-fg-2 marker:text-subtle">
           <li>
             Create a key at{" "}

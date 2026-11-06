@@ -1,6 +1,6 @@
 import { decideProposalAction, undoProposalAction } from "@/app/(app)/plan/actions";
 import { formatDay } from "@/lib/dates";
-import { RULE_DETAIL, type Change, type Rule } from "@/lib/planning/adapt";
+import type { Change } from "@/lib/planning/adapt";
 
 export interface ProposalRow {
   id: string;
@@ -27,26 +27,6 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
             <li key={i}>{e}</li>
           ))}
         </ul>
-      )}
-      {RULE_DETAIL[p.rule as Rule] && (
-        <details className="mt-3 text-sm">
-          <summary className="cursor-pointer font-medium text-accent">Explain further</summary>
-          <dl className="mt-2 space-y-2 text-xs leading-relaxed">
-            {(
-              [
-                ["What it looks at", RULE_DETAIL[p.rule as Rule].looksAt],
-                ["Why it matters", RULE_DETAIL[p.rule as Rule].why],
-                ["The evidence", RULE_DETAIL[p.rule as Rule].evidence],
-                ["If you keep your plan", RULE_DETAIL[p.rule as Rule].ifKept],
-              ] as const
-            ).map(([k, v]) => (
-              <div key={k}>
-                <dt className="font-semibold text-fg-2">{k}</dt>
-                <dd className="text-muted">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </details>
       )}
       {pending ? (
         <>
