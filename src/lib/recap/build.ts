@@ -15,7 +15,7 @@ import { fmtDist, fmtTime, type Confidence } from "../analytics/fitness/estimate
 import { formatPace } from "../units";
 import { WORKOUT_LABEL, type Phase, type PlanWeek, type WorkoutType } from "../planning/types";
 
-export const RECAP_VERSION = "recap@1";
+export const RECAP_VERSION = "recap@2";
 
 /* ------------------------------------------------------------------ */
 /* Estimate snapshot                                                   */
@@ -262,13 +262,6 @@ export interface RecapWorkout {
   actualS?: number | null;
 }
 
-export interface RecapVersion {
-  version: number;
-  reason: string;
-  createdBy: string;
-  createdAt: string;
-}
-
 export interface RecapSession {
   date: string;
   type: string;
@@ -288,6 +281,8 @@ export interface WeekRecap {
   typical: { runs: number; minutes: number; km: number } | null;
   /** weekly km, last 8 weeks ending with this one, oldest first */
   weeklyKm: { weekStart: string; km: number }[];
+  /** where this week's km ranks among the last 8 weeks (1 = most), and the last week with more */
+  rank: { position: number; of: number; lastBiggerWeek: string | null } | null;
   plan: {
     weekIndex: number;
     totalWeeks: number;
@@ -301,18 +296,8 @@ export interface WeekRecap {
     keyDone: number;
     keyTotal: number;
   } | null;
-  next: {
-    weekStart: string;
-    weekIndex: number;
-    phase: Phase;
-    targetMinutes: number;
-    sessions: number;
-    longestMin: number;
-    /** next week's target vs the week reviewed, minutes */
-    changeMinutes: number;
-  } | null;
-  /** plan versions created during the week and up to the review */
-  adjustments: { at: string; reason: string; by: string }[];
+  /** predicted goal-race time at the end of each recent week, oldest first */
+  raceTrend: { weekStart: string; timeS: number }[];
   /** previous snapshot the changes are measured from */
   comparedWith: { weekStart: string | null; asOf: string | null; source: "recap" | "history" } | null;
   changes: EstimateChange[];
@@ -326,25 +311,22 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 
 export function buildWeekRecap(input: {
   weekStart: string;
-  /** runs from at least 4 weeks before the week through its end */
+  /** runs from at least 7 weeks before the week through its end */
   runs: RecapRun[];
   planWeeks: PlanWeek[] | null;
   /** workouts of the reviewed week (rest days included or not) */
   workouts: RecapWorkout[];
-  /** workouts of the following week */
-  nextWorkouts: RecapWorkout[];
-  versions: RecapVersion[];
+  raceTrend?: { weekStart: string; timeS: number }[];
   current: EstimateSnapshot;
   previous: EstimateSnapshot | null;
   comparedWith: WeekRecap["comparedWith"];
 }): WeekRecap {
   const ws = weekStart(input.weekStart);
   const we = addDaysIso(ws, 6);
-  const weekKey = (d: string) => weekStart(d);
   const weeks = Array.from({ length: 8 }, (_, i) => addDaysIso(ws, -7 * (7 - i)));
   const agg = new Map(weeks.map((w) => [w, { runs: 0, s: 0, m: 0, longest: 0 }]));
   for (const r of input.runs) {
-    const a = agg.get(weekKey(r.date));
+    const a = agg.get(weekStart(r.date));
     if (!a) continue;
     a.runs += 1;
     a.s += r.movingS ?? 0;
@@ -362,6 +344,15 @@ export function buildWeekRecap(input: {
         km: r1(before.reduce((s, a) => s + a.m, 0) / before.length / 1000),
       }
     : null;
+  const weeklyKm = weeks.map((w) => ({ weekStart: w, km: r1(agg.get(w)!.m / 1000) }));
+  const rank =
+    hadHistory && volume.runs
+      ? {
+          position: 1 + weeklyKm.slice(0, 7).filter((w) => w.km > volume.km).length,
+          of: weeklyKm.length,
+          lastBiggerWeek: weeklyKm.slice(0, 7).filter((w) => w.km > volume.km).at(-1)?.weekStart ?? null,
+        }
+      : null;
 
   // plan: planned vs done
   const pw = input.planWeeks?.find((w) => w.start === ws) ?? null;
@@ -394,47 +385,27 @@ export function buildWeekRecap(input: {
         }
       : null;
 
-  const nextStart = addDaysIso(ws, 7);
-  const nw = input.planWeeks?.find((w) => w.start === nextStart) ?? null;
-  const nextRuns = input.nextWorkouts.filter((w) => w.type !== "rest" && w.date >= nextStart && w.date <= addDaysIso(nextStart, 6));
-  const next = nw
-    ? {
-        weekStart: nextStart,
-        weekIndex: nw.index,
-        phase: nw.phase,
-        targetMinutes: nw.targetMinutes,
-        sessions: nextRuns.length,
-        longestMin: Math.round(Math.max(0, ...nextRuns.map((w) => w.durationS)) / 60),
-        changeMinutes: nw.targetMinutes - (pw?.targetMinutes ?? volume.minutes),
-      }
-    : null;
-
-  const adjustments = input.versions
-    .filter((v) => v.createdAt.slice(0, 10) >= ws)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .map((v) => ({ at: v.createdAt, reason: v.reason, by: v.createdBy }));
-
   const changes = compareEstimates(input.previous, input.current);
 
   // injury safety: a week far above your usual load is worth flagging, whatever the plan said
   let caution: string | null = null;
   if (typical && typical.minutes >= 30 && volume.minutes > typical.minutes * 1.3) {
-    caution = `This week was ${Math.round((volume.minutes / typical.minutes - 1) * 100)} % above your 4-week average (${typical.minutes} min). Keep the next few runs easy and watch for niggles.`;
+    caution = `${Math.round((volume.minutes / typical.minutes - 1) * 100)} % above your 4-week average. Keep the next few runs easy.`;
   } else if (input.current.rampRate != null && input.current.rampRate > 8) {
-    caution = `Your training load is rising fast (ramp ${r1(input.current.rampRate)} per week). An easier few days lowers the injury risk.`;
+    caution = "Training load is rising fast. An easier few days lowers the injury risk.";
   }
 
-  const { headline, points } = narrate({ volume, typical, plan, next, adjustments, changes, current: input.current });
+  const { headline, points } = narrate({ volume, plan });
   return {
     version: RECAP_VERSION,
     weekStart: ws,
     weekEnd: we,
     volume,
     typical,
-    weeklyKm: weeks.map((w) => ({ weekStart: w, km: r1(agg.get(w)!.m / 1000) })),
+    weeklyKm,
+    rank,
     plan,
-    next,
-    adjustments,
+    raceTrend: (input.raceTrend ?? []).filter((p) => p.weekStart <= ws).sort((a, b) => a.weekStart.localeCompare(b.weekStart)).slice(-8),
     comparedWith: input.previous ? input.comparedWith : null,
     changes,
     caution,
@@ -443,8 +414,8 @@ export function buildWeekRecap(input: {
   };
 }
 
-function narrate(r: Pick<WeekRecap, "volume" | "typical" | "plan" | "next" | "adjustments" | "changes"> & { current: EstimateSnapshot }): { headline: string; points: string[] } {
-  const { volume, typical, plan, next, changes } = r;
+function narrate(r: Pick<WeekRecap, "volume" | "plan">): { headline: string; points: string[] } {
+  const { volume, plan } = r;
   const points: string[] = [];
   let headline: string;
   if (plan && plan.total > 0) {
@@ -453,43 +424,16 @@ function narrate(r: Pick<WeekRecap, "volume" | "typical" | "plan" | "next" | "ad
     else if (ratio >= 0.6) headline = `${plan.done} of ${plan.total} planned runs done`;
     else if (plan.done > 0) headline = `A lighter week: ${plan.done} of ${plan.total} runs`;
     else headline = volume.runs ? "Off-plan week" : "A week off";
-    if (plan.keyTotal) points.push(`${plan.keyDone} of ${plan.keyTotal} key session${plan.keyTotal === 1 ? "" : "s"} done.`);
-    if (plan.targetMinutes > 0) {
-      const pct = Math.round((volume.minutes / plan.targetMinutes) * 100);
-      points.push(`${volume.minutes} min of running against a plan of ${plan.targetMinutes} min (${pct} %).`);
-    }
+    if (plan.keyTotal) points.push(`${plan.keyDone} of ${plan.keyTotal} key session${plan.keyTotal === 1 ? "" : "s"} done`);
   } else if (volume.runs === 0) {
     headline = "A week off";
   } else {
     headline = `${volume.runs} run${volume.runs === 1 ? "" : "s"}, ${volume.km} km`;
   }
-  if (typical && typical.minutes > 0 && volume.runs > 0) {
-    const d = volume.minutes - typical.minutes;
-    const pct = Math.round((d / typical.minutes) * 100);
-    points.push(
-      Math.abs(pct) < 10
-        ? `About your usual volume (${typical.km} km a week over the last 4 weeks).`
-        : `${Math.abs(pct)} % ${d > 0 ? "more" : "less"} running than your 4-week average (${typical.km} km).`,
-    );
-  }
-  const vdot = changes.find((c) => c.key === "vdot");
-  if (vdot && vdot.direction !== "same")
-    points.push(`Your fitness estimate ${vdot.direction === "better" ? "rose" : "dropped"} from ${vdot.before.toFixed(1)} to ${vdot.after.toFixed(1)}.`);
-  const goal = changes.find((c) => c.key === "race_goal");
-  if (goal && goal.direction !== "same")
-    points.push(`${goal.label.replace(/: predicted$/, "")} prediction ${goal.direction === "better" ? "improved" : "slowed"} by ${fmtTime(Math.abs(goal.delta))}, now ${fmtTime(goal.after)}.`);
-  if (r.adjustments.length) {
-    const weekly = r.adjustments.find((a) => a.reason.startsWith("Weekly update"));
-    points.push(weekly ? "The plan was recalculated from your actual running." : `The plan was changed ${r.adjustments.length === 1 ? "once" : `${r.adjustments.length} times`}.`);
-  }
-  if (next) {
-    const verb = next.changeMinutes > 5 ? `up ${next.changeMinutes} min` : next.changeMinutes < -5 ? `down ${-next.changeMinutes} min` : "about the same";
-    points.push(`Next week: ${next.targetMinutes} min over ${next.sessions} run${next.sessions === 1 ? "" : "s"} (${verb}).`);
-  }
   return { headline, points };
 }
 
-/** Human label for who changed the plan. */
-export const ADJUSTED_BY: Record<string, string> = { generator: "Plan created", athlete: "You", adaptation: "Løype" };
+/** Changes shown as key metrics (the rest are "other estimates"). */
+export const KEY_METRICS = ["race_goal", "race_projection", "vdot", "ctl", "threshold_pace"];
 
 export { fmtDist };

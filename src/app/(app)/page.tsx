@@ -108,7 +108,7 @@ export default async function TodayPage() {
       <SyncBanner integration={integration} strava={strava} />
       {recap && !recap.seen_at && (
         <RecapDialog weekStart={recap.week_start} title="Last week">
-          <RecapView recap={recap.recap} estimates={recap.estimates} compact />
+          <RecapView recap={recap.recap} estimates={recap.estimates} today={today} compact />
         </RecapDialog>
       )}
 

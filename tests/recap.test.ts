@@ -107,7 +107,7 @@ function addDays(d: string, n: number) {
 }
 
 describe("buildWeekRecap", () => {
-  it("compares planned with done and describes the next week", () => {
+  it("compares planned with done, ranks the week and keeps the text short", () => {
     const r = buildWeekRecap({
       weekStart: WEEK,
       runs: [...history(), { date: "2026-11-03", movingS: 2400, distanceM: 7000 }, { date: "2026-11-08", movingS: 3600, distanceM: 10_000 }],
@@ -118,13 +118,11 @@ describe("buildWeekRecap", () => {
         { date: "2026-11-08", type: "long", title: "Long run", status: "completed", key: true, durationS: 3600, actualS: 3600 },
         { date: "2026-11-07", type: "rest", title: "Rest", status: "planned", key: false, durationS: 0 },
       ],
-      nextWorkouts: [
-        { date: "2026-11-10", type: "easy", title: "Easy", status: "planned", key: false, durationS: 2400 },
-        { date: "2026-11-15", type: "long", title: "Long", status: "planned", key: true, durationS: 4200 },
-      ],
-      versions: [
-        { version: 1, reason: "Plan created", createdBy: "generator", createdAt: "2026-10-20T10:00:00Z" },
-        { version: 4, reason: "Weekly update: the coming weeks were recalculated", createdBy: "adaptation", createdAt: "2026-11-09T00:10:00Z" },
+      raceTrend: [
+        { weekStart: "2026-10-19", timeS: 2760 },
+        { weekStart: WEEK, timeS: 2705 },
+        { weekStart: "2026-11-09", timeS: 2600 },
+        { weekStart: "2026-10-26", timeS: 2740 },
       ],
       current: snapshotFromModel(model(42, 30), null, null),
       previous: snapshotFromModel(model(41.5, 29), null, null),
@@ -138,11 +136,11 @@ describe("buildWeekRecap", () => {
     expect(r.plan!.keyDone).toBe(1);
     expect(r.plan!.keyTotal).toBe(2);
     expect(r.headline).toBe("2 of 3 planned runs done");
-    expect(r.next).toMatchObject({ targetMinutes: 135, sessions: 2, longestMin: 70, changeMinutes: 15, phase: "build" });
-    // only changes from the reviewed week on
-    expect(r.adjustments).toHaveLength(1);
-    expect(r.points.some((p) => p.includes("recalculated"))).toBe(true);
-    expect(r.points.some((p) => p.includes("rose from 41.5 to 42.0"))).toBe(true);
+    expect(r.points).toEqual(["1 of 2 key sessions done"]);
+    // later weeks are dropped, the rest sorted
+    expect(r.raceTrend.map((p) => p.weekStart)).toEqual(["2026-10-19", "2026-10-26", WEEK]);
+    // 17 km: the 4 weeks before had 21 km, the 3 before those none
+    expect(r.rank).toEqual({ position: 5, of: 8, lastBiggerWeek: "2026-10-26" });
     expect(r.weeklyKm).toHaveLength(8);
     expect(r.weeklyKm.at(-1)).toEqual({ weekStart: WEEK, km: 17 });
     expect(r.caution).toBeNull();
@@ -154,14 +152,13 @@ describe("buildWeekRecap", () => {
       runs: [...history(), { date: "2026-11-03", movingS: 4800, distanceM: 13_000 }, { date: "2026-11-06", movingS: 4800, distanceM: 13_000 }],
       planWeeks: null,
       workouts: [],
-      nextWorkouts: [],
-      versions: [],
       current: snapshotFromModel(model(42, 30), null, null),
       previous: null,
       comparedWith: null,
     });
     expect(r.plan).toBeNull();
     expect(r.caution).toMatch(/33 % above your 4-week average/);
+    expect(r.rank!.position).toBe(1);
     expect(r.headline).toBe("2 runs, 26 km");
     expect(r.changes).toEqual([]);
   });
@@ -172,8 +169,6 @@ describe("buildWeekRecap", () => {
       runs: history(),
       planWeeks: null,
       workouts: [],
-      nextWorkouts: [],
-      versions: [],
       current: snapshotFromModel(null, null, null),
       previous: null,
       comparedWith: null,
@@ -220,6 +215,9 @@ describe("ensureWeeklyRecap", () => {
     expect(row.recap.comparedWith!.source).toBe("history");
     expect(row.recap.changes.find((c) => c.key === "vdot")!.before).toBe(41);
     expect(row.recap.changes.find((c) => c.key === "race_goal")!.before).toBe(3200);
+    // trend: the model history's 10k for the week before, then this week's prediction
+    expect(row.recap.raceTrend.map((p) => p.weekStart)).toEqual(["2026-10-26", WEEK]);
+    expect(row.recap.raceTrend[0].timeS).toBe(3200);
 
     // a second call returns the same row
     const again = (await ensureWeeklyRecap(db as any, "u", "2026-11-11"))!;
@@ -240,6 +238,21 @@ describe("ensureWeeklyRecap", () => {
     const v = next.recap.changes.find((c) => c.key === "vdot")!;
     expect(v.before).toBe(42);
     expect(v.after).toBe(43);
+  });
+
+  it("rebuilds an older-format recap, keeps its estimates and shows it again", async () => {
+    const db = seed();
+    const first = (await ensureWeeklyRecap(db as any, "u", "2026-11-09"))!;
+    const stored = db.rows("weekly_recaps")[0];
+    stored.recap = { ...stored.recap, version: "recap@1", adjustments: [{ at: "x", reason: "Weekly update", by: "adaptation" }] };
+    stored.seen_at = "2026-11-09T08:00:00Z";
+    db.rows("fitness_state")[0].output = model(50, 60);
+    const again = (await ensureWeeklyRecap(db as any, "u", "2026-11-10"))!;
+    expect(again.recap.version).toBe("recap@2");
+    expect((again.recap as any).adjustments).toBeUndefined();
+    expect(again.seen_at).toBeNull();
+    expect(again.estimates.vdot!.value).toBe(first.estimates.vdot!.value);
+    expect(db.rows("weekly_recaps")).toHaveLength(1);
   });
 
   it("makes nothing for an account with no runs and no plan", async () => {
