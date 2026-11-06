@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayIn } from "../dates";
 import { recomputeFitness, type RecomputeResult } from "../fitness/service";
 import { runPlanMaintenance } from "../planning/service";
+import { ensureWeeklyRecap } from "../recap/service";
 import { decryptSecret, encryptSecret, fingerprint } from "../crypto/secretbox";
 import { env } from "../env";
 import { GarminAuthError, GarminPersonalApiClient, type TokenStore } from "../integrations/garmin/client";
@@ -161,6 +162,14 @@ export async function syncTickForUser(
       plan = await runPlanMaintenance(db, userId, todayIn(tz));
     } catch (e) {
       plan = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  // Weekly recap and estimate snapshot for the week that just ended (once a week; a no-op otherwise).
+  if (plan && !("error" in plan) && Date.now() < deadline) {
+    try {
+      await ensureWeeklyRecap(db, userId, todayIn(tz));
+    } catch {
+      // the first visit of the week creates it instead
     }
   }
   return { ...result, fitness, plan };
