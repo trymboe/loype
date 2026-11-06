@@ -185,7 +185,7 @@ function RaceCard({
   );
 }
 
-/** Predicted race time per week; lower is better, so faster is drawn higher. */
+/** Predicted race time per week, drawn as time: a faster prediction makes the line go down. */
 function Sparkline({ points, target }: { points: { weekStart: string; timeS: number }[]; target: number | null }) {
   const W = 300;
   const H = 56;
@@ -194,7 +194,7 @@ function Sparkline({ points, target }: { points: { weekStart: string; timeS: num
   const hi = Math.max(...vals);
   const span = Math.max(1, hi - lo);
   const x = (i: number) => 4 + (i / (points.length - 1)) * (W - 8);
-  const y = (t: number) => 6 + ((t - lo) / span) * (H - 12);
+  const y = (t: number) => 6 + ((hi - t) / span) * (H - 12);
   const d = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.timeS).toFixed(1)}`).join(" ");
   const last = points[points.length - 1];
   return (
