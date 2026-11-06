@@ -18,7 +18,7 @@ export default async function RoutesPage() {
   );
   return (
     <>
-      <PageHeader title="Routes" subtitle="Plan runs on the map, save favourites and export GPX." action={routes.length ? newBtn : undefined} />
+      <PageHeader title="Routes" action={routes.length ? newBtn : undefined} />
       {routes.length === 0 ? (
         <EmptyState
           icon={<MapIcon size={22} />}
@@ -28,9 +28,7 @@ export default async function RoutesPage() {
               <Plus size={16} /> Plan a route
             </Link>
           }
-        >
-          Draw a route that follows paths and trails, or let Løype generate a loop of the distance you want. You can also save any recorded run as a route from its page.
-        </EmptyState>
+        />
       ) : (
         <ul className="card rise divide-hairline overflow-hidden">
           {routes.map((r) => (

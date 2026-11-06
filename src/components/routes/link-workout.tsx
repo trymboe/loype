@@ -40,7 +40,7 @@ export function LinkWorkout({ routeId, workouts }: { routeId: string; workouts: 
           No upcoming workouts in your plan. <Link href="/plan" className="font-semibold text-accent">Open the plan</Link>
         </p>
       ) : shown.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">Link this route to an upcoming session so it shows up on the workout.</p>
+        null
       ) : (
         <ul className="mt-3 space-y-1.5">
           {shown.map((w) => (

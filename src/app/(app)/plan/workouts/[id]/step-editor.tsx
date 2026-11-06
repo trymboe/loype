@@ -233,9 +233,6 @@ export function StepEditor({ id, initial }: { id: string; initial: EditableStep[
           Cancel
         </button>
       </div>
-      <p className="text-xs leading-relaxed text-muted">
-        Intensities use the paces and heart rates from your current fitness. Tick “own pace” to set your own. Løype checks the result against the plan’s safety rules before saving.
-      </p>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm font-medium text-good">Saved.</p>}
     </form>

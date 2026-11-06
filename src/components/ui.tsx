@@ -94,12 +94,12 @@ export function CardHeader({ title, aside, className }: { title: ReactNode; asid
   );
 }
 
-export function EmptyState({ title, children, action, icon }: { title: string; children: ReactNode; action?: ReactNode; icon?: ReactNode }) {
+export function EmptyState({ title, children, action, icon }: { title: string; children?: ReactNode; action?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="card rise px-6 py-8 text-center">
       {icon && <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-surface-2 text-muted">{icon}</div>}
       <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">{title}</p>
-      <div className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-muted text-pretty">{children}</div>
+      {children && <div className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-muted text-pretty">{children}</div>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );

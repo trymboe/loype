@@ -150,7 +150,7 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
       <div className="card p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="tabular flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.8125rem] font-medium">
-            {hover ? (
+            {hover && (
               <>
                 <span className="text-muted">{xMode === "distance" ? `${hover.d.toFixed(2)} km` : formatDuration(hover.t)}</span>
                 {hasPace && <span style={{ color: "var(--pace)" }}>{formatPace(hover.pace)} /km</span>}
@@ -158,8 +158,6 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
                 {hasCad && <span style={{ color: "var(--cadence)" }}>{hover.cad ?? "–"} spm</span>}
                 {hasAlt && <span className="text-muted">{hover.alt != null ? `${Math.round(hover.alt)} m` : "–"}</span>}
               </>
-            ) : (
-              <span className="font-normal text-muted">Touch the charts to inspect</span>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -183,7 +181,6 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
           </div>
         </div>
 
-        {selecting && !range && <p className="-mt-2 mb-3 text-xs font-medium text-accent">Drag across a chart to select a stretch of the run.</p>}
         {selection && (
           <div className="-mt-1 mb-4 rounded-xl bg-accent/8 p-3" data-testid="selection-summary">
             <div className="flex items-center justify-between gap-2">
@@ -275,7 +272,6 @@ export function ActivityExplorer({ points, laps }: { points: ChartPoint[]; laps:
           <div className="flex items-center justify-between gap-3 px-5 pt-5">
             <h2 className="section-title">Laps</h2>
             <div className="flex items-center gap-2">
-              <span className="hidden text-xs text-muted sm:inline">{comparing ? "Pick laps to compare" : "Tap a lap to highlight it"}</span>
               <button
                 type="button"
                 aria-pressed={comparing}

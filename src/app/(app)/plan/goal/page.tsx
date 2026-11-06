@@ -42,7 +42,7 @@ export default async function GoalPage() {
 
   return (
     <>
-      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Goal" subtitle="Change your target without touching your workouts, or adjust how you train." />
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Goal" />
       <div className="stagger space-y-3">
         <Card>
           <dl className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4">
@@ -53,7 +53,6 @@ export default async function GoalPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-4 text-xs leading-relaxed text-muted">The goal type, race date and length shape the whole plan, so they can only change with a new plan.</p>
         </Card>
         <Card>
           <GoalForm

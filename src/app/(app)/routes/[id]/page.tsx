@@ -59,7 +59,7 @@ export default async function RoutePage({ params }: { params: Promise<{ id: stri
           <Stat label="Descent" value={r.elevation_loss_m != null ? `−${Math.round(r.elevation_loss_m)}` : "–"} unit="m" />
         </section>
         <RouteView coords={r.coords} elevations={r.elevations} gps={r.source === "activity"} />
-        {r.elevations == null && <p className="px-1 text-xs text-muted">Elevation couldn&apos;t be looked up for this route.</p>}
+        {r.elevations == null && <p className="px-1 text-xs text-muted">Elevation unavailable</p>}
         <RouteActions id={r.id} name={r.name} favorite={r.favorite} editable={r.source !== "activity"} coords={r.coords} />
         <LinkWorkout routeId={r.id} workouts={workouts} />
         {r.activity_id && (
@@ -69,10 +69,6 @@ export default async function RoutePage({ params }: { params: Promise<{ id: stri
             </Link>
           </p>
         )}
-        <p className="px-1 text-xs leading-relaxed text-muted">
-          Your vívoactive 5 can&apos;t navigate courses, so routes stay in Løype. Open it in Google Maps for turn-by-turn directions on your phone, or export GPX for other apps.
-          {r.routing_provider && ` Paths from ${r.routing_provider}.`}
-        </p>
       </div>
     </>
   );

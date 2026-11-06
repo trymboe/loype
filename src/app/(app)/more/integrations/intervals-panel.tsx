@@ -13,7 +13,7 @@ export function IntervalsKeyForm({ replacing }: { replacing: boolean }) {
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-semibold">
-          Athlete ID <span className="font-normal text-muted">(optional, e.g. i123456)</span>
+          Athlete ID (optional)
         </span>
         <input name="athleteId" autoComplete="off" className="input font-mono" placeholder="i123456" />
       </label>
@@ -22,7 +22,6 @@ export function IntervalsKeyForm({ replacing }: { replacing: boolean }) {
       <button disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Checking with Intervals.icu…" : replacing ? "Replace key" : "Connect Intervals.icu"}
       </button>
-      <p className="text-xs text-muted">The key is encrypted before it is stored and never sent to your browser again.</p>
     </form>
   );
 }

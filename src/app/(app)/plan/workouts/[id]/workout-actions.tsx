@@ -43,7 +43,6 @@ export function WorkoutActions({ id, date, today, locked, status, type }: { id: 
         {type !== "rest" && type !== "race" && <Op op="rest">Make it rest</Op>}
         <Op op={locked ? "unlock" : "lock"}>{locked ? "Unlock" : "Lock"}</Op>
       </form>
-      <p className="text-xs leading-relaxed text-muted">Locked workouts are never changed by adaptation suggestions. Every change is saved in the plan history and can be restored.</p>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm font-medium text-good">Saved.</p>}
     </section>

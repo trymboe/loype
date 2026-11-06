@@ -19,7 +19,6 @@ export function StravaAppForm({ replacing }: { replacing: boolean }) {
       <button disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Opening Strava…" : replacing ? "Save and reconnect" : "Connect Strava"}
       </button>
-      <p className="text-xs text-muted">The secret is encrypted before it is stored and never sent to your browser again. Løype only asks Strava for read access.</p>
     </form>
   );
 }

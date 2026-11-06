@@ -67,7 +67,7 @@ function CodeForm({ email }: { email: string }) {
   return (
     <form action={action} className="space-y-3">
       <p className="text-sm text-muted">
-        If that address belongs to this app, an email is on its way. Open its link in this same browser. Once signed in, set a password under More → Password so you won&apos;t need emails again. If the email also shows a code, you can enter it below instead.
+        Check your email and open the link in this browser, or enter the code.
       </p>
       <input type="hidden" name="email" value={email} />
       <input

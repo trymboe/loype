@@ -41,12 +41,12 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
               </Field>
             )}
             {RACE.includes(kind) && (
-              <Field label="Target time" hint="Optional, h:mm:ss or mm:ss">
+              <Field label="Target time (optional)">
                 <input name="target_time" defaultValue={initial.targetTime} className="input" placeholder="h:mm:ss" />
               </Field>
             )}
             {kind === "volume" && (
-              <Field label="Weekly distance to build to" hint="Optional">
+              <Field label="Weekly km goal (optional)">
                 <input name="target_weekly_km" defaultValue={initial.targetWeeklyKm} inputMode="decimal" className="input" placeholder="km per week" />
               </Field>
             )}
@@ -55,7 +55,7 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
       )}
 
       <section className="space-y-3">
-        <h2 className="section-title">Which days could you run?</h2>
+        <h2 className="section-title">Days you can run</h2>
         <div className="grid grid-cols-7 gap-1.5">
           {DAYS.map((d, i) => (
             <label
@@ -89,7 +89,7 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
               ))}
             </select>
           </Field>
-          <Field label="Max hours per week" hint="Optional">
+          <Field label="Max hours a week (optional)">
             <input name="max_weekly_hours" defaultValue={initial.maxWeeklyHours} inputMode="decimal" className="input" placeholder="e.g. 5" />
           </Field>
         </div>
@@ -100,10 +100,6 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
         <Toggle name="long_runs" label="Include long runs" defaultChecked={initial.includeLongRuns} />
         <Toggle name="strides" label="Include strides on easy days" defaultChecked={initial.includeStrides} />
       </section>
-
-      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-        A new target time or name keeps every workout as it is. Changing days, runs per week or the other training settings recalculates the rest of the plan from today; finished, locked and edited workouts are kept.
-      </p>
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
       {state.saved && !pending && <p className="rounded-xl bg-accent/10 p-3 text-sm">{state.saved}</p>}
@@ -119,13 +115,10 @@ export function DeletePlan() {
   const [pending, setPending] = useState(false);
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="section-title">Start over</h2>
-        <p className="mt-1 text-sm text-muted">To change the goal type or race date, delete this plan and make a new one. The plan, its workouts and its history are removed. Your runs are kept.</p>
-      </div>
+      <h2 className="section-title">Change goal type or race date</h2>
       {!confirming ? (
         <button type="button" onClick={() => setConfirming(true)} className="btn btn-secondary btn-block text-danger">
-          Delete plan
+          Delete plan and start over
         </button>
       ) : (
         <form action={deletePlanAction} onSubmit={() => setPending(true)} className="space-y-2 rounded-2xl bg-danger/10 p-3">

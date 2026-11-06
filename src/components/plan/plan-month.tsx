@@ -212,7 +212,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
           {short(dragged)}
         </div>
       )}
-      <p className="mt-3 text-xs leading-relaxed text-muted">E easy, L long, T threshold/tempo, I intervals, RP race pace, H hills, with minutes. Drag a planned session to another day to move it (press and hold on a phone). Tap it to open.</p>
+      <p className="mt-3 text-xs leading-relaxed text-muted">E easy · L long · T tempo · I intervals · RP race pace · H hills</p>
       {busy && <p className="mt-2 text-xs text-muted">Moving…</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       {pendingMove && (

@@ -124,7 +124,7 @@ export function payingOff(opts: { runs: MilestoneRun[]; vdot: VdotPoint[]; ef: E
     key: "consistency",
     tone: cNow >= 7 || cNow > cThen + 1 ? "good" : cNow < cThen - 1 ? "down" : "steady",
     title: `Ran in ${cNow} of ${BLOCK_WEEKS} weeks`,
-    detail: prior.length ? `${cThen} of ${BLOCK_WEEKS} in the block before` : "consistency is what builds fitness",
+    detail: prior.length ? `${cThen} of ${BLOCK_WEEKS} in the block before` : "",
     basis: "Weeks with at least one run.",
   });
 

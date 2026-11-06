@@ -1,6 +1,6 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { ChevronRight, Flag, Mountain, Trash2 } from "lucide-react";
+import { ChevronRight, Flag, Trash2 } from "lucide-react";
 import { Badge, ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { Provenance } from "@/components/fitness/fitness-section";
 import { CourseUpload } from "@/components/race/course-upload";
@@ -37,9 +37,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
     return (
       <>
         <PageHeader title="Race" back={{ href: "/plan", label: "Plan" }} />
-        <EmptyState icon={<Flag size={22} />} title="No race on the calendar" action={<ButtonLink href="/plan/goal">Set a race goal</ButtonLink>}>
-          Pick a race distance and date, and this page counts down, compares your predicted time with your target and builds a race-day pacing plan.
-        </EmptyState>
+        <EmptyState icon={<Flag size={22} />} title="No race on the calendar" action={<ButtonLink href="/plan/goal">Set a race goal</ButtonLink>} />
       </>
     );
   }
@@ -107,7 +105,6 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             {status.past ? (
               <>
                 <p className="section-title">{status.headline}</p>
-                <p className="mt-1 text-sm text-muted">{status.detail}</p>
                 <div className="mt-4">
                   <ButtonLink href="/plan/goal">Set your next goal</ButtonLink>
                 </div>
@@ -148,7 +145,6 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             {s.prediction && <Provenance confidence={s.prediction.confidence} />}
           </div>
           <p className="mt-3 text-[1.0625rem] leading-snug font-semibold tracking-[-0.01em]">{s.past ? "Your last prediction" : s.headline}</p>
-          {!s.past && <p className="mt-1 text-sm leading-relaxed text-muted">{s.detail}</p>}
           <div className="mt-5 grid grid-cols-3 gap-4">
             <Stat size="md" label="Predicted now" value={s.prediction ? fmtTime(s.prediction.timeS) : "–"} hint={s.prediction ? `${formatPace(s.prediction.timeS / (goal.distanceM / 1000))}/km` : undefined} />
             <Stat
@@ -165,18 +161,6 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             />
           </div>
           {s.prediction && <PredictionBar prediction={s.prediction} target={goal.targetTimeS} projection={projection} />}
-          <details className="mt-4 text-xs text-muted">
-            <summary className="cursor-pointer font-medium text-accent">How this is calculated</summary>
-            <p className="mt-2 leading-relaxed">
-              The prediction applies the Daniels VDOT formula to your current fitness estimate
-              {est ? ` (${est.vdot.toFixed(1)}, likely ${est.lower.toFixed(1)}–${est.upper.toFixed(1)})` : ""}. The band is that likely range.
-              {s.prediction && s.prediction.endurancePct > 0
-                ? ` It is slowed ${s.prediction.endurancePct} % because the race is much longer than your longest recent run (${fmtDist(out?.longestRecentM ?? 0)}); longer long runs remove that.`
-                : ""}
-              {s.vdotForTarget ? ` Your target corresponds to VDOT ${s.vdotForTarget}.` : ""}
-              {projection ? " The plan projection adds typical gains for the training weeks left, scaled by how many recent sessions you completed." : ""} These are estimates; a race or time trial gives the real answer.
-            </p>
-          </details>
         </Card>
 
         {(keyRows ?? []).length > 0 && !s.past && (
@@ -203,7 +187,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             <Badge>Calculated{pacing?.usesCourse ? " · course-adjusted" : ""}</Badge>
           </div>
           {!pacing ? (
-            <p className="mt-2 text-sm text-muted">Needs a target time or a fitness estimate.</p>
+            <p className="mt-2 text-sm text-muted">No target time or fitness estimate yet.</p>
           ) : (
             <>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -266,14 +250,6 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
                   })}
                 </tbody>
               </table>
-              <p className="mt-3 text-xs leading-relaxed text-muted">
-                {strategy === "negative"
-                  ? "Starts about 1 % easier and finishes about 1 % harder than even effort: the surest way to avoid fading. "
-                  : "The same effort all the way. "}
-                {pacing.usesCourse
-                  ? `Paces follow the course: climbs cost about ${(3.3).toFixed(1)} % per 1 % of grade and descents give back about half that. Equal-effort flat pace ${formatPace(pacing.flatPaceSPerKm)}/km.`
-                  : "Upload the course GPX to adjust each kilometre for hills."}
-              </p>
             </>
           )}
         </Card>
@@ -311,19 +287,10 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             </>
           ) : (
             <div className="mt-3 flex flex-col items-start gap-3">
-              <p className="flex items-start gap-2 text-sm leading-relaxed text-muted">
-                <Mountain size={18} className="mt-0.5 shrink-0" />
-                Add the course from the race website or a route planner to see the map, the elevation profile and hill-adjusted splits.
-              </p>
               <CourseUpload />
             </div>
           )}
         </Card>
-        {!goal.raceDate && (
-          <p className="px-1 text-xs text-muted">
-            No race date set. A race date shapes the whole plan, so adding one means <Link href="/plan/goal" className="text-accent">starting a new plan</Link>.
-          </p>
-        )}
       </div>
     </>
   );

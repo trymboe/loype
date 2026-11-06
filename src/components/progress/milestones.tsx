@@ -51,7 +51,6 @@ export function MilestonesCard({ milestones }: { milestones: Milestone[] }) {
           );
         })}
       </ul>
-      <p className="mt-2 text-[0.6875rem] text-subtle">From all imported runs. Best efforts only count runs with reliable GPS.</p>
     </Card>
   );
 }

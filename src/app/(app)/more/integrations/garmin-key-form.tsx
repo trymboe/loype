@@ -19,16 +19,15 @@ export function GarminKeyForm({ replacing }: { replacing: boolean }) {
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-semibold">
-          Key expires on <span className="font-normal text-muted">(optional, for reminders)</span>
+          Key expiry date (optional)
         </span>
         <input name="expiresAt" type="date" className="input" />
       </label>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      {state.ok && <p className="text-sm text-good">Connected. Garmin accepted the key.</p>}
+      {state.ok && <p className="text-sm text-good">Connected</p>}
       <button disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Verifying with Garmin…" : replacing ? "Replace key" : "Connect Garmin"}
       </button>
-      <p className="text-xs text-muted">The key is encrypted before it is stored and never sent to your browser again.</p>
     </form>
   );
 }

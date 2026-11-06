@@ -41,7 +41,6 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
             >
               <input type="radio" name="kind" value={g.kind} checked={kind === g.kind} onChange={() => setKind(g.kind)} className="sr-only" />
               <span className="block text-sm font-semibold">{g.label}</span>
-              <span className="mt-0.5 block text-xs leading-snug text-muted">{g.hint}</span>
             </label>
           ))}
         </div>
@@ -60,24 +59,23 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Race date" hint={kind === "race" ? undefined : "Optional. Without one, the plan ends with a time trial."}>
+            <Field label={kind === "race" ? "Race date" : "Race date (optional)"}>
               <input name="race_date" type="date" min={defaults.today} className={input} />
             </Field>
-            <Field label="Target time" hint="Optional, h:mm:ss or mm:ss">
+            <Field label="Target time (optional)">
               <input name="target_time" className={input} placeholder={kind === "5k" ? "24:00" : kind === "10k" ? "50:00" : kind === "half" ? "1:50:00" : "3:59:00"} />
             </Field>
           </div>
         </section>
       )}
       {kind === "volume" && (
-        <Field label="Weekly distance to build to" hint="Optional">
+        <Field label="Weekly km goal (optional)">
           <input name="target_weekly_km" inputMode="decimal" className={input} placeholder="km per week" />
         </Field>
       )}
 
       <section className="space-y-3">
-        <h2 className="section-title">Which days could you run?</h2>
-        <p className="-mt-1 text-xs text-muted">Tick every day that can work. Løype picks the best of them and keeps the rest as rest days.</p>
+        <h2 className="section-title">Days you can run</h2>
         <div className="grid grid-cols-7 gap-1.5">
           {DAYS.map((d, i) => (
             <label
@@ -109,7 +107,7 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
               ))}
             </select>
           </Field>
-          <Field label="Max hours per week" hint="Optional">
+          <Field label="Max hours a week (optional)">
             <input name="max_weekly_hours" inputMode="decimal" className={input} placeholder="e.g. 5" />
           </Field>
         </div>
@@ -121,7 +119,7 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
         <Field label="Start">
           <input name="start_date" type="date" min={defaults.today} defaultValue={defaults.today} className={input} />
         </Field>
-        <Field label="Length" hint="Used when there is no race date">
+        <Field label={isRace ? "Length if no race date" : "Length"}>
           <select name="weeks" defaultValue="12" className={input}>
             {[4, 6, 8, 10, 12, 16, 20, 24].map((w) => (
               <option key={w} value={w}>
@@ -156,7 +154,6 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
 export function FrequencyPicker({
   dayCount,
   recentRuns,
-  runMinutes,
   initialFixed = null,
   initialUsual = "",
 }: {
@@ -172,7 +169,7 @@ export function FrequencyPicker({
   return (
     <div className="space-y-3">
       <div>
-        <span className="mb-1.5 block text-sm font-semibold">Runs per week</span>
+        <span className="mb-1.5 block text-sm font-semibold">Runs per week in the plan</span>
         <div className="grid grid-cols-8 gap-1.5">
           {options.map((o) => {
             const tooMany = o != null && o > dayCount;
@@ -193,22 +190,10 @@ export function FrequencyPicker({
           })}
         </div>
       </div>
-      {fixed == null ? (
-        <>
-          <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-            {noHistory
-              ? "No runs synced lately, so tell Løype how often you run now and it starts from there. "
-              : `Auto: you have averaged ${recentRuns} runs a week lately${runMinutes ? `, usually about ${runMinutes} min each` : ""}, so the plan starts from that. `}
-            Auto picks one run more than you do now (at least 3) and keeps it. Your long run starts from your recent long runs and easy runs from your usual run, and each week it is recalculated from what you actually ran.
-          </p>
-          <Field label="How often do you run now?" hint={noHistory ? "Times per week. Leave empty if you're starting from scratch." : "Optional. Replaces the measured frequency, e.g. if not all your runs are synced."}>
-            <input name="usual_runs" inputMode="decimal" defaultValue={initialUsual} className="input" placeholder={noHistory ? "e.g. 2" : String(recentRuns)} />
-          </Field>
-        </>
-      ) : (
-        <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-          {fixed} run{fixed === 1 ? "" : "s"} a week, spread over the days you ticked. If that is more than you run now, the plan starts with fewer and adds runs as your weekly running grows, so no run is too short to be worth doing.
-        </p>
+      {fixed == null && (
+        <Field label={noHistory ? "Runs a week right now" : "Runs a week right now (optional)"}>
+          <input name="usual_runs" inputMode="decimal" defaultValue={initialUsual} className="input" placeholder={noHistory ? "e.g. 2" : String(recentRuns)} />
+        </Field>
       )}
     </div>
   );
@@ -223,32 +208,31 @@ export function Toggle({ name, label, defaultChecked = true }: { name: string; l
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold">{label}</span>
       {children}
-      {hint && <span className="mt-1.5 block text-xs leading-snug text-muted">{hint}</span>}
     </label>
   );
 }
 
 const VOLUME_OPTIONS = [
-  { v: "gradual", label: "Gradual", hint: "Lower volume, a lighter week every 3rd week. Long run up to ~1.1× a 10 km." },
-  { v: "steady", label: "Steady", hint: "Medium volume, a lighter week every 4th. Long run up to ~1.2× a 10 km." },
-  { v: "progressive", label: "Progressive", hint: "Higher volume, faster build. Long run up to ~1.4× a 10 km." },
+  { v: "gradual", label: "Gradual" },
+  { v: "steady", label: "Steady" },
+  { v: "progressive", label: "Progressive" },
 ] as const;
 const INTENSITY_OPTIONS = [
-  { v: "comfortable", label: "Comfortable", hint: "One gentler session a week, no fast intervals." },
-  { v: "balanced", label: "Balanced", hint: "One quality session a week (two with 4+ runs)." },
-  { v: "challenging", label: "Challenging", hint: "Two quality sessions a week from 3 runs, full-length sets." },
+  { v: "comfortable", label: "Comfortable" },
+  { v: "balanced", label: "Balanced" },
+  { v: "challenging", label: "Challenging" },
 ] as const;
 
 /** Training volume and session intensity (like Runna's Training Preferences). */
 export function TrainingStylePicker({ initialVolume = "steady", initialIntensity = "balanced" }: { initialVolume?: string; initialIntensity?: string }) {
   const [volume, setVolume] = useState(initialVolume);
   const [intensity, setIntensity] = useState(initialIntensity);
-  const group = (name: string, label: string, opts: readonly { v: string; label: string; hint: string }[], value: string, set: (v: string) => void) => (
+  const group = (name: string, label: string, opts: readonly { v: string; label: string }[], value: string, set: (v: string) => void) => (
     <div>
       <span className="mb-1.5 block text-sm font-semibold">{label}</span>
       <div className="grid grid-cols-3 gap-1.5">
@@ -259,17 +243,12 @@ export function TrainingStylePicker({ initialVolume = "steady", initialIntensity
           </label>
         ))}
       </div>
-      <p className="mt-1.5 text-xs leading-snug text-muted">{opts.find((o) => o.v === value)?.hint}</p>
     </div>
   );
   return (
     <div className="space-y-3">
       {group("volume", "Training volume", VOLUME_OPTIONS, volume, setVolume)}
       {group("intensity", "Session intensity", INTENSITY_OPTIONS, intensity, setIntensity)}
-      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-        Whatever you pick, weekly running builds to a peak and then holds there, every run stays within 10 % of your biggest in the last 30 days, and
-        at most 20 % of your running is hard.
-      </p>
     </div>
   );
 }

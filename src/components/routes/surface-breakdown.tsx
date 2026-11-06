@@ -61,7 +61,7 @@ export function SurfaceBreakdown({
   onToggleMap?: (v: boolean) => void;
 }) {
   if (state === "idle" && !data) return null;
-  if (state === "failed") return <p className="px-1 text-xs text-muted">Surface info is unavailable right now.</p>;
+  if (state === "failed") return <p className="px-1 text-xs text-muted">Surface info unavailable</p>;
   if (!data) {
     return (
       <section className="card flex items-center gap-2 p-4 text-sm text-muted">
@@ -79,7 +79,7 @@ export function SurfaceBreakdown({
         <span className="text-[0.6875rem] font-semibold text-fg-2">Surface</span>
         {soft != null && (
           <span className="text-sm">
-            <span className="display tabular text-[1.125rem]">{Math.round(soft)}%</span> <span className="text-muted">soft</span>
+            <span className="display tabular text-[1.125rem]">{Math.round(soft)}%</span> <span className="text-muted">gravel or trail</span>
           </span>
         )}
       </div>
@@ -100,7 +100,6 @@ export function SurfaceBreakdown({
         ))}
       </ul>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[0.6875rem] text-subtle">Estimated from OpenStreetMap. Soft = gravel and dirt or trail.</p>
         {onToggleMap && (
           <label className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted">
             <input type="checkbox" className="switch" checked={!!onMap} onChange={(e) => onToggleMap(e.target.checked)} />

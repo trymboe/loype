@@ -22,7 +22,7 @@ export default async function PlanHistoryPage() {
   ]);
   return (
     <>
-      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Plan history" subtitle="Every change to your plan, who made it and why. Restore any earlier version." />
+      <PageHeader back={{ href: "/plan", label: "Plan" }} title="Plan history" />
       <div className="stagger space-y-3">
         {(plans ?? []).map((p: any) => (
           <Card key={p.id}>

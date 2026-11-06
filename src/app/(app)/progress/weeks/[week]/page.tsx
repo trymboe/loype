@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/ui";
-import { RecapView, weekRange } from "@/components/recap/recap-view";
+import { RecapView } from "@/components/recap/recap-view";
 import { createUserClient } from "@/lib/db/server";
 import type { EstimateSnapshot, WeekRecap } from "@/lib/recap/build";
 
@@ -16,7 +16,7 @@ export default async function WeeklyRecapPage({ params }: { params: Promise<{ we
   const recap = data.recap as WeekRecap;
   return (
     <>
-      <PageHeader back={{ href: "/progress/weeks", label: "Weekly recaps" }} title="Week in review" subtitle={weekRange(recap)} />
+      <PageHeader back={{ href: "/progress/weeks", label: "Weekly recaps" }} title="Week in review" />
       <RecapView recap={recap} estimates={data.estimates as EstimateSnapshot} />
     </>
   );

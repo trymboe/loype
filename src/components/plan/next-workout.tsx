@@ -15,10 +15,7 @@ export async function NextWorkout({ today }: { today: string }) {
         <IconTile color="var(--accent)">
           <CalendarDays size={18} />
         </IconTile>
-        <div className="min-w-0 flex-1">
-          <p className="text-[0.9375rem] font-semibold">No training plan yet</p>
-          <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Set a goal and get a plan built from your runs.</p>
-        </div>
+        <p className="min-w-0 flex-1 text-[0.9375rem] font-semibold">Create a training plan</p>
         <ChevronRight size={18} className="shrink-0 text-subtle" />
       </Link>
     );

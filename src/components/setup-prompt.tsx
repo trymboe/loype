@@ -19,8 +19,8 @@ export async function SetupPrompt() {
         <Compass size={18} />
       </IconTile>
       <div className="min-w-0 flex-1">
-        <p className="text-[0.9375rem] font-semibold">Finish setting up</p>
-        <p className="mt-0.5 text-[0.8125rem] leading-snug text-muted">Next: {STEP_LABEL[next].toLowerCase()}</p>
+        <p className="eyebrow">Finish setup</p>
+        <p className="mt-0.5 text-[0.9375rem] font-semibold">{STEP_LABEL[next]}</p>
       </div>
       <ChevronRight size={18} className="shrink-0 text-subtle" />
     </Link>
