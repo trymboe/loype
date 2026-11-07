@@ -1,32 +1,15 @@
 import { Card, CardHeader, Stat } from "@/components/ui";
-import { addDaysIso } from "@/lib/dates";
 import { createAdminClient } from "@/lib/db/server";
 import { loadPreferences } from "@/lib/onboarding/facts";
 import { readBackground } from "@/lib/onboarding/state";
 import type { Baseline } from "@/lib/planning/types";
 
-/** Form defaults: every day available, long-run day from where your longest runs fall, runs per week from your history, plus what you told Løype at setup. */
+/** Form defaults: every day available, the long-run day left to the planner ("best fit"), runs per week from your history, plus what you told Løype at setup. */
 export async function defaultsFor(userId: string, today: string, b: Baseline) {
-  const db = createAdminClient();
-  const [{ data }, prefs] = await Promise.all([
-    db
-      .from("activities")
-      .select("local_date, moving_s")
-      .eq("user_id", userId)
-      .eq("sport", "running")
-      .is("duplicate_of", null)
-      .gte("local_date", addDaysIso(today, -56)),
-    loadPreferences(db, userId),
-  ]);
-  const longest = new Array(7).fill(0);
-  for (const a of data ?? []) {
-    const dow = (new Date(`${a.local_date}T00:00:00Z`).getUTCDay() + 6) % 7;
-    longest[dow] = Math.max(longest[dow], a.moving_s ?? 0);
-  }
-  const longRunDay = longest.some((x) => x > 0) ? longest.indexOf(Math.max(...longest)) : 6;
+  const prefs = await loadPreferences(createAdminClient(), userId);
   return {
     runDays: [0, 1, 2, 3, 4, 5, 6],
-    longRunDay,
+    longRunDay: null as number | null,
     today,
     recentRuns: b.runsPerWeek,
     runMinutes: b.habitualRunMinutes ?? null,

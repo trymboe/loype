@@ -265,7 +265,7 @@ export function renderSnapshot(s: SnapshotInput): string {
     L.push(`Plan paces were set from VDOT ${s.plan.vdot?.toFixed(1) ?? "unknown"}${s.plan.racePace ? `, race pace ${formatPace(s.plan.racePace)}/km` : ""}. Created ${s.plan.createdAt.slice(0, 10)}.`);
     const cfg = s.plan.config ?? {};
     const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    if (cfg.runDays) L.push(`Run days: ${cfg.runDays.map((d: number) => DAYS[d]).join(", ")}${cfg.longRunDay != null ? `; long run ${DAYS[cfg.longRunDay]}` : ""}${cfg.unavailableDays?.length ? `; unavailable ${cfg.unavailableDays.map((d: number) => DAYS[d]).join(", ")}` : ""}${cfg.maxWeeklyMinutes ? `; max ${cfg.maxWeeklyMinutes} min/week` : ""}; intervals ${cfg.includeIntervals ? "yes" : "no"}, long runs ${cfg.includeLongRuns ? "yes" : "no"}.`);
+    if (cfg.runDays) L.push(`Run days: ${cfg.runDays.map((d: number) => DAYS[d]).join(", ")}${cfg.includeLongRuns ? (cfg.longRunDay != null ? `; long run ${DAYS[cfg.longRunDay]}` : "; long run day: best fit (planner picks)") : ""}${cfg.unavailableDays?.length ? `; unavailable ${cfg.unavailableDays.map((d: number) => DAYS[d]).join(", ")}` : ""}${cfg.maxWeeklyMinutes ? `; max ${cfg.maxWeeklyMinutes} min/week` : ""}; intervals ${cfg.includeIntervals ? "yes" : "no"}, long runs ${cfg.includeLongRuns ? "yes" : "no"}.`);
     const cur = [...s.plan.weeks].reverse().find((w) => w.start <= s.today);
     if (cur) L.push(`Current week ${cur.index + 1} of ${s.plan.weeks.length}: ${PHASE_LABEL[cur.phase] ?? cur.phase}, ~${cur.targetMinutes} min. ${cur.note}`);
     L.push(`Phases: ${phaseRuns(s.plan.weeks)}.`);

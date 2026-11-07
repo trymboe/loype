@@ -213,7 +213,7 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
     obj({
       run_days: { type: ["array", "null"], items: { type: "integer" }, description: "Days available to run, 0 = Monday … 6 = Sunday (at least 2), or null" },
       runs_per_week: { type: ["integer", "null"], description: "Runs per week (1-7), 0 to let the planner choose from history, or null" },
-      long_run_day: { type: ["integer", "null"], description: "0-6, -1 for no fixed day, or null" },
+      long_run_day: { type: ["integer", "null"], description: "0-6 (Mon-Sun) to fix the long-run day, -1 to let the planner pick the best-fit day for recovery, or null to leave unchanged" },
       max_weekly_hours: { type: ["number", "null"], description: "Weekly time cap in hours (1-20), 0 to remove the cap, or null" },
       include_intervals: { type: ["boolean", "null"] },
       include_long_runs: { type: ["boolean", "null"] },

@@ -501,3 +501,28 @@ describe("volume and intensity options (planner@3)", () => {
     expect(Math.max(...counts)).toBe(3);
   });
 });
+
+describe("long-run day left to the planner", () => {
+  const dow = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const p = generatePlan(half, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: null, runsPerWeek: 3 }), base());
+
+  it("keeps the setting as best fit so a recalculation picks again", () => {
+    expect(p.config.longRunDay).toBeNull();
+  });
+
+  it("puts every long run on one day, with no run the day after", () => {
+    const longs = p.workouts.filter((w) => w.type === "long" || w.type === "progressive_long");
+    expect(longs.length).toBeGreaterThan(3);
+    const days = new Set(longs.map((w) => dow(w.date)));
+    expect(days.size).toBe(1);
+    const d = [...days][0];
+    for (const l of longs) expect(p.workouts.some((w) => w.date === addDaysIso(l.date, 1))).toBe(false);
+    expect([5, 6]).toContain(d);
+  });
+
+  it("still uses a day you chose", () => {
+    const fixed = generatePlan(half, config({ runDays: [0, 1, 2, 3, 4, 5, 6], longRunDay: 2, runsPerWeek: 3 }), base());
+    expect(fixed.config.longRunDay).toBe(2);
+    expect(fixed.workouts.filter((w) => w.type === "long").every((w) => dow(w.date) === 2)).toBe(true);
+  });
+});
