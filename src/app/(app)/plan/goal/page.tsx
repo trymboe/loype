@@ -62,7 +62,7 @@ export default async function GoalPage() {
               targetTime: timeField(goal.targetTimeS),
               targetWeeklyKm: goal.targetWeeklyKm != null ? String(goal.targetWeeklyKm) : "",
               runDays: cfg.runDays ?? [0, 1, 2, 3, 4, 5, 6],
-              longRunDay: cfg.longRunDay ?? 6,
+              longRunDay: cfg.longRunDay ?? null,
               maxWeeklyHours: cfg.maxWeeklyMinutes ? String(Math.round((cfg.maxWeeklyMinutes / 60) * 10) / 10) : "",
               includeIntervals: cfg.includeIntervals !== false,
               includeLongRuns: cfg.includeLongRuns !== false,

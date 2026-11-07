@@ -11,7 +11,7 @@ export interface GoalFormInitial {
   targetTime: string;
   targetWeeklyKm: string;
   runDays: number[];
-  longRunDay: number;
+  longRunDay: number | null;
   maxWeeklyHours: string;
   includeIntervals: boolean;
   includeLongRuns: boolean;
@@ -81,7 +81,8 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
         <TrainingStylePicker initialVolume={initial.volume} initialIntensity={initial.intensity} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Long run day">
-            <select name="long_run_day" defaultValue={initial.longRunDay} className="input">
+            <select name="long_run_day" defaultValue={initial.longRunDay ?? ""} className="input">
+              <option value="">Best fit</option>
               {DAYS.map((d, i) => (
                 <option key={d} value={i}>
                   {d}

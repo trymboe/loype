@@ -269,7 +269,6 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   const runs = fixedRuns ?? autoRuns(habit, avail.length);
   if (fixedRuns != null && fixedRuns > autoRuns(habit, avail.length))
     warnings.push(`${fixedRuns} runs a week is a big step from the ${Math.round(habit * 10) / 10} you have averaged lately. The plan starts with fewer runs and adds them as your weekly running grows, so no run is too short to be worth doing.`);
-  const longDay = config.includeLongRuns ? (config.longRunDay != null && avail.includes(config.longRunDay) ? config.longRunDay : avail.includes(6) ? 6 : avail.includes(5) ? 5 : avail[avail.length - 1]) : null;
 
   // --- your running, measured ------------------------------------------------
   // Sizes are "easy minutes": a run's distance at your easy pace when distances and paces are known (the
@@ -286,6 +285,12 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     }
     return stepsDuration(steps) / 60;
   };
+  // the long-run day: the one you chose, else the day that leaves the best recovery around it (see chooseLongRunDay)
+  const fixedLong = config.longRunDay != null && avail.includes(config.longRunDay) ? config.longRunDay : null;
+  const habitLong = [...hist].filter((r) => r.date >= addDaysIso(baseline.asOf, -41)).sort((a, b) => runSize(b) - runSize(a))[0];
+  const longDay = config.includeLongRuns
+    ? (fixedLong ?? chooseLongRunDay(avail, runs, config.includeIntervals ? hardSessions(runs, "build", intensity) : 0, habitLong ? dowOf(habitLong.date) : null))
+    : null;
   const toKm = (min: number) => (easyPace ? (min * 60) / easyPace : null);
   const fromKm = (km: number) => (easyPace ? (km * easyPace) / 60 : null);
   const week0 = weekStart(baseline.asOf);
@@ -616,7 +621,8 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   return {
     version: PLANNER_VERSION,
     goal,
-    config: { ...config, runDays: avail, longRunDay: longDay, phases: undefined, volume, intensity },
+    // the long-run day stays as you set it: "best fit" (null) is chosen again whenever the plan is recalculated
+    config: { ...config, runDays: avail, longRunDay: fixedLong, phases: undefined, volume, intensity },
     baseline,
     weeks: weekRows,
     workouts,
@@ -625,6 +631,42 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     racePace: pace.racePace,
     projection,
   };
+}
+
+/** Monday-based day of the week (0 = Mon … 6 = Sun) of an ISO date. */
+function dowOf(date: string): number {
+  return (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
+/**
+ * The long-run day when you leave it to the planner. Every available day is tried with the week it gives (the same
+ * `spreadDays` and `pickQualityDays` the plan uses), scored by, in order: fitting all the week's hard sessions at least
+ * 2 days from each other and the long run; the runs being spread out; a rest day after the long run (the biggest
+ * session of the week, so the day after it is the one that most needs to be free); a run-free or easy day before it
+ * (no hard session the day before). Ties go to the day your longest run of the last 6 weeks fell on (you had time
+ * for it then), then to the weekend, then to later in the week. One day is used for the whole plan, so the week keeps the same rhythm.
+ */
+export function chooseLongRunDay(avail: number[], runs: number, hard: number, habitDay: number | null = null): number {
+  const gap = (a: number, b: number) => Math.min(Math.abs(a - b), 7 - Math.abs(a - b));
+  let best = avail[avail.length - 1];
+  let bestScore = -Infinity;
+  for (const d of avail) {
+    const days = spreadDays(avail, Math.min(runs, avail.length), d);
+    if (!days.includes(d)) continue;
+    const q = pickQualityDays(days, d, hard);
+    let minGap = 7;
+    for (let i = 0; i < days.length; i++) for (let j = i + 1; j < days.length; j++) minGap = Math.min(minGap, gap(days[i], days[j]));
+    const restAfter = !days.includes((d + 1) % 7);
+    const restBefore = !days.includes((d + 6) % 7);
+    const hardBefore = q.includes((d + 6) % 7);
+    const score =
+      Math.min(q.length, hard) * 1000 + minGap * 100 + (restAfter ? 40 : 0) + (restBefore ? 15 : 0) - (hardBefore ? 30 : 0) + (d === 6 ? 6 : d === 5 ? 5 : d * 0.5) + (habitDay === d ? 8 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return best;
 }
 
 /** Quality days spread as far as possible from the long run and from each other (circular week). */

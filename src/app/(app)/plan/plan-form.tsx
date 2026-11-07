@@ -10,7 +10,7 @@ const input = "input";
 
 export interface PlanFormDefaults {
   runDays: number[];
-  longRunDay: number;
+  longRunDay: number | null;
   today: string;
   /** average runs per week over the last 4 weeks */
   recentRuns: number;
@@ -99,7 +99,8 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Long run day">
-            <select name="long_run_day" defaultValue={defaults.longRunDay} className={input}>
+            <select name="long_run_day" defaultValue={defaults.longRunDay ?? ""} className={input}>
+              <option value="">Best fit</option>
               {DAYS.map((d, i) => (
                 <option key={d} value={i}>
                   {d}
