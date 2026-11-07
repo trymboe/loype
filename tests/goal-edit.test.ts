@@ -190,6 +190,35 @@ describe("changing runs per week", () => {
     await updateGoal(db, "u", { config: { includeStrides: false } }, { today });
 
     expect(tables.planned_workouts.filter((w) => w.type === "time_trial")).toHaveLength(1);
+    // the rest of week 1 is rebuilt with real runs, not left empty where a second time trial was dropped
+    const rest = tables.planned_workouts.filter((w) => w.date >= today && w.date <= "2026-11-08" && w.type !== "rest");
+    expect(rest.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not bring back a time trial that was swapped for another run", async () => {
+    const goal = { kind: "10k" as const, name: null, distanceM: null, raceDate: null, targetTimeS: null, targetWeeklyKm: null };
+    const baseline: any = {
+      asOf: "2026-11-02", vdot: null, vdotRange: null, vdotConfidence: null, paceZones: null, hrZones: null, thresholdHr: null,
+      weeklyMinutes: 150, weeklyKm: 25, runsPerWeek: 4, consistency: 1, longestRunMinutes: 60, longestRun30Minutes: 60,
+      recentWeeks: [150, 150, 150, 150], recentRunCounts: [4, 4, 4, 4], habitualRunMinutes: 40, predictions: [],
+    };
+    const config: any = { startDate: "2026-11-02", weeks: 8, runDays: [0, 1, 2, 3, 4, 6], runsPerWeek: 4, longRunDay: 6, unavailableDays: [], maxWeeklyMinutes: null, includeIntervals: true, includeLongRuns: true, includeStrides: true, baselineTimeTrial: true };
+    const gen = generatePlan(goal, config, baseline);
+    const today = "2026-11-02";
+    const tables: Record<string, Row[]> = {
+      goals: [{ id: "g", user_id: "u", kind: "10k", name: null, distance_m: null, race_date: null, target_time_s: null, target_weekly_km: null }],
+      training_plans: [{ id: "p", user_id: "u", goal_id: "g", status: "active", race_pace: null, current_version: 1, config: gen.config, baseline, weeks: gen.weeks }],
+      // the athlete swapped the time trial for an easy run
+      planned_workouts: gen.workouts.map((w, i) => ({ id: `w${i}`, plan_id: "p", user_id: "u", date: w.date, type: w.type === "time_trial" ? "easy" : w.type, steps: w.steps, status: "planned", locked: false, source: w.type === "time_trial" ? "athlete" : "generator" })),
+      plan_versions: [],
+      activities: Array.from({ length: 32 }, (_, k) => ({ id: `a${k}`, user_id: "u", sport: "running", duplicate_of: null, local_date: addDaysIso("2026-11-01", -Math.floor(k * 1.75)), moving_s: k % 4 === 0 ? 3600 : 2400, distance_m: k % 4 === 0 ? 11000 : 7000, elevation_gain_m: 40 })),
+      adaptation_proposals: [],
+    };
+    const db = fakeDb(tables);
+
+    await updateGoal(db, "u", { config: { runDays: [0, 1, 3, 5, 6] } }, { today });
+
+    expect(tables.planned_workouts.filter((w) => w.type === "time_trial")).toHaveLength(0);
   });
 
   it("leaves workouts alone when only the target time changes", async () => {
