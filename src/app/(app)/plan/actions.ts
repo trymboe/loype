@@ -114,6 +114,7 @@ export async function createPlanAction(_prev: PlanFormState, form: FormData): Pr
     startDate,
     weeks: Number.isFinite(weeks) ? weeks : 12,
     ...settings,
+    baselineTimeTrial: form.get("time_trial") === "on",
   };
   const db = createAdminClient();
   try {

@@ -22,6 +22,8 @@ export interface RunRecord {
   isIndoor: boolean;
   features: RunFeatures | null;
   classificationOverride: RunClass | null;
+  /** linked to a planned time trial */
+  plannedTimeTrial?: boolean;
 }
 
 export type RunClass = "recovery" | "easy" | "long" | "steady" | "threshold" | "intervals" | "race" | "unknown";
@@ -166,6 +168,11 @@ function classify(out: RunScore, run: RunRecord, f: RunFeatures, ctx: { medianRe
   const mins = f.movingS / 60;
   if (/\b(race|parkrun|konkurranse|stafett|marathon|maraton|halvmaraton|time ?trial)\b/i.test(name)) {
     set(out, "race", 0.8, [`Name "${name}" suggests a race`]);
+    return;
+  }
+  // a planned time trial counts as a race unless the effort was clearly easier than one
+  if (run.plannedTimeTrial && (x == null || x >= 0.8)) {
+    set(out, "race", 0.8, ["Planned time trial"]);
     return;
   }
   if (x == null) {

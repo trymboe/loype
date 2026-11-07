@@ -449,9 +449,13 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         list.push(longItem);
       }
 
+      // baseline time trial (week 1, when chosen): on a quality day at least 2 days from the long run, in place of one hard session
+      const ttDay = i === 0 && config.baselineTimeTrial && loading(ph) ? (pickQualityDays(days.filter((d) => addDaysIso(ws, d) >= config.startDate), wLong, 1)[0] ?? null) : null;
+
       // quality: hard sessions by runs per week, phase and intensity; none in the first two weeks if you run little now
       let hardAllowed = hardSessions(runsW, ph, intensity);
       if (chronic0 < 90 && i < 2) hardAllowed = 0;
+      if (ttDay != null) hardAllowed = Math.max(0, hardAllowed - 1);
       const types = qualityTypes(goal, dk, ph, config, altern, intensity);
       // hard sessions rotate through the phase's session types, so each week differs from the last
       const rot = hardRotation(goal, dk, ph, config, intensity) ?? types.filter((t) => isHard(t));
@@ -462,16 +466,28 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       }
       if (hardTypes.length) rotIdx[ph] += hardTypes.length;
       altern++;
-      const spare = days.length - (wLong != null ? 1 : 0) - hardTypes.length;
+      const spare = days.length - (wLong != null ? 1 : 0) - (ttDay != null ? 1 : 0) - hardTypes.length;
       const extras = types.filter((t) => !isHard(t)).slice(0, Math.max(0, Math.min(1, spare - 1)));
       let q = [...hardTypes, ...extras];
-      let qDays = ph === "race" ? [] : pickQualityDays(days, wLong, q.length);
+      const clearOfTt = ttDay == null ? days : days.filter((d) => Math.min(Math.abs(d - ttDay), 7 - Math.abs(d - ttDay)) >= 2);
+      let qDays = ph === "race" ? [] : pickQualityDays(clearOfTt, wLong, q.length);
       if (qDays.length < q.length) q = q.slice(0, qDays.length);
       // 80/20: shrink, then drop, hard sessions until the hard share fits
       let prog = q.map(() => progress);
       // short warm-up and cool-down (10 + 5 min) for 5 and 10 km plans and small weeks; longer for the half and marathon
       const compact = cap < 180 || !(dk === "half" || dk === "marathon");
-      const hardShare = () => q.reduce((a, t, k) => a + (isHard(t) ? hardMinutes(buildWorkout({ type: t, progress: prog[k], goalKey: dk, compact }, ctx).steps) : 0), 0);
+      // the time trial: 5 km, or 3 km for a 5 km goal or if you run little now; shorter (then with a compact warm-up) to stay
+      // within the single-run spike limit
+      let ttItem: (typeof list)[number] | null = null;
+      if (ttDay != null) {
+        const d0 = dk === "5k" || chronic0 < 90 ? 3000 : 5000;
+        const options = [...new Set([d0, 3000])].flatMap((d) => [compact, true].map((c) => ({ type: "time_trial" as const, distanceM: d, compact: c })));
+        const spec = options.find((o) => stepsSize(buildWorkout(o, ctx).steps) <= sCap) ?? options[options.length - 1];
+        ttItem = { dow: ttDay, spec, why: TT_WHY, key: true };
+        list.push(ttItem);
+      }
+      const ttHard = ttItem ? hardMinutes(buildWorkout(ttItem.spec, ctx).steps) : 0;
+      const hardShare = () => ttHard + q.reduce((a, t, k) => a + (isHard(t) ? hardMinutes(buildWorkout({ type: t, progress: prog[k], goalKey: dk, compact }, ctx).steps) : 0), 0);
       // (in the taper, volume drops but the intensity stays: up to 30 %)
       while (q.some(isHard) && hardShare() > Math.max(12, cap * (ph === "taper" ? 0.3 : HARD_SHARE_MAX))) {
         if (prog.some((p) => p > 0)) prog = prog.map((p) => Math.max(0, p - 0.25));
@@ -530,7 +546,10 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
         // in a tight week the long run matters more than a squeezed-in hard session
         if (easy) easy.spec.minutes = Math.max(minEasy, (easy.spec.minutes ?? minEasy) - 1);
         else if (hard.some((h) => (h.spec.progress ?? 0) > 0)) for (const h of hard) h.spec.progress = Math.max(0, (h.spec.progress ?? 0) - 0.25);
-        else if (hard.length) {
+        else if (hard.some((h) => h.spec.type === "time_trial" && (h.spec.distanceM ?? 0) > 3000)) {
+          for (const h of hard) if (h.spec.type === "time_trial") h.spec.distanceM = 3000;
+        } else if (hard.length && !(long && hard.every((h) => h.spec.type === "time_trial"))) {
+          // (the time trial is listed first, so it is the last to go, and only once the long run is as short as it gets)
           const h = hard[hard.length - 1];
           h.spec = { type: "easy", minutes: minEasy + 5, strides: config.includeStrides };
           h.key = false;
@@ -632,6 +651,8 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     projection,
   };
 }
+
+const TT_WHY = "A baseline time trial: run it as fast as you can hold evenly. The result is your reference for the plan and recalibrates your fitness estimate.";
 
 /** Monday-based day of the week (0 = Mon … 6 = Sun) of an ISO date. */
 function dowOf(date: string): number {

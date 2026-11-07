@@ -17,7 +17,7 @@ export interface MonthWorkout {
   locked: boolean;
 }
 
-const HARD = new Set(["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race"]);
+const HARD = new Set(["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race", "time_trial"]);
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -44,7 +44,7 @@ function chipClass(w: MonthWorkout) {
   return "bg-surface-2 text-fg-2";
 }
 
-const CODE: Record<string, string> = { easy: "E", recovery: "R", strides: "E", long: "L", progressive_long: "L", threshold: "T", tempo: "T", vo2max: "I", repetitions: "Rep", hills: "H", race_pace: "RP" };
+const CODE: Record<string, string> = { easy: "E", recovery: "R", strides: "E", long: "L", progressive_long: "L", threshold: "T", tempo: "T", vo2max: "I", repetitions: "Rep", hills: "H", race_pace: "RP", time_trial: "TT" };
 /** compact label that fits a phone-width day cell: type code + minutes */
 const short = (w: MonthWorkout) => (w.type === "race" ? "Race" : `${CODE[w.type] ?? ""} ${Math.round(w.duration_s / 60)}′`.trim());
 
