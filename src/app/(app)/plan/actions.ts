@@ -173,8 +173,15 @@ export async function addTimeTrialAction(_prev: TimeTrialState, form: FormData):
   const user = await getSessionUser();
   if (!user) return { error: "Not signed in" };
   const planId = z.string().uuid().safeParse(form.get("planId"));
+  const workoutId = z.string().uuid().safeParse(form.get("workoutId"));
+  const km = form.get("km");
+  const distanceM = km === "3" ? 3000 : km === "5" ? 5000 : undefined;
   try {
-    await addTimeTrial(createAdminClient(), user.id, todayIn(await userTimezone()), planId.success ? { planId: planId.data } : {});
+    await addTimeTrial(createAdminClient(), user.id, todayIn(await userTimezone()), {
+      ...(planId.success ? { planId: planId.data } : {}),
+      ...(workoutId.success ? { workoutId: workoutId.data } : {}),
+      ...(distanceM ? { distanceM } : {}),
+    });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

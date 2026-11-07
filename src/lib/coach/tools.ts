@@ -93,7 +93,7 @@ const schemas = {
   }),
   replace_workout: z.object({ workout_id: ID, type: z.enum(SESSION_TYPES), minutes: z.number().min(10).max(300).nullable(), intensity: z.number().min(0).max(1).nullable(), confirmed: z.boolean() }),
   add_workout: z.object({ date: DATE, type: z.enum(SESSION_TYPES), minutes: z.number().min(10).max(300).nullable(), intensity: z.number().min(0).max(1).nullable(), confirmed: z.boolean() }),
-  add_time_trial: z.object({ date: DATE.nullable(), confirmed: z.boolean() }),
+  add_time_trial: z.object({ date: DATE.nullable(), distance_km: z.union([z.literal(3), z.literal(5)]).nullable(), workout_id: ID.nullable(), confirmed: z.boolean() }),
   set_workout_steps: z.object({ workout_id: ID, steps: z.array(anyStep).min(1).max(20), confirmed: z.boolean() }),
   change_plan_settings: z.object({
     run_days: z.array(z.number().int().min(0).max(6)).nullable(),
@@ -190,8 +190,8 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
   ),
   fn(
     "add_time_trial",
-    "Add a time trial to the plan (one at a time; not if an upcoming one exists). The app builds it like the planner's baseline time trial: 5 km (3 km for a 5 km goal or low volume) with warm-up and cool-down, target from current fitness, within the single-run limit. It replaces the planned run on that day; a hard session the day after becomes a recovery run. date null: the app picks the best day in the next 7 days (at least 2 days from the long run and hard sessions, preferring to replace a hard session). With a date, that day needs a planned run that isn't the long run; if it's next to a hard session the app returns a warning unless confirmed. Its distance and steps can't be changed afterwards.",
-    obj({ date: ns("Day (YYYY-MM-DD), or null to let the app choose in the next 7 days"), confirmed: CONFIRMED }),
+    "Add a time trial to the plan (one at a time; not if an upcoming one exists). The app builds it like the planner's baseline time trial: 5 km (3 km for a 5 km goal or low volume) with warm-up and cool-down, target from current fitness, within the single-run limit. It replaces the planned run on that day; a hard session the day after becomes a recovery run. date null: the app picks the best day in the next 7 days (at least 2 days from the long run and hard sessions, preferring to replace a hard session). With a date, that day needs a planned run that isn't the long run; if it's next to a hard session the app returns a warning unless confirmed. distance_km 3 or 5: the athlete's chosen distance (null = the app's suggestion); still within the single-run limit. workout_id: an upcoming time trial to rebuild at distance_km instead of adding a new one. Its steps can't be edited otherwise.",
+    obj({ date: ns("Day (YYYY-MM-DD), or null to let the app choose in the next 7 days"), distance_km: { type: ["integer", "null"], enum: [3, 5, null], description: "3 or 5 km, or null for the suggested distance" }, workout_id: ns("Upcoming time trial id to change, or null to add a new one"), confirmed: CONFIRMED }),
   ),
   fn(
     "set_workout_steps",
@@ -390,9 +390,9 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
       return addTool(ctx, input);
     case "add_time_trial": {
       try {
-        const r = await addTimeTrial(ctx.db, ctx.userId, ctx.today, { ...(input.date ? { date: input.date } : {}), allowClose: input.confirmed });
+        const r = await addTimeTrial(ctx.db, ctx.userId, ctx.today, { ...(input.date ? { date: input.date } : {}), ...(input.distance_km ? { distanceM: (input.distance_km * 1000) as 3000 | 5000 } : {}), ...(input.workout_id ? { workoutId: input.workout_id } : {}), allowClose: input.confirmed });
         const plan = await loadActivePlan(ctx.db, ctx.userId);
-        const summary = `Added a time trial (${r.title}) on ${formatDay(r.date)} in place of ${r.replaced}${r.eased ? `; ${r.eased} is now a recovery run` : ""}`;
+        const summary = input.workout_id ? `Changed the time trial on ${formatDay(r.date)} to ${r.title}` : `Added a time trial (${r.title}) on ${formatDay(r.date)} in place of ${r.replaced}${r.eased ? `; ${r.eased} is now a recovery run` : ""}`;
         ctx.actions.push({ kind: "plan", summary, planId: plan?.id, versionBefore: r.versionBefore });
         return `Done: ${summary} (workout id ${r.id}).`;
       } catch (e) {
