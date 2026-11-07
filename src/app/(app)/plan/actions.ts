@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { addDaysIso, todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
-import { checkStepEdit, createPlan, decideProposal, deletePlan, editWorkout, restoreVersion, undoProposal, updateGoal } from "@/lib/planning/service";
+import { addTimeTrial, checkStepEdit, createPlan, decideProposal, deletePlan, editWorkout, restoreVersion, undoProposal, updateGoal } from "@/lib/planning/service";
 import { editableSteps } from "@/lib/planning/edit-steps";
 import { moveIssues } from "@/lib/planning/validate";
 import type { Goal, GoalKind, PlanConfig } from "@/lib/planning/types";
@@ -162,6 +162,25 @@ export async function updateGoalAction(_prev: GoalEditState, form: FormData): Pr
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+export interface TimeTrialState {
+  error?: string;
+}
+
+/** Adds a time trial to the active plan on the best day in the next week. */
+export async function addTimeTrialAction(_prev: TimeTrialState, form: FormData): Promise<TimeTrialState> {
+  const user = await getSessionUser();
+  if (!user) return { error: "Not signed in" };
+  const planId = z.string().uuid().safeParse(form.get("planId"));
+  try {
+    await addTimeTrial(createAdminClient(), user.id, todayIn(await userTimezone()), planId.success ? { planId: planId.data } : {});
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/plan", "layout");
+  revalidatePath("/");
+  return {};
 }
 
 export async function deletePlanAction() {

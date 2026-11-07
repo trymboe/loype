@@ -653,7 +653,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   };
 }
 
-const TT_WHY = "A baseline time trial: run it as fast as you can hold evenly. The result is your reference for the plan and recalibrates your fitness estimate.";
+export const TT_WHY = "A baseline time trial: run it as fast as you can hold evenly. The result is your reference for the plan and recalibrates your fitness estimate.";
 
 /** Monday-based day of the week (0 = Mon … 6 = Sun) of an ISO date. */
 function dowOf(date: string): number {
