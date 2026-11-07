@@ -892,6 +892,7 @@ async function editPlanTool(ctx: ToolContext, ops: PlanOp[], reason: string, con
         const type = (op.action === "resize" ? w.type : op.type) as WorkoutType | null;
         if (!type) { errors.push(`${at}: needs a type.`); continue; }
         if (type === "race") { errors.push(`${at}: can't turn a session into the race.`); continue; }
+        if (op.action === "resize" && type === "time_trial") { errors.push(`${at}: a time trial keeps its fixed distance; move, skip or replace it instead.`); continue; }
         const minutes = op.minutes;
         if (op.action === "resize" && minutes == null && op.intensity == null) { errors.push(`${at}: give minutes or intensity.`); continue; }
         const b = buildSession(plan, type, minutes, op.intensity);
@@ -986,7 +987,7 @@ async function scalePlanTool(ctx: ToolContext, input: z.infer<(typeof schemas)["
   const f = 1 + input.percent / 100;
   const ops: PlanOp[] = [];
   for (const w of (data ?? []) as any[]) {
-    if (w.status !== "planned" || w.locked || w.type === "race" || w.type === "rest" || w.type === "strides") continue;
+    if (w.status !== "planned" || w.locked || w.type === "race" || w.type === "rest" || w.type === "strides" || w.type === "time_trial") continue;
     const endurance = ENDURANCE.includes(w.type);
     if (input.sessions === "easy" && !(w.type === "easy" || w.type === "recovery")) continue;
     if (input.sessions === "long" && !isLong(w.type)) continue;
