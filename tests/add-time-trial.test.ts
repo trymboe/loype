@@ -172,7 +172,7 @@ describe("adding a time trial to a plan", () => {
     const { db } = setup(today, history(3, 4, 360));
     for (const w of rows(db)) Object.assign(w, { type: "easy", title: "30 min easy", duration_s: 1800, distance_m: 5000 });
     for (const a of db.rows("activities")) Object.assign(a, { moving_s: 1800, distance_m: 5000 });
-    await expect(addTimeTrial(db as any, "u", today, { distanceM: 5000 })).rejects.toThrow(/5 km.*Try 3 km/s);
+    await expect(addTimeTrial(db as any, "u", today, { distanceM: 5000 })).rejects.toThrow(/5 km[\s\S]*Try 3 km/);
     expect(tts(db)).toHaveLength(0);
   });
 
