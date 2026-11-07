@@ -91,6 +91,12 @@ export interface Baseline {
   recentWeeks?: number[];
   /** runs (≥ 10 min) in each of those weeks, oldest first */
   recentRunCounts?: number[];
+  /** running load (equivalent km: distance + climb, weighted by intensity) in each of those weeks, oldest first */
+  recentLoad?: number[];
+  /** load of the last complete week ÷ the 4-week average; null without enough history */
+  loadRatio?: number | null;
+  /** 0..1: share of the usual week-1 growth over your 4-week average kept after a high-load week (1 = no change) */
+  loadTemper?: number;
   /** median length of your runs over the last 8 weeks, minutes */
   habitualRunMinutes?: number | null;
   /** your runs of 10 min or more in the last 8 weeks, oldest first: session lengths and the spike limit are seeded from them */
