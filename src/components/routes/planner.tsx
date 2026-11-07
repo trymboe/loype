@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GeoJSONSource, Map as MlMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { CornerUpLeft, Footprints, Leaf, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Undo2, Waypoints } from "lucide-react";
+import { CornerUpLeft, Footprints, Leaf, Mountain, Loader2, Repeat, Route as RouteIcon, Shuffle, Trash2, Undo2, Waypoints } from "lucide-react";
 import { MapStyleSwitch, MapTilerLogo } from "@/components/map-style-switch";
 import { mapStyleUrl, useMapStyle } from "@/lib/map-style";
 import { ElevationProfile } from "./elevation-profile";
@@ -101,16 +101,23 @@ function fromSaved(init: PlannerInitial): State {
   return { waypoints: init.waypoints, segments };
 }
 
-export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitial | null; center: LngLat | null; runs: LngLat[][] }) {
+export interface PlannerPreset {
+  mode: "loop" | null;
+  km: number | null;
+  flat: boolean;
+}
+
+export function RoutePlanner({ initial, center, runs, preset }: { initial: PlannerInitial | null; center: LngLat | null; runs: LngLat[][]; preset?: PlannerPreset }) {
   const router = useRouter();
   const [state, setState] = useState<State>(() => (initial ? fromSaved(initial) : EMPTY));
   const [history, setHistory] = useState<State[]>([]);
-  const [mode, setMode] = useState<Mode>(initial?.source === "loop" ? "loop" : "draw");
+  const [mode, setMode] = useState<Mode>(initial?.source === "loop" || preset?.mode === "loop" ? "loop" : "draw");
   const [snap, setSnap] = useState(true);
   const [showRuns, setShowRuns] = useState(runs.length > 0);
-  const [loopKm, setLoopKm] = useState(8);
+  const [loopKm, setLoopKm] = useState(preset?.km ?? 8);
   const [bearing, setBearing] = useState(() => Math.round(Math.random() * 360));
   const [soft, setSoft] = useState(false);
+  const [flat, setFlat] = useState(preset?.flat ?? false);
   const [startRadius, setStartRadius] = useState(0);
   const [approach, setApproach] = useState<Approach | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -261,7 +268,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
         start,
         distanceM: loopKm * 1000,
         bearing: b,
-        ...(soft ? { soft: true, startRadiusM: startRadius } : {}),
+        ...(soft ? { soft: true, startRadiusM: startRadius } : flat ? { flat: true } : {}),
       });
       const wps = res.waypoints.slice();
       // use the routed leg ends as waypoints so editing later lines up with the path
@@ -541,7 +548,7 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
           <MapTilerLogo style={mapStyle} className="right-2 bottom-12" />
           {(busy === "loop" || pending || hint) && (
             <p className="pointer-events-none absolute inset-x-3 bottom-3 w-fit max-w-[calc(100%-1.5rem)] rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-fg-2 shadow-[var(--shadow-pop)] backdrop-blur">
-              {busy === "loop" ? (soft ? "Comparing loops…" : "Finding a loop…") : pending ? "Following paths…" : hint}
+              {busy === "loop" ? (soft || flat ? "Comparing loops…" : "Finding a loop…") : pending ? "Following paths…" : hint}
             </p>
           )}
         </div>
@@ -601,6 +608,12 @@ export function RoutePlanner({ initial, center, runs }: { initial: PlannerInitia
                 <input type="checkbox" className="switch" checked={soft} onChange={(e) => setSoft(e.target.checked)} />
                 <Leaf size={15} className="text-muted" /> Prefer soft surfaces
               </label>
+              {!soft && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" className="switch" checked={flat} onChange={(e) => setFlat(e.target.checked)} />
+                  <Mountain size={15} className="text-muted" /> Prefer flat
+                </label>
+              )}
               {soft && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Start within">

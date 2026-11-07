@@ -8,6 +8,7 @@ import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { FitnessSnapshotCard, InsightCard, RaceGoalCard } from "@/components/today/cards";
+import { RouteSuggestion } from "@/components/today/route-suggestion";
 import { activitiesSince, getFitnessState, getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
 import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
 import { ensureWeeklyRecap, type WeeklyRecapRow } from "@/lib/recap/service";
@@ -129,6 +130,7 @@ export default async function TodayPage() {
         <div className="stagger space-y-3">
           <SetupPrompt />
           <NextWorkout today={today} />
+          <RouteSuggestion today={today} />
           {insight && <InsightCard insight={insight} />}
           {race && status && race.raceDate && <RaceGoalCard goal={race} status={status} week={wk ? { index: wk.index, total: planWeeks.length } : null} />}
           {latest ? (
