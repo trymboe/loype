@@ -11,7 +11,7 @@ const shortDate = (v: string) => new Date(`${v}T12:00:00Z`).toLocaleDateString("
 export function VolumeChart({ weeks }: { weeks: WeekVolume[] }) {
   const { filter } = useChartRange();
   // a week counts when any of its days is inside the window
-  const data = filter(weeks, (w) => addDaysIso(w.weekStart, 6)).map((w) => ({ ...w, km: Math.round(w.distanceM / 100) / 10, longKm: Math.round(w.longestM / 100) / 10 }));
+  const data = filter(weeks, (w) => addDaysIso(w.weekStart, 6)).map((w) => ({ ...w, km: Math.round(w.distanceM / 100) / 10, longKm: Math.round(w.longestM / 100) / 10, load: Math.round(w.loadKm * 10) / 10 }));
   if (data.length === 0) return <EmptyRange what="weeks" />;
   return (
     <div>
@@ -24,13 +24,13 @@ export function VolumeChart({ weeks }: { weeks: WeekVolume[] }) {
             <Tooltip
               cursor={{ fill: "var(--grid)" }}
               content={({ active, payload }) => {
-                const p = payload?.[0]?.payload as (WeekVolume & { km: number; longKm: number }) | undefined;
+                const p = payload?.[0]?.payload as (WeekVolume & { km: number; longKm: number; load: number }) | undefined;
                 if (!active || !p) return null;
                 return (
                   <div className="chart-tip">
                     <p className="mb-0.5 font-semibold">Week of {p.weekStart}</p>
                     <p>{p.km} km · {p.runs} runs · {formatDuration(p.movingS)}</p>
-                    <p className="text-muted">Longest run {p.longKm} km</p>
+                    <p className="text-muted">Load {p.load} km · longest run {p.longKm} km</p>
                   </div>
                 );
               }}

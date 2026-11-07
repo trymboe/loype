@@ -333,7 +333,8 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
   // patchy training); then a loading week grows at most `rate` (at least 6 min) over the last loading week, half that
   // after a lighter week. A lighter week is 70–75 % of the week before it.
   // (with next to no recorded running, enough for the runs you chose at about 20 min each)
-  const firstCap = Math.max(chronic0 < 30 ? runs * 22 + 10 : 60, chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 0.9 : 1));
+  // (held back after a high-load week: hills and hard running count, not only distance; see running-load.ts)
+  const firstCap = Math.max(chronic0 < 30 ? runs * 22 + 10 : 60, chronic0 + (Math.max(chronic0 * ACWR_MAX + 10, best0 * (lowConsistency ? 0.9 : 1)) - chronic0) * (baseline.loadTemper ?? 1));
   const userMax = config.maxWeeklyMinutes ?? Infinity;
   if (config.maxWeeklyMinutes && chronic0 > config.maxWeeklyMinutes) warnings.push(`You have averaged ${Math.round(chronic0)} min a week lately, more than your limit of ${config.maxWeeklyMinutes} min. The plan stays at your limit.`);
 

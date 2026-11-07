@@ -5,12 +5,17 @@
 import { addDaysIso, weekStart } from "../dates";
 import type { HrZone } from "../analytics/fitness/physiology";
 import type { PaceZone } from "../analytics/fitness/vdot";
+import { loadTemper, runLoad, weeklyLoadRatio } from "../analytics/running-load";
 import type { Baseline } from "./types";
 
 export interface BaselineRun {
   date: string;
   movingS: number | null;
   distanceM: number | null;
+  /** for the running load: ascent, time in HR zones, intensity (fitness model) */
+  elevationGainM?: number | null;
+  zoneSeconds?: number[] | null;
+  intensity?: number | null;
 }
 
 export interface BaselineFitness {
@@ -57,6 +62,16 @@ export function buildBaseline(asOf: string, fitness: BaselineFitness | null, run
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((r) => ({ date: r.date, minutes: Math.round(r.movingS! / 60), km: r.distanceM ? Math.round(r.distanceM / 10) / 100 : null }));
 
+  // running load: distance + climb, weighted by intensity (equivalent km)
+  const loads = runs.map((r) => ({ date: r.date, load: runLoad(r) }));
+  const recentLoad = [4, 3, 2, 1].map((k) => {
+    const s = addDaysIso(thisWeek, -7 * k);
+    const e = addDaysIso(s, 6);
+    return Math.round(loads.filter((l) => l.date >= s && l.date <= e).reduce((a, l) => a + l.load, 0) * 10) / 10;
+  });
+  // the last complete week against the 4-week average
+  const ratio = weeklyLoadRatio(recentLoad);
+
   const e = fitness?.estimate;
   const has = e && !e.withheld && e.vdot != null;
   return {
@@ -75,6 +90,9 @@ export function buildBaseline(asOf: string, fitness: BaselineFitness | null, run
     longestRun30Minutes: Math.round(longest30),
     recentWeeks,
     recentRunCounts: recentRuns,
+    recentLoad,
+    loadRatio: ratio?.ratio ?? null,
+    loadTemper: loadTemper(ratio?.ratio),
     habitualRunMinutes,
     recentRuns: runList,
     predictions: has ? (fitness!.predictions ?? []).map((p) => ({ distanceM: p.distanceM, timeS: p.timeS })) : [],
