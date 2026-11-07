@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, CalendarDays, ChevronRight, Compass, Download, HeartPulse, KeyRound, Link2, LogOut, Trash2 } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronRight, Compass, Download, Footprints, HeartPulse, KeyRound, Link2, LogOut, Trash2 } from "lucide-react";
 import { IconTile, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "More" };
@@ -7,6 +7,7 @@ export const metadata = { title: "More" };
 const ROWS = [
   { href: "/more/integrations", icon: Link2, color: "var(--pace)", label: "Integrations" },
   { href: "/more/profile", icon: HeartPulse, color: "var(--hr)", label: "Athlete profile" },
+  { href: "/more/shoes", icon: Footprints, color: "var(--long)", label: "Shoes" },
   { href: "/more/password", icon: KeyRound, color: "var(--tempo)", label: "Password" },
   { href: "/more/calendar", icon: CalendarDays, color: "var(--accent)", label: "Calendar" },
   { href: "/guide", icon: BookOpen, color: "var(--pace)", label: "How Løype works" },
