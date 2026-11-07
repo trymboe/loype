@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SetupPrompt } from "@/components/setup-prompt";
+import { ShoeNudge } from "@/components/shoes/shoe-nudge";
 import { SyncBanner } from "@/components/sync-banner";
 import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
@@ -133,6 +134,7 @@ export default async function TodayPage() {
           <RouteSuggestion today={today} />
           {insight && <InsightCard insight={insight} />}
           {race && status && race.raceDate && <RaceGoalCard goal={race} status={status} week={wk ? { index: wk.index, total: planWeeks.length } : null} />}
+          <ShoeNudge />
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
               <div className="flex items-start justify-between gap-4 p-5 pb-0">

@@ -4,6 +4,7 @@ import { saveActivityAsRouteAction } from "@/app/(app)/routes/actions";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
 import { AnalysisCard } from "@/components/activity/analysis-card";
 import { FeedbackForm } from "@/components/activity/feedback-form";
+import { ShoeSelect } from "@/components/shoes/shoe-select";
 import { Badge, PageHeader, Stat } from "@/components/ui";
 import { buildChartSeries } from "@/lib/analytics/series";
 import { getActivityDetail, getActivityFeatures, getActivityScore } from "@/lib/db/queries";
@@ -88,6 +89,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       )}
 
       {a.sport === "running" && <AnalysisCard activityId={a.id} score={score} features={features} override={a.classification_override ?? null} />}
+      {a.sport === "running" && <ShoeSelect activityId={a.id} shoeId={a.shoe_id ?? null} />}
 
       {points.length > 0 ? (
         <ActivityExplorer points={points} laps={lapViews} />
