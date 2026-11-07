@@ -11,4 +11,5 @@ export const VERSIONS = {
   dedupe: "dedupe@1",
   features: "features@1",
   fitness: "fitness@1",
+  runningLoad: "running-load@1",
 } as const;

@@ -43,6 +43,10 @@ Increases go through the app's own checks before they're applied: `loadIssues` (
 
 Each tool round stores what it changed (`coach_messages.actions`, migration 0007) with the plan version from before. The chat shows the changes under the reply with an Undo button (`undoCoachActions`): it restores that version, removes sessions the coach added, and for settings changes restores the old settings and recalculates the weeks ahead. Route and run changes aren't undone by it.
 
+## Check-in after key sessions
+
+A run matched to a key session (long run, intervals, tempo/threshold, time trial, race, or anything the plan marks key) gets a one-to-two sentence check-in on its page (`src/lib/coach/checkin.ts`): did it hit the session's goal, and what it means for the plan, with an injury-risk warning when RPE, discomfort, legs or HR drift call for one. It's written from deterministic inputs (planned steps and targets, execution verdict, reps vs laps, laps, splits, steady-part HR drift, RPE and feedback, CTL/ATL/TSB going into the day, the 4 weeks up to the run) by one non-streamed call (`store: false`), fetched by the page after it renders (`POST /api/activities/[id]/checkin`), and cached in `coach_checkins` (migration 0012). The cache key is the check-in version, the matched workout and the feedback, so a new or changed RPE/feedback regenerates it. No API key or any error: nothing is shown. Tapping it opens the coach with the check-in as its first message, and the run's inputs go with the first question as `<run_context>`.
+
 ## Storage
 
 `coach_conversations` and `coach_messages` (migration 0006), append-only. A conversation started on another model or prompt version continues from its visible text only.

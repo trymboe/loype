@@ -4,6 +4,7 @@ import { addDaysIso, formatDay, weekStart } from "../dates";
 import { fetchAll } from "../db/paginate";
 import { trainingPaces } from "../analytics/fitness/vdot";
 import { fmtTime } from "../analytics/fitness/estimate";
+import { runLoad } from "../analytics/running-load";
 import { buildBaseline } from "./baseline";
 import { generatePlan, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
@@ -19,19 +20,27 @@ export async function loadBaseline(db: SupabaseClient, userId: string, asOf: str
     db.from("fitness_state").select("output").eq("user_id", userId).maybeSingle(),
     db
       .from("activities")
-      .select("local_date, moving_s, distance_m")
+      .select("id, local_date, moving_s, distance_m, elevation_gain_m")
       .eq("user_id", userId)
       .eq("sport", "running")
       .is("duplicate_of", null)
       .gte("local_date", addDaysIso(asOf, -63))
       .lte("local_date", asOf),
   ]);
+  const intensity = await loadIntensity(db, (acts ?? []).map((a: any) => a.id));
   const o = state?.output ?? null;
   return buildBaseline(
     asOf,
     o ? { estimate: o.estimate, paceZones: o.paceZones, hrZones: o.hrZones, threshold: o.threshold, predictions: o.predictions } : null,
-    (acts ?? []).map((a: any) => ({ date: a.local_date, movingS: a.moving_s, distanceM: a.distance_m })),
+    (acts ?? []).map((a: any) => ({ date: a.local_date, movingS: a.moving_s, distanceM: a.distance_m, elevationGainM: a.elevation_gain_m, ...intensity.get(a.id) })),
   );
+}
+
+/** Time in HR zones and intensity per run (fitness model scores), for the running load. */
+async function loadIntensity(db: SupabaseClient, ids: string[]): Promise<Map<string, { zoneSeconds: number[] | null; intensity: number | null }>> {
+  if (!ids.length) return new Map();
+  const { data } = await db.from("activity_scores").select("activity_id, zone_seconds, intensity").in("activity_id", ids);
+  return new Map((data ?? []).map((s: any) => [s.activity_id, { zoneSeconds: s.zone_seconds ?? null, intensity: s.intensity ?? null }]));
 }
 
 export const goalFromRow = (g: any): Goal => ({
@@ -207,10 +216,11 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
   let ws = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date").range(from, to));
   if (!ws.length) return { status: "empty" as const };
   const start = ws[0].date as string;
-  const from = addDaysIso(start < today ? start : today, -21);
+  // (at least 28 days back, for the running-load ratio)
+  const from = [addDaysIso(start < today ? start : today, -21), addDaysIso(today, -27)].sort()[0];
   const { data: acts } = await db
     .from("activities")
-    .select("id, local_date, moving_s, distance_m, avg_hr, classification_override")
+    .select("id, local_date, moving_s, distance_m, avg_hr, elevation_gain_m, classification_override")
     .eq("user_id", userId)
     .eq("sport", "running")
     .is("duplicate_of", null)
@@ -219,12 +229,14 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
   const runs = acts ?? [];
   const ids = runs.map((r: any) => r.id);
   const [{ data: scores }, { data: fb }] = await Promise.all([
-    ids.length ? db.from("activity_scores").select("activity_id, classification").in("activity_id", ids) : Promise.resolve({ data: [] as any[] }),
+    ids.length ? db.from("activity_scores").select("activity_id, classification, zone_seconds, intensity").in("activity_id", ids) : Promise.resolve({ data: [] as any[] }),
     ids.length ? db.from("workout_feedback").select("activity_id, rpe, legs").in("activity_id", ids) : Promise.resolve({ data: [] as any[] }),
   ]);
   const cls = new Map<string, string>((scores ?? []).map((s: any) => [s.activity_id, s.classification]));
   const feedback = new Map<string, { rpe: number | null; legs: string | null }>((fb ?? []).map((f: any) => [f.activity_id, { rpe: f.rpe, legs: f.legs }]));
   const classOf = (r: any) => r.classification_override ?? cls.get(r.id) ?? null;
+  const scoreBy = new Map<string, any>((scores ?? []).map((s: any) => [s.activity_id, s]));
+  const loadOf = (r: any) => runLoad({ distanceM: r.distance_m, elevationGainM: r.elevation_gain_m, zoneSeconds: scoreBy.get(r.id)?.zone_seconds, intensity: scoreBy.get(r.id)?.intensity });
 
   // 1. matching
   const result = matchRuns(
@@ -268,7 +280,7 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     racePace: ctx.racePace,
     raceLabel: ctx.raceLabel,
     workouts: ws.map(toAdapt(feedback)),
-    runs: runs.map((r: any) => ({ date: r.local_date, movingS: r.moving_s, classification: classOf(r), rpe: feedback.get(r.id)?.rpe ?? null, legs: feedback.get(r.id)?.legs ?? null })),
+    runs: runs.map((r: any) => ({ date: r.local_date, movingS: r.moving_s, classification: classOf(r), rpe: feedback.get(r.id)?.rpe ?? null, legs: feedback.get(r.id)?.legs ?? null, load: loadOf(r) })),
     fitness: est && !est.withheld ? { vdot: est.vdot, confidence: est.confidence } : null,
     existingKeys: new Set((existing ?? []).map((p: any) => p.key)),
     wellness: await loadWellness(db, userId, today),
@@ -290,7 +302,8 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
       ),
     );
   }
-  return { status: "ok" as const, matched: result.matches.length, missed: result.missed.length, proposals: proposals.length };
+  const timeTrials = result.matches.filter((m) => ws.find((w) => w.id === m.workoutId)?.type === "time_trial").length;
+  return { status: "ok" as const, matched: result.matches.length, missed: result.missed.length, proposals: proposals.length, timeTrials };
 }
 
 /**
@@ -329,25 +342,38 @@ export async function refreshFutureWeeks(
     longestRun30Minutes: fresh.longestRun30Minutes,
     recentWeeks: fresh.recentWeeks,
     recentRunCounts: fresh.recentRunCounts,
+    recentLoad: fresh.recentLoad,
+    loadRatio: fresh.loadRatio,
+    loadTemper: fresh.loadTemper,
     habitualRunMinutes: fresh.habitualRunMinutes,
     recentRuns: fresh.recentRuns,
   };
   const goal = goalFromRow(plan.goal);
-  const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase) };
+  const { data: rows } = await db.from("planned_workouts").select("id, date, type, status, locked, source").eq("plan_id", plan.id).gte("date", today);
+  const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
+  // the baseline time trial belongs to the plan's first week only, and is only re-placed while it is still an untouched,
+  // upcoming generator workout: one already run, skipped, missed, swapped or moved never comes back
+  const allowTt = replaceable.some((r: any) => r.type === "time_trial");
+  const keptDates = new Set<string>((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
+  // never re-plan a day you already ran
+  const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
+  if (ran?.length) keptDates.add(today);
+  const config: PlanConfig = {
+    ...(plan.config as PlanConfig),
+    startDate: today,
+    weeks: remaining.length,
+    phases: remaining.map((w) => w.phase),
+    baselineTimeTrial: idx === 0 && allowTt && Boolean(plan.config?.baselineTimeTrial),
+    timeTrialBlockedDates: [...keptDates],
+  };
   const gen = generatePlan(goal, config, baseline);
   if (gen.weeks.length !== remaining.length || gen.weeks[0]?.start !== thisWeek) {
     await check(db.from("training_plans").update({ config: { ...plan.config, refreshedWeek: thisWeek } }).eq("id", plan.id));
     return false;
   }
 
-  const { data: rows } = await db.from("planned_workouts").select("id, date, status, locked, source").eq("plan_id", plan.id).gte("date", today);
-  const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
-  const keptDates = new Set((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
-  // never re-plan a day you already ran
-  const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
-  if (ran?.length) keptDates.add(today);
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date));
+  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial"));
   if (fresh_.length) await check(db.from("planned_workouts").insert(fresh_.map((w) => workoutRow(w, plan.id, userId))));
 
   await check(
@@ -366,7 +392,7 @@ export async function refreshFutureWeeks(
     userId,
     plan.id,
     opts.reason ??
-      `Weekly update: the coming weeks were recalculated from your actual running (last week ${rw.at(-1) ?? 0} min, 4-week average ${fresh.weeklyMinutes} min). This week: ${gen.weeks[0].targetMinutes} min.`,
+      `Weekly update: the coming weeks were recalculated from your actual running (last week ${rw.at(-1) ?? 0} min, 4-week average ${fresh.weeklyMinutes} min). This week: ${gen.weeks[0].targetMinutes} min.${(fresh.loadTemper ?? 1) < 1 ? ` Held back because last week's running load (hills and hard running included) was ${fresh.loadRatio}× your 4-week average.` : ""}`,
     "adaptation",
   );
   return true;
@@ -397,16 +423,17 @@ export async function startPlanEarlier(db: SupabaseClient, userId: string, newSt
   void _p;
   void _r;
   const config: PlanConfig = { ...rest, startDate: newStart, startNow: true, weeks: cfg.weeks + weeksAdded };
-  const baseline = await loadBaseline(db, userId, today);
-  const gen = generatePlan(goalFromRow(plan.goal), config, baseline);
-
   const { data: rows } = await db.from("planned_workouts").select("*").eq("plan_id", plan.id);
   const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
-  const keptDates = new Set((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
+  // the time trial moves with the start while it is still an untouched generator workout, or if the plan never got one
+  const allowTt = replaceable.some((r: any) => r.type === "time_trial") || !(rows ?? []).some((r: any) => r.type === "time_trial");
+  const keptDates = new Set<string>((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
   const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
   if (ran?.length) keptDates.add(today);
+  const baseline = await loadBaseline(db, userId, today);
+  const gen = generatePlan(goalFromRow(plan.goal), { ...config, baselineTimeTrial: allowTt && Boolean(config.baselineTimeTrial), timeTrialBlockedDates: [...keptDates] }, baseline);
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date));
+  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial"));
   if (fresh.length) await check(db.from("planned_workouts").insert(fresh.map((w) => ({ ...workoutRow(w, plan.id, userId), status: "planned" }))));
 
   const prevPlan = { config: plan.config, baseline: plan.baseline, weeks: plan.weeks, summary: plan.summary, warnings: plan.warnings, race_pace: plan.race_pace };
@@ -414,7 +441,7 @@ export async function startPlanEarlier(db: SupabaseClient, userId: string, newSt
     db
       .from("training_plans")
       .update({
-        config: { ...gen.config, projection: cfg.projection ?? null },
+        config: { ...gen.config, baselineTimeTrial: cfg.baselineTimeTrial, timeTrialBlockedDates: undefined, projection: cfg.projection ?? null },
         baseline: gen.baseline,
         weeks: gen.weeks,
         summary: gen.summary,
@@ -586,6 +613,8 @@ export async function editWorkout(db: SupabaseClient, userId: string, id: string
       break;
     }
     case "steps": {
+      // a time trial's target comes from your recent runs, not the zone paces the editor rebuilds from
+      if (w.type === "time_trial") throw new Error("A time trial's steps can't be edited. Swap it or move it instead.");
       const steps = rebuildSteps(edit.steps, planContext(w.plan));
       update = { steps, title: titleFor(w.type as WorkoutType, steps), duration_s: stepsDuration(steps), distance_m: stepsDistance(steps) };
       reason = `Edited the steps of ${label}`;

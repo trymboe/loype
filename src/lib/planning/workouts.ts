@@ -4,6 +4,8 @@
  * without HR zones to a described effort, never to invented paces.
  */
 import { formatPace } from "../units";
+import { predictTimeS, vdotFromPerformance } from "../analytics/fitness/vdot";
+import { fmtTime } from "../analytics/fitness/estimate";
 import type { Baseline, PlannedWorkout, Step, Target, WorkoutType, Zone } from "./types";
 import { WORKOUT_LABEL } from "./types";
 
@@ -141,6 +143,28 @@ export function stepsDistance(steps: Step[]): number | null {
   return Math.round(total / 100) * 100;
 }
 
+/**
+ * Target pace (s/km) for a time trial: the time your fitness estimate predicts for the distance, else the time your
+ * best recent run (read as an all-out effort, so the target errs slow) predicts. Null without either.
+ */
+export function timeTrialPace(b: Baseline, distanceM: number): number | null {
+  const exact = b.predictions.find((p) => Math.abs(p.distanceM - distanceM) < 1);
+  if (exact) return Math.round(exact.timeS / (distanceM / 1000));
+  if (b.vdot != null) return Math.round(predictTimeS(b.vdot, distanceM) / (distanceM / 1000));
+  const runs = (b.recentRuns ?? []).filter((r) => r.km != null && r.km >= 2 && r.minutes >= 10);
+  if (!runs.length) return null;
+  const v = Math.max(...runs.map((r) => vdotFromPerformance(r.km! * 1000, r.minutes * 60)));
+  return Math.round(predictTimeS(v, distanceM) / (distanceM / 1000));
+}
+
+/** A time-trial workout's distance and target finish time (s, from its main step's pace; null without a target). */
+export function timeTrialTarget(steps: Step[]): { distanceM: number; targetS: number | null } | null {
+  const main = steps.find((s) => s.kind === "run" && s.distanceM && s.target.zone === "race");
+  if (!main || main.kind !== "run" || !main.distanceM) return null;
+  const { paceFast, paceSlow } = main.target;
+  return { distanceM: main.distanceM, targetS: paceFast != null && paceSlow != null ? Math.round((((paceFast + paceSlow) / 2) * main.distanceM) / 1000) : null };
+}
+
 const roundMin = (s: number, to = 5) => Math.max(to, Math.round(s / 60 / to) * to) * 60;
 
 export interface WorkoutSpec {
@@ -150,7 +174,7 @@ export interface WorkoutSpec {
   /** 0 = first week of the phase, 1 = last (sessions grow within a phase) */
   progress?: number;
   goalKey?: string | null;
-  /** for "race": the race distance */
+  /** for "race": the race distance; for "time_trial": the trial distance */
   distanceM?: number | null;
   /** long run with race-pace segments */
   withRacePace?: boolean;
@@ -295,6 +319,29 @@ export function buildWorkout(spec: WorkoutSpec, ctx: TargetContext): Built {
         title: ctx.raceLabel ? `Race: ${ctx.raceLabel}` : "Race",
         objective: "Race day",
         steps: [wu(ctx, 600), { kind: "run", durationS, ...(d ? { distanceM: d } : {}), target: target("race", ctx), note: "even pace; the first km should feel too easy" }],
+      };
+    }
+    case "time_trial": {
+      const d = spec.distanceM ?? 5000;
+      const pace = timeTrialPace(ctx.baseline, d);
+      const km = d / 1000;
+      // with no pace data at all (no estimate, no run distances) the duration is only a rough calendar estimate, never a target
+      const durationS = Math.round(km * (pace ?? 420));
+      const fast = pace != null ? Math.round(pace * 0.99) : null;
+      const slow = pace != null ? Math.round(pace * 1.01) : null;
+      const t: Target = {
+        zone: "race",
+        paceFast: fast,
+        paceSlow: slow,
+        hrMin: null,
+        hrMax: null,
+        label: pace != null ? `Time trial · ${formatPace(fast)}–${formatPace(slow)}/km` : "Time trial (all-out, even effort)",
+      };
+      return {
+        type: "time_trial",
+        title: `Time trial: ${Number.isInteger(km) ? km : km.toFixed(1)} km`,
+        objective: pace != null ? `Target ${fmtTime(pace * km)} · ${formatPace(pace)}/km` : "Baseline",
+        steps: [wu(ctx, W), { kind: "run", durationS, distanceM: d, target: t, note: "even pace; the first km should feel controlled" }, cd(ctx, C)],
       };
     }
     case "strides":

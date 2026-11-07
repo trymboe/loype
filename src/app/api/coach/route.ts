@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
+import { checkinContext } from "@/lib/coach/checkin";
 import { coachConfigured, runCoachTurn, type CoachEvent } from "@/lib/coach/service";
 import { userTimezone } from "@/lib/user-tz";
 
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   conversationId: z.string().uuid().nullable(),
   text: z.string().trim().min(1).max(4000),
+  /** a follow-up opened from this run's check-in */
+  activityId: z.string().uuid().nullish(),
 });
 
 function friendly(err: unknown): string {
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
   const timezone = await userTimezone();
   const today = todayIn(timezone);
   const db = createAdminClient();
+  const context = parsed.data.activityId ? await checkinContext(db, user.id, parsed.data.activityId).catch(() => null) : null;
   const encoder = new TextEncoder();
 
   const body = new ReadableStream<Uint8Array>({
@@ -41,7 +45,7 @@ export async function POST(request: NextRequest) {
       const send = (e: CoachEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
       let changed = false;
       try {
-        for await (const e of runCoachTurn({ db, userId: user.id, conversationId: parsed.data.conversationId, text: parsed.data.text, today, timezone })) {
+        for await (const e of runCoachTurn({ db, userId: user.id, conversationId: parsed.data.conversationId, text: parsed.data.text, today, timezone, context })) {
           if (e.type === "actions") changed = true;
           send(e);
         }

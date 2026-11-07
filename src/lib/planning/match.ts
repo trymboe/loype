@@ -5,8 +5,10 @@
  */
 import { daysBetween } from "../dates";
 import type { RunFeatures } from "../analytics/fitness/features";
+import { fmtTime } from "../analytics/fitness/estimate";
 import { formatPace } from "../units";
 import { isHard, type Step, type Target, type WorkoutType } from "./types";
+import { timeTrialTarget } from "./workouts";
 
 export interface MatchWorkout {
   id: string;
@@ -84,6 +86,8 @@ export interface Execution {
   avgHr: number | null;
   verdict: "as_planned" | "harder" | "easier" | "shorter" | "longer";
   notes: string[];
+  /** time trials: the target and the time you ran for the distance (best effort), s */
+  timeTrial?: { distanceM: number; targetS: number | null; actualS: number | null };
 }
 
 const WORK_ZONES = new Set(["marathon", "threshold", "interval", "repetition", "race"]);
@@ -148,5 +152,12 @@ export function assessExecution(w: { type: WorkoutType; durationS: number; steps
       notes.push(`${Math.round(durationRatio * 100)} % of the planned time.`);
     }
   }
-  return { durationRatio, paceDeltaPct, workPace, targetPace, avgHr: r.avgHr, verdict, notes };
+  let timeTrial: Execution["timeTrial"];
+  const tt = w.type === "time_trial" ? timeTrialTarget(w.steps) : null;
+  if (tt) {
+    const e = r.features?.bestEfforts.find((x) => Math.abs(x.distanceM - tt.distanceM) < 1);
+    timeTrial = { distanceM: tt.distanceM, targetS: tt.targetS, actualS: e ? Math.round(e.timeS) : null };
+    if (e) notes.unshift(`${tt.distanceM / 1000} km in ${fmtTime(e.timeS)}${tt.targetS ? ` (target ${fmtTime(tt.targetS)})` : ""}.`);
+  }
+  return { durationRatio, paceDeltaPct, workPace, targetPace, avgHr: r.avgHr, verdict, notes, ...(timeTrial ? { timeTrial } : {}) };
 }

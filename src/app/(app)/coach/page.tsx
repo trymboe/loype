@@ -13,18 +13,21 @@ export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export default async function CoachPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
+export default async function CoachPage({ searchParams }: { searchParams: Promise<{ c?: string; run?: string }> }) {
   const user = await getSessionUser();
   if (!user) return null;
   if (!coachConfigured()) return <NeedsKey />;
 
-  const { c } = await searchParams;
+  const { c, run } = await searchParams;
   const db = createAdminClient();
   const today = todayIn(await userTimezone());
   const conversations = await listConversations(db, user.id);
   const current = c && /^[0-9a-f-]{36}$/i.test(c) ? (conversations.find((x) => x.id === c) ?? null) : null;
   const turns = current ? await loadTranscript(db, user.id, current.id) : [];
   const suggestions = current ? [] : await suggestionsFor(db, user.id);
+  // a follow-up from a run's check-in: the check-in opens the chat, and the run goes with the first message
+  const runId = !current && run && /^[0-9a-f-]{36}$/i.test(run) ? run : null;
+  const checkin = runId ? (await db.from("coach_checkins").select("activity_id, text").eq("activity_id", runId).eq("user_id", user.id).maybeSingle()).data : null;
 
   return (
     <>
@@ -61,7 +64,13 @@ export default async function CoachPage({ searchParams }: { searchParams: Promis
           </div>
         }
       />
-      <CoachChat key={current?.id ?? "new"} conversationId={current?.id ?? null} turns={turns} suggestions={suggestions} />
+      <CoachChat
+        key={current?.id ?? (checkin ? `run-${checkin.activity_id}` : "new")}
+        conversationId={current?.id ?? null}
+        turns={turns}
+        suggestions={suggestions}
+        runContext={checkin ? { activityId: checkin.activity_id, text: checkin.text } : null}
+      />
     </>
   );
 }

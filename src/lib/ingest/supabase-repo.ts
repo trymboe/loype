@@ -3,6 +3,7 @@ import type { DerivedActivity } from "../analytics/summarize";
 import type { NormalizedActivity } from "../fit/types";
 import { VERSIONS } from "../analytics/versions";
 import { fetchAll } from "../db/paginate";
+import { defaultShoeIdFor } from "../shoes/service";
 import type { IngestRepo, JobCounters, JobKind, RawSourceRow, SyncJob, WellnessObservation } from "./types";
 
 export const RAW_BUCKET = "raw-activity-files";
@@ -223,7 +224,7 @@ export class SupabaseIngestRepo implements IngestRepo {
 
   async saveActivity(raw: RawSourceRow, a: NormalizedActivity, d: DerivedActivity) {
     const s = d.summary;
-    const row = {
+    const row: Record<string, unknown> = {
       user_id: this.userId,
       raw_source_id: raw.id,
       name: raw.name,
@@ -254,6 +255,12 @@ export class SupabaseIngestRepo implements IngestRepo {
       derivation_versions: VERSIONS,
       route_preview: routePreview(a),
     };
+    // A run saved for the first time gets the default shoe; on reprocess shoe_id stays out of the payload.
+    const existing = check(await this.db.from("activities").select("id").eq("raw_source_id", raw.id).maybeSingle());
+    if (!existing && a.sport === "running") {
+      const shoeId = await defaultShoeIdFor(this.db, this.userId, a.startTime);
+      if (shoeId) row.shoe_id = shoeId;
+    }
     // Upsert on raw_source_id; manual_overrides is not in the payload, so user edits survive reprocessing.
     const saved = check(
       await this.db.from("activities").upsert(row, { onConflict: "raw_source_id" }).select("id").single(),

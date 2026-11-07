@@ -5,13 +5,14 @@
  *
  *  A  fitness moved: re-target future paces
  *  B  missed sessions: ease the coming week back to what you've actually run
- *  C  fatigue signals (RPE, legs, HRV/resting HR/sleep vs your own normal): turn the next hard session into an easy run
+ *  C  fatigue signals (RPE, legs, HRV/resting HR/sleep vs your own normal, a running-load spike): turn the next hard session into an easy run
  *  D  return after a break: a gentle week without intensity
  * (A goal change regenerates the plan from today; that is not a proposal.)
  */
 import { addDaysIso, daysBetween, formatDay } from "../dates";
 import { predictTimeS, trainingPaces } from "../analytics/fitness/vdot";
 import { formatPace } from "../units";
+import { LOAD_RATIO_SPIKE, loadRatio } from "../analytics/running-load";
 import type { Execution } from "./match";
 import { isHard, WORKOUT_LABEL, type Baseline, type Goal, type Step, type WorkoutType } from "./types";
 import { SIGNAL_THRESHOLD, wellnessSignals, type WellnessPoint } from "./wellness-signals";
@@ -42,6 +43,8 @@ export interface AdaptRun {
   classification: string | null;
   rpe: number | null;
   legs: string | null;
+  /** running load, equivalent km (running-load.ts) */
+  load?: number;
 }
 
 export interface WorkoutFields {
@@ -185,22 +188,30 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
     .filter((r) => r.date >= addDaysIso(today, -7) && (r.legs === "heavy" || r.legs === "sore"));
   const well = wellnessSignals(input.wellness ?? [], today);
   const wellTired = well.score >= SIGNAL_THRESHOLD;
-  if (hardEasy.length || legs.length >= 2 || wellTired) {
+  const ratio = loadRatio(
+    input.runs.filter((r) => r.load != null).map((r) => ({ date: r.date, load: r.load! })),
+    today,
+  );
+  const loadSpike = ratio != null && ratio.ratio >= LOAD_RATIO_SPIKE;
+  if (hardEasy.length || legs.length >= 2 || wellTired || loadSpike) {
     const next = future.filter((w) => isHard(w.type) && w.date <= addDaysIso(today, 3)).sort((a, b) => a.date.localeCompare(b.date))[0];
     if (next) {
       const ev = [
         ...hardEasy.map((r) => `${formatDay(r.date)}: easy run rated ${r.rpe}/10`),
         ...(legs.length >= 2 ? legs.map((r) => `${formatDay(r.date)}: legs ${r.legs}`) : []),
         ...(wellTired ? well.evidence : []),
+        ...(loadSpike ? [`Running load, last 7 days: ${Math.round(ratio!.acute)} equivalent km, ${ratio!.ratio}× your 4-week average of ${Math.round(ratio!.chronic)}`] : []),
       ];
       const what = hardEasy.length
         ? "An easy run felt hard"
         : legs.length >= 2
           ? "Your legs have felt heavy or sore"
-          : (() => {
-              const names = well.fired.filter((f) => f !== "battery").map((f) => ({ hrv: "HRV", rhr: "resting heart rate", sleep: "sleep" })[f as "hrv" | "rhr" | "sleep"]);
-              return `Your ${names.join(" and ")} ${names.length === 1 ? "is" : "are"} outside your normal range`;
-            })();
+          : !wellTired
+            ? "Your running load (distance, climbing and intensity) has jumped"
+            : (() => {
+                const names = well.fired.filter((f) => f !== "battery").map((f) => ({ hrv: "HRV", rhr: "resting heart rate", sleep: "sleep" })[f as "hrv" | "rhr" | "sleep"]);
+                return `Your ${names.join(" and ")} ${names.length === 1 ? "is" : "are"} outside your normal range`;
+              })();
       push({
         rule: "C",
         key: `C:${next.id}`,
@@ -250,6 +261,7 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
       evidence,
       baselinePatch: { vdot: newVdot, racePace },
       changes: future
+        .filter((w) => w.type !== "time_trial")
         .map((w) => {
           const steps = retarget(w.steps, newCtx);
           return { workoutId: w.id, date: w.date, before: fields(w), after: { ...fields(w), steps, distanceM: stepsDistance(steps) } };
@@ -276,10 +288,10 @@ export const RULE_DETAIL: Record<Rule, { looksAt: string; why: string; evidence:
   },
   C: {
     looksAt:
-      "An easy run you rated 8/10 or harder in the last 3 days, legs logged as heavy or sore at least twice in the last week, or Garmin recovery data outside your own normal range: a 7-day HRV average clearly below your 60-day baseline, resting (or sleeping) heart rate well above usual on 2 of the last 3 days, under 6 h of sleep on 2 of the last 3 nights. Body Battery only counts as supporting evidence.",
+      "An easy run you rated 8/10 or harder in the last 3 days, legs logged as heavy or sore at least twice in the last week, or Garmin recovery data outside your own normal range: a 7-day HRV average clearly below your 60-day baseline, resting (or sleeping) heart rate well above usual on 2 of the last 3 days, under 6 h of sleep on 2 of the last 3 nights. Body Battery only counts as supporting evidence. Or a running-load spike: the last 7 days at 1.5× or more your 4-week weekly average, where climbing (100 m ≈ 1 km) and time at high heart rate count as extra distance.",
     why: "When easy running feels hard, you are usually carrying fatigue. A hard session on top of that tends to be run below target and adds stress without much benefit.",
     evidence:
-      "Perceived exertion is a well-validated marker of internal load (session-RPE, Foster et al. 2001). HRV-guided training, which holds back intensity when the 7-day HRV average falls below your normal range, matched or beat fixed plans in trials (Kiviniemi et al. 2007; Vesterinen et al. 2016; Plews et al. 2013 on the method). Elevated resting HR and short sleep are weaker signals on their own, so it takes two of them.",
+      "Perceived exertion is a well-validated marker of internal load (session-RPE, Foster et al. 2001). HRV-guided training, which holds back intensity when the 7-day HRV average falls below your normal range, matched or beat fixed plans in trials (Kiviniemi et al. 2007; Vesterinen et al. 2016; Plews et al. 2013 on the method). Elevated resting HR and short sleep are weaker signals on their own, so it takes two of them. Load ratios come from team sports (Gabbett 2016) and are weaker evidence for runners (Frandsen et al. 2025), so a spike only eases one session.",
     ifKept: "The hard session stays. If you do it, start conservatively and stop the reps early if the target pace feels much harder than usual.",
   },
   D: {

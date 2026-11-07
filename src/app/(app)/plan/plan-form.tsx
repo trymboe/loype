@@ -135,6 +135,7 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
         <Toggle name="intervals" label="Include interval sessions" defaultChecked={defaults.background?.intervals ?? true} />
         <Toggle name="long_runs" label="Include long runs" defaultChecked={defaults.background?.longRuns ?? true} />
         <Toggle name="strides" label="Include strides on easy days" />
+        <Toggle name="time_trial" label="Start with a time trial" />
       </section>
       {defaults.background?.injuryConcern && (
         <p className="rounded-xl bg-warn/10 p-3 text-sm leading-snug">

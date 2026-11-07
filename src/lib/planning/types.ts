@@ -68,6 +68,10 @@ export interface PlanConfig {
   includeIntervals: boolean;
   includeLongRuns: boolean;
   includeStrides: boolean;
+  /** a time trial in week 1 as a baseline; missing means none */
+  baselineTimeTrial?: boolean;
+  /** days the time trial must not land on when a plan is recalculated (already run or kept); never stored */
+  timeTrialBlockedDates?: string[];
 }
 
 export interface Baseline {
@@ -91,6 +95,12 @@ export interface Baseline {
   recentWeeks?: number[];
   /** runs (≥ 10 min) in each of those weeks, oldest first */
   recentRunCounts?: number[];
+  /** running load (equivalent km: distance + climb, weighted by intensity) in each of those weeks, oldest first */
+  recentLoad?: number[];
+  /** load of the last complete week ÷ the 4-week average; null without enough history */
+  loadRatio?: number | null;
+  /** 0..1: share of the usual week-1 growth over your 4-week average kept after a high-load week (1 = no change) */
+  loadTemper?: number;
   /** median length of your runs over the last 8 weeks, minutes */
   habitualRunMinutes?: number | null;
   /** your runs of 10 min or more in the last 8 weeks, oldest first: session lengths and the spike limit are seeded from them */
@@ -134,6 +144,7 @@ export type WorkoutType =
   | "race_pace"
   | "strides"
   | "race"
+  | "time_trial"
   | "rest";
 
 export const WORKOUT_LABEL: Record<WorkoutType, string> = {
@@ -149,10 +160,11 @@ export const WORKOUT_LABEL: Record<WorkoutType, string> = {
   race_pace: "Race-pace session",
   strides: "Easy run + strides",
   race: "Race",
+  time_trial: "Time trial",
   rest: "Rest",
 };
 
-export const HARD_TYPES: WorkoutType[] = ["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race"];
+export const HARD_TYPES: WorkoutType[] = ["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race", "time_trial"];
 export const isHard = (t: WorkoutType) => HARD_TYPES.includes(t);
 export const isDemanding = (t: WorkoutType) => isHard(t) || t === "long" || t === "progressive_long";
 

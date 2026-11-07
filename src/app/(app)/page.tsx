@@ -3,11 +3,13 @@ import { redirect } from "next/navigation";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";
 import { SetupPrompt } from "@/components/setup-prompt";
+import { ShoeNudge } from "@/components/shoes/shoe-nudge";
 import { SyncBanner } from "@/components/sync-banner";
 import { SyncButton } from "@/components/sync/sync-button";
 import { NextWorkout } from "@/components/plan/next-workout";
 import { ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
 import { FitnessSnapshotCard, InsightCard, RaceGoalCard } from "@/components/today/cards";
+import { RouteSuggestion } from "@/components/today/route-suggestion";
 import { activitiesSince, getFitnessState, getIntegrationStatus, getStravaStatus } from "@/lib/db/queries";
 import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
 import { ensureWeeklyRecap, type WeeklyRecapRow } from "@/lib/recap/service";
@@ -129,8 +131,10 @@ export default async function TodayPage() {
         <div className="stagger space-y-3">
           <SetupPrompt />
           <NextWorkout today={today} />
+          <RouteSuggestion today={today} />
           {insight && <InsightCard insight={insight} />}
           {race && status && race.raceDate && <RaceGoalCard goal={race} status={status} week={wk ? { index: wk.index, total: planWeeks.length } : null} />}
+          <ShoeNudge />
           {latest ? (
             <Link href={`/activities/${latest.id}`} className="card block overflow-hidden">
               <div className="flex items-start justify-between gap-4 p-5 pb-0">

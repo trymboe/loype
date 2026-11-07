@@ -3,10 +3,15 @@ import { Download, Info, Map as MapIcon } from "lucide-react";
 import { saveActivityAsRouteAction } from "@/app/(app)/routes/actions";
 import { ActivityExplorer, type LapView } from "@/components/activity/explorer";
 import { AnalysisCard } from "@/components/activity/analysis-card";
+import { CoachCheckin } from "@/components/activity/coach-checkin";
 import { FeedbackForm } from "@/components/activity/feedback-form";
+import { ShoeSelect } from "@/components/shoes/shoe-select";
 import { Badge, PageHeader, Stat } from "@/components/ui";
 import { buildChartSeries } from "@/lib/analytics/series";
+import { isKeySession } from "@/lib/coach/checkin";
+import { coachConfigured } from "@/lib/coach/service";
 import { getActivityDetail, getActivityFeatures, getActivityScore } from "@/lib/db/queries";
+import { createUserClient } from "@/lib/db/server";
 import { formatDay, localTime } from "@/lib/dates";
 import { formatDuration, formatKm, formatPace, formatPaceFromSpeed } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
@@ -18,9 +23,16 @@ export const dynamic = "force-dynamic";
 export default async function ActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [detail, tz, score, features] = await Promise.all([getActivityDetail(id), userTimezone(), getActivityScore(id), getActivityFeatures(id)]);
+  const [detail, tz, score, features, planned] = await Promise.all([
+    getActivityDetail(id),
+    userTimezone(),
+    getActivityScore(id),
+    getActivityFeatures(id),
+    coachConfigured() ? createUserClient().then((db) => db.from("planned_workouts").select("type, key").eq("activity_id", id).maybeSingle()) : null,
+  ]);
   if (!detail) notFound();
   const { activity: a, streams, laps, splits, feedback } = detail;
+  const checkin = a.sport === "running" && planned?.data && isKeySession(planned.data);
 
   const points = streams ? buildChartSeries(streams) : [];
   const lapViews: LapView[] = laps.map((l: any) => ({
@@ -87,7 +99,10 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
         </section>
       )}
 
+      {checkin && <CoachCheckin activityId={a.id} feedbackKey={[feedback?.rpe, feedback?.legs, feedback?.discomfort, feedback?.notes].map((v) => v ?? "").join("|")} />}
+
       {a.sport === "running" && <AnalysisCard activityId={a.id} score={score} features={features} override={a.classification_override ?? null} />}
+      {a.sport === "running" && <ShoeSelect activityId={a.id} shoeId={a.shoe_id ?? null} />}
 
       {points.length > 0 ? (
         <ActivityExplorer points={points} laps={lapViews} />

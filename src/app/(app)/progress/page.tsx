@@ -7,7 +7,7 @@ import { FitnessSection } from "@/components/fitness/fitness-section";
 import { PayingOffCard } from "@/components/progress/paying-off";
 import { MilestonesCard } from "@/components/progress/milestones";
 import { loadProgressMotivation } from "@/lib/progress/service";
-import { activitiesSince, getFitnessState, getVdotHistory } from "@/lib/db/queries";
+import { activitiesSince, activityIntensities, getFitnessState, getVdotHistory } from "@/lib/db/queries";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { recomputeFitness } from "@/lib/fitness/service";
 import { addDaysIso, todayIn } from "@/lib/dates";
@@ -38,7 +38,7 @@ export default async function ProgressPage() {
     band: r.lower_bound != null && r.upper_bound != null ? ([r.lower_bound, r.upper_bound] as [number, number]) : null,
     confidence: r.confidence,
   }));
-  const weeks = weeklyVolume(acts, acts[0].local_date, today);
+  const weeks = weeklyVolume(acts, acts[0].local_date, today, await activityIntensities());
   const last4 = weeks.slice(-4);
   const prev4 = weeks.slice(-8, -4);
   const sum = (ws: typeof weeks, k: "distanceM" | "runs") => ws.reduce((s, w) => s + w[k], 0);

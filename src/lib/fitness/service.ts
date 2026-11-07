@@ -66,7 +66,7 @@ export async function recomputeFitness(db: SupabaseClient, userId: string, asOf:
   const pending = acts.filter((a) => !featById.has(a.id)).length;
 
   // 2. inputs
-  const [{ data: profile }, wellness, others] = await Promise.all([
+  const [{ data: profile }, wellness, others, { data: timeTrials }] = await Promise.all([
     db.from("athlete_profile").select("max_hr, max_hr_source, resting_hr, resting_hr_source, birth_year, sex").eq("user_id", userId).maybeSingle(),
     fetchAll<any>((from, to) =>
       db
@@ -88,7 +88,10 @@ export async function recomputeFitness(db: SupabaseClient, userId: string, asOf:
         .order("start_time")
         .range(from, to),
     ),
+    // runs linked to a planned time trial count as races
+    db.from("planned_workouts").select("activity_id").eq("user_id", userId).eq("type", "time_trial"),
   ]);
+  const ttRuns = new Set((timeTrials ?? []).map((t: any) => t.activity_id).filter(Boolean));
 
   const runs: RunRecord[] = acts.map((a) => ({
     id: a.id,
@@ -103,6 +106,7 @@ export async function recomputeFitness(db: SupabaseClient, userId: string, asOf:
     isIndoor: a.is_indoor,
     features: featById.get(a.id) ?? null,
     classificationOverride: (a.classification_override as RunClass | null) ?? null,
+    ...(ttRuns.has(a.id) ? { plannedTimeTrial: true } : {}),
   }));
   const otherActs: OtherActivity[] = others
     .map((o) => {
@@ -126,7 +130,7 @@ export async function recomputeFitness(db: SupabaseClient, userId: string, asOf:
   };
 
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ v: MODEL_VERSION, f: FEATURES_VERSION, asOf, profile, runs: runs.map((r) => [r.id, r.date, !!r.features, r.classificationOverride, r.usableForFitness]), w: wellness.length, wl: wellness.at(-1), o: otherActs.length }))
+    .update(JSON.stringify({ v: MODEL_VERSION, f: FEATURES_VERSION, asOf, profile, runs: runs.map((r) => [r.id, r.date, !!r.features, r.classificationOverride, r.usableForFitness, !!r.plannedTimeTrial]), w: wellness.length, wl: wellness.at(-1), o: otherActs.length }))
     .digest("hex");
   const { data: state } = await db.from("fitness_state").select("inputs_fingerprint").eq("user_id", userId).maybeSingle();
   if (state?.inputs_fingerprint === fingerprint && pending === 0) return { status: "up_to_date", featuresComputed: computed, featuresPending: 0 };

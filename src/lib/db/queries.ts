@@ -121,6 +121,15 @@ export async function getVdotHistory(modelVersion: string) {
   return (data ?? []) as { as_of: string; kind: string; value: number | null; lower_bound: number | null; upper_bound: number | null; confidence: string | null }[];
 }
 
+/** Time in HR zones and intensity of every scored activity, for the running load. */
+export async function activityIntensities(): Promise<Map<string, { zoneSeconds: number[] | null; intensity: number | null }>> {
+  const db = await createUserClient();
+  const rows = await fetchAll<{ activity_id: string; zone_seconds: number[] | null; intensity: number | null }>((from, to) =>
+    db.from("activity_scores").select("activity_id, zone_seconds, intensity").order("activity_id").range(from, to) as any,
+  );
+  return new Map(rows.map((r) => [r.activity_id, { zoneSeconds: r.zone_seconds, intensity: r.intensity }]));
+}
+
 export async function getActivityScore(id: string) {
   const db = await createUserClient();
   const { data } = await db.from("activity_scores").select("*").eq("activity_id", id).maybeSingle();

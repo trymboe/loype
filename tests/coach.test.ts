@@ -173,6 +173,17 @@ describe("coach tools", async () => {
     expect(workoutRow(db, 4).duration_s).toBe(row(4, "2026-11-10", "vo2max", 50).duration_s); // locked and outside the range
   });
 
+  it("leaves a time trial's distance alone when sessions are resized or scaled", async () => {
+    const db = seed();
+    const tt = workoutRow(db, 3);
+    Object.assign(tt, { type: "time_trial", title: "Time trial: 3 km" });
+    const before = JSON.stringify(tt);
+    const resize = await call(db, "edit_plan", { reason: "x", operations: [{ action: "resize", workout_id: id(3), date: null, type: null, minutes: 50, intensity: null }], confirmed: false });
+    expect(resize.out).toMatch(/Nothing changed[\s\S]*time trial keeps its fixed distance/);
+    await call(db, "scale_plan", { from: today, to: "2026-11-08", percent: 10, sessions: "all", reason: "Harder", confirmed: true });
+    expect(JSON.stringify(workoutRow(db, 3))).toBe(before);
+  });
+
   it("shows the whole plan week by week", async () => {
     const db = seed();
     db.rows("training_plans")[0].weeks = [
