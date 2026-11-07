@@ -257,7 +257,7 @@ export class SupabaseIngestRepo implements IngestRepo {
     };
     // A run saved for the first time gets the default shoe; on reprocess shoe_id stays out of the payload.
     const existing = check(await this.db.from("activities").select("id").eq("raw_source_id", raw.id).maybeSingle());
-    if (!existing) {
+    if (!existing && a.sport === "running") {
       const shoeId = await defaultShoeIdFor(this.db, this.userId, a.startTime);
       if (shoeId) row.shoe_id = shoeId;
     }

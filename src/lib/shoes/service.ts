@@ -10,7 +10,7 @@ export async function listShoes(db: SupabaseClient, userId: string): Promise<Sho
   return (data ?? []) as ShoeRow[];
 }
 
-/** Every shoe with its total distance (previous km + linked, non-duplicate runs). */
+/** Every shoe with its total distance (previous km + linked, non-duplicate runs; walks and other sports don't count). */
 export async function listShoesWithMileage(db: SupabaseClient, userId: string): Promise<ShoeMileage[]> {
   const shoes = await listShoes(db, userId);
   if (!shoes.length) return [];
@@ -19,6 +19,7 @@ export async function listShoesWithMileage(db: SupabaseClient, userId: string): 
       .from("activities")
       .select("id, shoe_id, distance_m, duplicate_of")
       .eq("user_id", userId)
+      .eq("sport", "running")
       .in("shoe_id", shoes.map((s) => s.id))
       .order("id")
       .range(from, to),

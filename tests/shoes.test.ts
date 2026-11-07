@@ -107,9 +107,10 @@ describe("default shoe", () => {
     const db = new FakeDb({
       shoes: [{ ...shoe({ starting_distance_m: 50_000 }), user_id: "u1" }],
       activities: [
-        { id: "a1", user_id: "u1", shoe_id: "s1", distance_m: 10_000, duplicate_of: null },
-        { id: "a2", user_id: "u1", shoe_id: "s1", distance_m: 10_000, duplicate_of: "a1" },
-        { id: "a3", user_id: "u2", shoe_id: "s1", distance_m: 10_000, duplicate_of: null },
+        { id: "a1", user_id: "u1", sport: "running", shoe_id: "s1", distance_m: 10_000, duplicate_of: null },
+        { id: "a2", user_id: "u1", sport: "running", shoe_id: "s1", distance_m: 10_000, duplicate_of: "a1" },
+        { id: "a3", user_id: "u2", sport: "running", shoe_id: "s1", distance_m: 10_000, duplicate_of: null },
+        { id: "a4", user_id: "u1", sport: "walking", shoe_id: "s1", distance_m: 4_000, duplicate_of: null },
       ],
     });
     const [s] = await listShoesWithMileage(db as unknown as SupabaseClient, "u1");
@@ -178,6 +179,12 @@ describe("shoe on ingest", () => {
     saved.shoe_id = null;
     await repo.saveActivity(raw, activity, derived);
     expect(fake.rows("activities")[0].shoe_id).toBeNull();
+  });
+
+  it("does not give a walk the default shoe", async () => {
+    const fake = new FakeDb({ shoes: [{ ...shoe({ id: "def", is_default: true }), user_id: "u1" }] });
+    await new SupabaseIngestRepo(ingestDb(fake), "u1").saveActivity({ ...raw, activityType: "walking" }, { ...activity, sport: "walking" }, derived);
+    expect(fake.rows("activities")[0].shoe_id ?? null).toBeNull();
   });
 
   it("leaves the run unassigned without a default", async () => {
