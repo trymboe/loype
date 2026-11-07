@@ -160,6 +160,8 @@ export async function syncTickForUser(
   if (fitness && !("error" in fitness) && Date.now() < deadline) {
     try {
       plan = await runPlanMaintenance(db, userId, todayIn(tz));
+      // a newly linked time trial is race evidence: rescore so the estimate uses it now
+      if (plan.status === "ok" && plan.timeTrials > 0 && Date.now() < deadline) fitness = await recomputeFitness(db, userId, todayIn(tz), deadline).catch(() => fitness);
     } catch (e) {
       plan = { error: e instanceof Error ? e.message : String(e) };
     }

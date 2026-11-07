@@ -302,7 +302,8 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
       ),
     );
   }
-  return { status: "ok" as const, matched: result.matches.length, missed: result.missed.length, proposals: proposals.length };
+  const timeTrials = result.matches.filter((m) => ws.find((w) => w.id === m.workoutId)?.type === "time_trial").length;
+  return { status: "ok" as const, matched: result.matches.length, missed: result.missed.length, proposals: proposals.length, timeTrials };
 }
 
 /**
@@ -348,21 +349,23 @@ export async function refreshFutureWeeks(
     recentRuns: fresh.recentRuns,
   };
   const goal = goalFromRow(plan.goal);
-  const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase) };
+  // the baseline time trial belongs to the plan's first week only
+  const config: PlanConfig = { ...(plan.config as PlanConfig), startDate: today, weeks: remaining.length, phases: remaining.map((w) => w.phase), baselineTimeTrial: idx === 0 && Boolean(plan.config?.baselineTimeTrial) };
   const gen = generatePlan(goal, config, baseline);
   if (gen.weeks.length !== remaining.length || gen.weeks[0]?.start !== thisWeek) {
     await check(db.from("training_plans").update({ config: { ...plan.config, refreshedWeek: thisWeek } }).eq("id", plan.id));
     return false;
   }
 
-  const { data: rows } = await db.from("planned_workouts").select("id, date, status, locked, source").eq("plan_id", plan.id).gte("date", today);
+  const { data: rows } = await db.from("planned_workouts").select("id, date, type, status, locked, source").eq("plan_id", plan.id).gte("date", today);
   const replaceable = (rows ?? []).filter((r: any) => r.status === "planned" && !r.locked && r.source === "generator");
   const keptDates = new Set((rows ?? []).filter((r: any) => !replaceable.includes(r)).map((r: any) => r.date));
+  const keptTt = (rows ?? []).some((r: any) => r.type === "time_trial" && !replaceable.includes(r));
   // never re-plan a day you already ran
   const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
   if (ran?.length) keptDates.add(today);
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date));
+  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date) && !(keptTt && w.type === "time_trial"));
   if (fresh_.length) await check(db.from("planned_workouts").insert(fresh_.map((w) => workoutRow(w, plan.id, userId))));
 
   await check(
@@ -421,7 +424,8 @@ export async function startPlanEarlier(db: SupabaseClient, userId: string, newSt
   const { data: ran } = await db.from("activities").select("local_date").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
   if (ran?.length) keptDates.add(today);
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date));
+  const keptTt = (rows ?? []).some((r: any) => r.type === "time_trial" && !replaceable.includes(r));
+  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date) && !(keptTt && w.type === "time_trial"));
   if (fresh.length) await check(db.from("planned_workouts").insert(fresh.map((w) => ({ ...workoutRow(w, plan.id, userId), status: "planned" }))));
 
   const prevPlan = { config: plan.config, baseline: plan.baseline, weeks: plan.weeks, summary: plan.summary, warnings: plan.warnings, race_pace: plan.race_pace };

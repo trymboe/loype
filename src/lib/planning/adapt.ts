@@ -261,6 +261,7 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
       evidence,
       baselinePatch: { vdot: newVdot, racePace },
       changes: future
+        .filter((w) => w.type !== "time_trial")
         .map((w) => {
           const steps = retarget(w.steps, newCtx);
           return { workoutId: w.id, date: w.date, before: fields(w), after: { ...fields(w), steps, distanceM: stepsDistance(steps) } };

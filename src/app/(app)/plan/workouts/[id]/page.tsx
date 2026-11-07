@@ -15,6 +15,7 @@ import { createUserClient } from "@/lib/db/server";
 import { formatDay, todayIn } from "@/lib/dates";
 import { WORKOUT_LABEL, type WorkoutType } from "@/lib/planning/types";
 import { formatDuration, formatPace } from "@/lib/units";
+import { fmtTime } from "@/lib/analytics/fitness/estimate";
 import { userTimezone } from "@/lib/user-tz";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,12 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
         {ex && (
           <Card>
             <CardHeader title="How it went" />
+            {ex.timeTrial && (
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <Stat label="Target" value={ex.timeTrial.targetS ? fmtTime(ex.timeTrial.targetS) : "–"} size="md" />
+                <Stat label="Result" value={ex.timeTrial.actualS ? fmtTime(ex.timeTrial.actualS) : "–"} size="md" />
+              </div>
+            )}
             <div className="mt-4 grid grid-cols-3 gap-4">
               <Stat label="Of planned time" value={ex.durationRatio != null ? `${Math.round(ex.durationRatio * 100)} %` : "–"} size="md" />
               <Stat label="Work pace" value={ex.workPace ? formatPace(ex.workPace) : "–"} size="md" hint={ex.targetPace ? `target ${formatPace(ex.targetPace[0])}–${formatPace(ex.targetPace[1])}` : undefined} />

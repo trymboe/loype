@@ -68,6 +68,8 @@ export interface PlanConfig {
   includeIntervals: boolean;
   includeLongRuns: boolean;
   includeStrides: boolean;
+  /** a time trial in week 1 as a baseline; missing means none */
+  baselineTimeTrial?: boolean;
 }
 
 export interface Baseline {
@@ -140,6 +142,7 @@ export type WorkoutType =
   | "race_pace"
   | "strides"
   | "race"
+  | "time_trial"
   | "rest";
 
 export const WORKOUT_LABEL: Record<WorkoutType, string> = {
@@ -155,10 +158,11 @@ export const WORKOUT_LABEL: Record<WorkoutType, string> = {
   race_pace: "Race-pace session",
   strides: "Easy run + strides",
   race: "Race",
+  time_trial: "Time trial",
   rest: "Rest",
 };
 
-export const HARD_TYPES: WorkoutType[] = ["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race"];
+export const HARD_TYPES: WorkoutType[] = ["threshold", "tempo", "vo2max", "repetitions", "hills", "race_pace", "race", "time_trial"];
 export const isHard = (t: WorkoutType) => HARD_TYPES.includes(t);
 export const isDemanding = (t: WorkoutType) => isHard(t) || t === "long" || t === "progressive_long";
 
