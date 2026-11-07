@@ -148,6 +148,34 @@ describe("adding a time trial to a plan", () => {
     expect(tts(db)[0].title).toBe("Time trial: 3 km");
   });
 
+  it("uses the athlete's chosen 5 km even when 3 km would be suggested", async () => {
+    const today = "2026-11-10";
+    const { db } = setup(today);
+    db.rows("goals")[0].kind = "5k";
+    await addTimeTrial(db as any, "u", today, { distanceM: 5000 });
+    expect(tts(db)[0].title).toBe("Time trial: 5 km");
+  });
+
+  it("switches an upcoming time trial between 3 and 5 km in place", async () => {
+    const today = "2026-11-10";
+    const { db } = setup(today);
+    const r = await addTimeTrial(db as any, "u", today, { distanceM: 3000 });
+    const before = rows(db).length;
+    await addTimeTrial(db as any, "u", today, { workoutId: r.id, distanceM: 5000 });
+    expect(tts(db)).toHaveLength(1);
+    expect(rows(db)).toHaveLength(before);
+    expect(tts(db)[0]).toMatchObject({ id: r.id, date: r.date, title: "Time trial: 5 km" });
+  });
+
+  it("refuses a chosen 5 km that breaks the single-run limit, and points to 3 km", async () => {
+    const today = "2026-11-10";
+    const { db } = setup(today, history(3, 4, 360));
+    for (const w of rows(db)) Object.assign(w, { type: "easy", title: "30 min easy", duration_s: 1800, distance_m: 5000 });
+    for (const a of db.rows("activities")) Object.assign(a, { moving_s: 1800, distance_m: 5000 });
+    await expect(addTimeTrial(db as any, "u", today, { distanceM: 5000 })).rejects.toThrow(/5 km.*Try 3 km/s);
+    expect(tts(db)).toHaveLength(0);
+  });
+
   it("a recalculated week makes room for a kept time trial", () => {
     const ctx = { baseline: buildBaseline("2026-11-01", fitness(45), history(8, 14, 360)), racePace: null, raceLabel: null };
     const w = (date: string, type: any) => finalize(buildWorkout({ type, minutes: 45, progress: 0.5 }, ctx), date, "", isHard(type));

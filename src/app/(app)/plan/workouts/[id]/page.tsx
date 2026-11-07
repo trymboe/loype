@@ -5,7 +5,9 @@ import { Badge, Card, CardHeader, PageHeader, Stat, type Tone } from "@/componen
 import { Steps } from "@/components/plan/steps";
 import { WorkoutActions } from "./workout-actions";
 import { StepEditor } from "./step-editor";
+import { TimeTrialDistance } from "../../add-time-trial";
 import { toEditable } from "@/lib/planning/edit-steps";
+import { timeTrialTarget } from "@/lib/planning/workouts";
 import { analyzeIntervals, mainRepeat } from "@/lib/planning/intervals";
 import { IntervalReps } from "@/components/plan/interval-reps";
 import { WatchCard } from "./watch-card";
@@ -105,6 +107,11 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
           {w.status === "planned" && w.type !== "rest" && w.type !== "race" && w.type !== "time_trial" && w.steps?.length > 0 && (
             <div className="mt-4 border-t border-[var(--hairline)] pt-4">
               <StepEditor id={w.id} initial={toEditable(w.steps)} />
+            </div>
+          )}
+          {w.status === "planned" && w.type === "time_trial" && !w.locked && w.date >= today && (
+            <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+              <TimeTrialDistance workoutId={w.id} km={Math.round((timeTrialTarget(w.steps ?? [])?.distanceM ?? 0) / 1000)} />
             </div>
           )}
         </Card>
