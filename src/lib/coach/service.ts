@@ -118,6 +118,8 @@ export interface TurnInput {
   text: string;
   today: string;
   timezone: string;
+  /** what the athlete opened the chat from, e.g. a run's check-in; sent with this message only */
+  context?: string | null;
 }
 
 /**
@@ -165,7 +167,11 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   const includeSnapshot = snapHash !== lastSnap || dayChanged;
   const userItem: Item = {
     role: "user",
-    content: [...(includeSnapshot ? [{ type: "input_text" as const, text: `<athlete_data>\n${snap}\n</athlete_data>` }] : []), { type: "input_text" as const, text: input.text }],
+    content: [
+      ...(includeSnapshot ? [{ type: "input_text" as const, text: `<athlete_data>\n${snap}\n</athlete_data>` }] : []),
+      ...(input.context ? [{ type: "input_text" as const, text: `<run_context>\n${input.context}\n</run_context>` }] : []),
+      { type: "input_text" as const, text: input.text },
+    ],
   };
   const store = async (row: Record<string, unknown>) => {
     const { data, error } = await db.from("coach_messages").insert({ conversation_id: conv.id, user_id: userId, seq: seq++, ...row }).select("id").single();
