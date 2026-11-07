@@ -27,13 +27,18 @@ export function CoachChat({
   conversationId: initialId,
   turns: initialTurns,
   suggestions,
+  runContext = null,
 }: {
   conversationId: string | null;
   turns: Turn[];
   suggestions: string[];
+  /** opened from a run's check-in: shown as the coach's first message, and the run is sent with the first question */
+  runContext?: { activityId: string; text: string } | null;
 }) {
   const [conversationId, setConversationId] = useState(initialId);
-  const [turns, setTurns] = useState<Turn[]>(initialTurns);
+  const [turns, setTurns] = useState<Turn[]>(() =>
+    runContext && !initialTurns.length ? [{ id: "checkin", role: "assistant", text: runContext.text, actions: [], actionMessageIds: [], undone: false }] : initialTurns,
+  );
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -58,7 +63,7 @@ export function CoachChat({
     let afterStatus = false;
     let newId: string | null = null;
     try {
-      const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, text: q }) });
+      const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, text: q, activityId: conversationId ? null : (runContext?.activityId ?? null) }) });
       if (!res.ok || !res.body) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error ?? `The coach couldn't answer (HTTP ${res.status}).`);
