@@ -6,7 +6,7 @@ import { addDaysIso, daysBetween, formatDay } from "../dates";
 import { formatDuration, formatPace } from "../units";
 import { fmtTime } from "../analytics/fitness/estimate";
 import { recomputeFitness } from "../fitness/service";
-import { checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, restoreVersion, snapshot, startPlanEarlier, updateGoal, type GoalEdit, type PlanRestartUndo } from "../planning/service";
+import { TimeTrialRefused, addTimeTrial, checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, restoreVersion, snapshot, startPlanEarlier, updateGoal, type GoalEdit, type PlanRestartUndo } from "../planning/service";
 import { editableSteps } from "../planning/edit-steps";
 import { moveIssues, validateSchedule } from "../planning/validate";
 import { buildWorkout, stepsDistance, stepsDuration } from "../planning/workouts";
@@ -93,6 +93,7 @@ const schemas = {
   }),
   replace_workout: z.object({ workout_id: ID, type: z.enum(SESSION_TYPES), minutes: z.number().min(10).max(300).nullable(), intensity: z.number().min(0).max(1).nullable(), confirmed: z.boolean() }),
   add_workout: z.object({ date: DATE, type: z.enum(SESSION_TYPES), minutes: z.number().min(10).max(300).nullable(), intensity: z.number().min(0).max(1).nullable(), confirmed: z.boolean() }),
+  add_time_trial: z.object({ date: DATE.nullable(), confirmed: z.boolean() }),
   set_workout_steps: z.object({ workout_id: ID, steps: z.array(anyStep).min(1).max(20), confirmed: z.boolean() }),
   change_plan_settings: z.object({
     run_days: z.array(z.number().int().min(0).max(6)).nullable(),
@@ -186,6 +187,11 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
     "add_workout",
     "Add a new session to the plan on a day (today or later, within the plan). Same session types and options as replace_workout. The app checks the schedule (hard days back to back, two sessions on one day) and the load rules and returns warnings unless confirmed. To raise weekly training time, add sessions or lengthen existing ones; check recent weekly volume first.",
     obj({ date: date("Day"), type: { type: "string", enum: [...SESSION_TYPES] }, minutes: { type: ["number", "null"], description: "Minutes, or null" }, intensity: { type: ["number", "null"], description: "0-1 for structured sessions, or null" }, confirmed: CONFIRMED }),
+  ),
+  fn(
+    "add_time_trial",
+    "Add a time trial to the plan (one at a time; not if an upcoming one exists). The app builds it like the planner's baseline time trial: 5 km (3 km for a 5 km goal or low volume) with warm-up and cool-down, target from current fitness, within the single-run limit. It replaces the planned run on that day; a hard session the day after becomes a recovery run. date null: the app picks the best day in the next 7 days (at least 2 days from the long run and hard sessions, preferring to replace a hard session). With a date, that day needs a planned run that isn't the long run; if it's next to a hard session the app returns a warning unless confirmed. Its distance and steps can't be changed afterwards.",
+    obj({ date: ns("Day (YYYY-MM-DD), or null to let the app choose in the next 7 days"), confirmed: CONFIRMED }),
   ),
   fn(
     "set_workout_steps",
@@ -294,6 +300,7 @@ export const TOOL_STATUS: Record<ToolName, string> = {
   edit_workout: "Updating your plan",
   replace_workout: "Rebuilding the session",
   add_workout: "Adding the session",
+  add_time_trial: "Adding a time trial",
   set_workout_steps: "Updating the workout",
   change_plan_settings: "Updating your plan settings",
   start_plan_earlier: "Moving your plan's start",
@@ -381,6 +388,18 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
       return replaceTool(ctx, input);
     case "add_workout":
       return addTool(ctx, input);
+    case "add_time_trial": {
+      try {
+        const r = await addTimeTrial(ctx.db, ctx.userId, ctx.today, { ...(input.date ? { date: input.date } : {}), allowClose: input.confirmed });
+        const plan = await loadActivePlan(ctx.db, ctx.userId);
+        const summary = `Added a time trial (${r.title}) on ${formatDay(r.date)} in place of ${r.replaced}${r.eased ? `; ${r.eased} is now a recovery run` : ""}`;
+        ctx.actions.push({ kind: "plan", summary, planId: plan?.id, versionBefore: r.versionBefore });
+        return `Done: ${summary} (workout id ${r.id}).`;
+      } catch (e) {
+        if (e instanceof TimeTrialRefused && e.overridable) return `Not added yet: ${e.message}\nTell the athlete, suggest a better day if there is one, and only call again with confirmed true if they still want this day.`;
+        return `Not added: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
     case "change_plan_settings":
       return settingsTool(ctx, input);
     case "get_plan_overview":

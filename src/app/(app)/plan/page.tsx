@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Flag, History, Lock, Minus, Target, X
 import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";
 import { ProposalCard, type ProposalRow } from "@/components/plan/proposal-card";
 import { PlanForm } from "./plan-form";
+import { AddTimeTrial } from "./add-time-trial";
 import { ProjectionCard } from "@/components/plan/projection-card";
 import { PlanMonth } from "@/components/plan/plan-month";
 import { adherence, liveProjection, type Projection } from "@/lib/planning/projection";
@@ -61,6 +62,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const pending = (proposals ?? []).filter((p: any) => p.status === "pending");
   const applied = (proposals ?? []).filter((p: any) => p.status === "accepted");
   const todays = ws.filter((w) => w.date === today && w.type !== "rest");
+  const hasTimeTrial = ws.some((w) => w.type === "time_trial" && (w.status === "completed" || (w.status === "planned" && w.date >= today)));
 
   // projection: as stored at plan start, and re-projected from today's fitness
   const startProj = ((plan.config as { projection?: Projection | null } | null)?.projection ?? null) as Projection | null;
@@ -143,12 +145,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
         <PhaseBar weeks={weeks} current={thisWeek} />
 
-        <div className="flex gap-1.5 px-1" aria-label="Plan view">
-          {(["list", "month"] as const).map((v) => (
-            <Link key={v} href={v === "list" ? "/plan" : "/plan?view=month"} aria-pressed={view === v} className="chip" scroll={false}>
-              {v === "list" ? "Weeks" : "Month"}
-            </Link>
-          ))}
+        <div className="flex items-start gap-1.5 px-1">
+          <div className="flex gap-1.5" aria-label="Plan view">
+            {(["list", "month"] as const).map((v) => (
+              <Link key={v} href={v === "list" ? "/plan" : "/plan?view=month"} aria-pressed={view === v} className="chip" scroll={false}>
+                {v === "list" ? "Weeks" : "Month"}
+              </Link>
+            ))}
+          </div>
+          {!hasTimeTrial && <AddTimeTrial planId={plan.id} />}
         </div>
 
         {view === "month" && <PlanMonth workouts={ws} today={today} first={weeks[0].start} last={addDaysIso(weeks.at(-1)!.start, 6)} />}

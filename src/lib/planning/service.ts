@@ -1,17 +1,17 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDaysIso, formatDay, weekStart } from "../dates";
+import { addDaysIso, daysBetween, formatDay, weekStart } from "../dates";
 import { fetchAll } from "../db/paginate";
 import { trainingPaces } from "../analytics/fitness/vdot";
 import { fmtTime } from "../analytics/fitness/estimate";
 import { runLoad } from "../analytics/running-load";
 import { buildBaseline } from "./baseline";
-import { generatePlan, raceLabelFor } from "./generator";
+import { SPIKE_MAX, TT_WHY, distanceKey, generatePlan, goalDistance, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
 import { proposeAdaptations, type AdaptWorkout, type Change } from "./adapt";
-import { buildWorkout, stepsDistance, stepsDuration, type TargetContext } from "./workouts";
+import { buildWorkout, finalize, stepsDistance, stepsDuration, type TargetContext, type WorkoutSpec } from "./workouts";
 import { editIssues, hardSeconds, rebuildSteps, titleFor, type EditableStep } from "./edit-steps";
-import { PLANNER_VERSION, WORKOUT_LABEL, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type Step, type WorkoutType } from "./types";
+import { HARD_TYPES, PLANNER_VERSION, WORKOUT_LABEL, isHard, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type Step, type WorkoutType } from "./types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -373,7 +373,13 @@ export async function refreshFutureWeeks(
   }
 
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh_ = gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial"));
+  const keptTts = (rows ?? []).filter((r: any) => !replaceable.includes(r) && r.type === "time_trial" && r.status === "planned").map((r: any) => r.date as string);
+  const fresh_ = easeAroundTimeTrials(
+    gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial")),
+    keptTts,
+    { baseline, racePace: gen.racePace, raceLabel: raceLabelFor(goal) },
+    gen.workouts,
+  );
   if (fresh_.length) await check(db.from("planned_workouts").insert(fresh_.map((w) => workoutRow(w, plan.id, userId))));
 
   await check(
@@ -433,7 +439,13 @@ export async function startPlanEarlier(db: SupabaseClient, userId: string, newSt
   const baseline = await loadBaseline(db, userId, today);
   const gen = generatePlan(goalFromRow(plan.goal), { ...config, baselineTimeTrial: allowTt && Boolean(config.baselineTimeTrial), timeTrialBlockedDates: [...keptDates] }, baseline);
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
-  const fresh = gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial"));
+  const keptTts = (rows ?? []).filter((r: any) => !replaceable.includes(r) && r.type === "time_trial" && r.status === "planned" && r.date >= newStart).map((r: any) => r.date as string);
+  const fresh = easeAroundTimeTrials(
+    gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial")),
+    keptTts,
+    { baseline: gen.baseline, racePace: gen.racePace, raceLabel: raceLabelFor(goalFromRow(plan.goal)) },
+    gen.workouts,
+  );
   if (fresh.length) await check(db.from("planned_workouts").insert(fresh.map((w) => ({ ...workoutRow(w, plan.id, userId), status: "planned" }))));
 
   const prevPlan = { config: plan.config, baseline: plan.baseline, weeks: plan.weeks, summary: plan.summary, warnings: plan.warnings, race_pace: plan.race_pace };
@@ -453,6 +465,155 @@ export async function startPlanEarlier(db: SupabaseClient, userId: string, newSt
   await check(db.from("adaptation_proposals").update({ status: "superseded", decided_at: new Date().toISOString() }).eq("plan_id", plan.id).eq("status", "pending"));
   await snapshot(db, userId, plan.id, `The plan now starts on ${newStart} instead of the week of ${oldFirst}, rebuilt from your current running.`, "athlete");
   return { undo: { prevPlan, prevRows: replaceable }, versionBefore: plan.current_version, weeksAdded };
+}
+
+/**
+ * A time trial you added yourself stays when the weeks around it are recalculated, but the planner doesn't know about
+ * it: it takes the place of one of its week's hard sessions (the one nearest to it becomes an easy run), and no hard
+ * session is left the day before or after it (those become recovery runs).
+ */
+export function easeAroundTimeTrials(fresh: PlannedWorkout[], ttDates: string[], ctx: TargetContext, generated: PlannedWorkout[] = fresh): PlannedWorkout[] {
+  if (!ttDates.length) return fresh;
+  const out = [...fresh];
+  const ease = (k: number, type: "easy" | "recovery", why: string) => {
+    const w = out[k];
+    const minutes = type === "recovery" ? Math.min(30, Math.max(20, Math.round(w.durationS / 60 / 1.5))) : Math.min(45, Math.max(20, Math.round(w.durationS / 60 / 1.3)));
+    out[k] = finalize(buildWorkout({ type, minutes }, ctx), w.date, why, false);
+  };
+  const hardAt = (k: number) => isHard(out[k].type) && out[k].type !== "race" && out[k].type !== "time_trial";
+  for (const tt of ttDates) {
+    const week = weekStart(tt);
+    const inWeek = out.map((w, k) => k).filter((k) => hardAt(k) && weekStart(out[k].date) === week);
+    inWeek.sort((a, b) => Math.abs(daysBetween(tt, out[a].date)) - Math.abs(daysBetween(tt, out[b].date)));
+    // (unless the planner had a hard session on the time trial's day, which the time trial already replaces)
+    const displaced = generated.some((w) => w.date === tt && isHard(w.type));
+    for (const k of inWeek.slice(0, displaced ? 0 : 1)) {
+      const near = Math.abs(daysBetween(tt, out[k].date)) <= 1;
+      ease(k, near ? "recovery" : "easy", near ? TT_NEXT_WHY : "An easy run instead of a hard session: the time trial is this week's hard session.");
+    }
+    out.forEach((w, k) => {
+      if (hardAt(k) && Math.abs(daysBetween(tt, w.date)) <= 1) ease(k, "recovery", TT_NEXT_WHY);
+    });
+  }
+  return out;
+}
+
+const TT_NEXT_WHY = "Next to your time trial: keep it short and very easy so you absorb the effort.";
+
+/** Why addTimeTrial didn't add one. `overridable`: only the spacing around a day you chose is in the way. */
+export class TimeTrialRefused extends Error {
+  constructor(
+    message: string,
+    readonly overridable = false,
+  ) {
+    super(message);
+  }
+}
+
+/** Sessions a time trial keeps at least 2 days from. */
+const SPACED = new Set<string>([...HARD_TYPES, "long", "progressive_long"]);
+
+/**
+ * Adds one time trial to the active plan: on the best planned run in the next 7 days (or on `date`), at least 2 days
+ * from the long run and other hard sessions, preferring to replace a hard session over an easy run, so it doesn't add
+ * load. Built like the planner's baseline time trial (5 km, or 3 km for a 5 km goal or if you run little now), from
+ * your current fitness, and within the single-run limit (no more than 10 % bigger than your biggest run in the 30 days
+ * before it, warm-up included). A hard session the day after it becomes a recovery run. Recorded as a plan version.
+ * `allowClose` (with `date`): add it even if it's next to another hard session or the long run.
+ */
+export async function addTimeTrial(
+  db: SupabaseClient,
+  userId: string,
+  today: string,
+  opts: { planId?: string; date?: string; allowClose?: boolean } = {},
+): Promise<{ id: string; date: string; title: string; replaced: string; eased: string | null; versionBefore: number }> {
+  const plan = await activePlan(db, userId);
+  if (!plan || (opts.planId && plan.id !== opts.planId)) throw new TimeTrialRefused("There is no active plan.");
+  const rows = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", plan.id).order("date").range(from, to));
+  const upcoming = rows.find((r) => r.type === "time_trial" && r.status === "planned" && r.date >= today);
+  if (upcoming) throw new TimeTrialRefused(`The plan already has a time trial on ${formatDay(upcoming.date)}.`);
+  if (opts.date && opts.date < today) throw new TimeTrialRefused("A time trial can't be added in the past.");
+
+  const { data: ranToday } = await db.from("activities").select("id").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).eq("local_date", today);
+  const busy = new Set<string>(rows.filter((r) => r.status === "completed" || r.locked).map((r) => r.date));
+  if (ranToday?.length) busy.add(today);
+  const inWindow = (d: string) => (opts.date ? d === opts.date : d >= today && d <= addDaysIso(today, 6));
+  const candidates = rows.filter((r) => r.status === "planned" && !r.locked && r.date >= today && inWindow(r.date) && !busy.has(r.date) && !["race", "rest", "long", "progressive_long", "time_trial"].includes(r.type));
+  if (!candidates.length)
+    throw new TimeTrialRefused(opts.date ? `There's no planned run on ${formatDay(opts.date)} that can become a time trial (not a long run, race, locked or finished session).` : "There's no planned run in the next 7 days that can become a time trial.");
+
+  const gapOf = (c: any) => Math.min(7, ...rows.filter((o) => o.id !== c.id && (o.status === "planned" || o.status === "completed") && SPACED.has(o.type)).map((o) => Math.abs(daysBetween(c.date, o.date))));
+  const spaced = candidates.filter((c) => gapOf(c) >= 2);
+  if (!spaced.length && !(opts.date && opts.allowClose)) {
+    if (opts.date) throw new TimeTrialRefused(`${formatDay(opts.date)} is next to the long run or another hard session. A time trial needs at least one easier day between them.`, true);
+    throw new TimeTrialRefused("No day in the next 7 days is at least 2 days from the long run and other hard sessions, so there's no good day for a time trial this week.");
+  }
+  const offset = (c: any) => daysBetween(today, c.date);
+  const ordered = (spaced.length ? spaced : candidates).sort((a, b) => (isHard(b.type) ? 100 : 0) + Math.min(gapOf(b), 4) * 10 - offset(b) - ((isHard(a.type) ? 100 : 0) + Math.min(gapOf(a), 4) * 10 - offset(a)));
+
+  // the target and paces from your current fitness (the plan's if there is no estimate now)
+  const fresh = await loadBaseline(db, userId, today);
+  const old = plan.baseline as Baseline;
+  const baseline: Baseline = fresh.vdot != null || fresh.predictions.length ? fresh : { ...old, recentRuns: fresh.recentRuns?.length ? fresh.recentRuns : old.recentRuns };
+  const ctx: TargetContext = { ...planContext(plan), baseline };
+  const goal = goalFromRow(plan.goal);
+  const dk = distanceKey(goalDistance(goal));
+  const rw = fresh.recentWeeks?.length === 4 ? fresh.recentWeeks : null;
+  const chronic = rw ? rw.reduce((a, b) => a + b, 0) / 4 : fresh.weeklyMinutes;
+  const d0 = dk === "5k" || chronic < 90 ? 3000 : 5000;
+
+  // sizes as the planner measures them: distance at your easy pace when known, else minutes
+  const easy = baseline.paceZones?.find((z) => z.key === "easy");
+  const easyPace = easy ? (easy.fastSPerKm + easy.slowSPerKm) / 2 : null;
+  const sizeOf = (distanceM: number | null | undefined, durationS: number) => (easyPace && distanceM ? ((distanceM / 1000) * easyPace) / 60 : durationS / 60);
+  const firstDate = addDaysIso(ordered.map((c) => c.date).sort()[0], -30);
+  const { data: acts } = await db.from("activities").select("local_date, moving_s, distance_m").eq("user_id", userId).eq("sport", "running").is("duplicate_of", null).gte("local_date", firstDate).lte("local_date", ordered.map((c) => c.date).sort().at(-1));
+
+  let tooBig: { min: number; longest: number } | null = null;
+  for (const c of ordered) {
+    const from = addDaysIso(c.date, -30);
+    const longest = Math.max(
+      0,
+      ...(acts ?? []).filter((a: any) => a.local_date >= from && a.local_date < c.date).map((a: any) => sizeOf(a.distance_m, a.moving_s ?? 0)),
+      ...rows.filter((r) => r.id !== c.id && r.status === "planned" && r.type !== "rest" && r.date >= from && r.date < c.date).map((r) => sizeOf(r.distance_m, r.duration_s ?? 0)),
+    );
+    const cap = Math.max(30, Math.floor(SPIKE_MAX * longest));
+    const week = (plan.weeks as PlanWeek[]).find((w) => w.start === weekStart(c.date));
+    const compact = (week?.targetMinutes ?? chronic) < 180 || !(dk === "half" || dk === "marathon");
+    const options: WorkoutSpec[] = [...new Set([d0, 3000])].flatMap((d) => [...new Set([compact, true])].map((k) => ({ type: "time_trial" as const, distanceM: d, compact: k })));
+    const built = options.map((o) => buildWorkout(o, ctx)).find((b) => sizeOf(stepsDistance(b.steps), stepsDuration(b.steps)) <= cap);
+    if (!built) {
+      const smallest = buildWorkout(options[options.length - 1], ctx);
+      tooBig ??= { min: Math.round(sizeOf(stepsDistance(smallest.steps), stepsDuration(smallest.steps))), longest: Math.round(longest) };
+      continue;
+    }
+    const w = finalize(built, c.date, TT_WHY, true);
+    await check(
+      db
+        .from("planned_workouts")
+        .update({ type: w.type, title: w.title, objective: w.objective, why: w.why, steps: w.steps, duration_s: Math.round(w.durationS), distance_m: w.distanceM, key: true, source: "athlete" })
+        .eq("id", c.id),
+    );
+    // a hard session the next day becomes a recovery run
+    let eased: string | null = null;
+    const next = rows.find((r) => r.date === addDaysIso(c.date, 1) && r.status === "planned" && !r.locked && isHard(r.type) && r.type !== "race");
+    if (next) {
+      const rec = finalize(buildWorkout({ type: "recovery", minutes: Math.min(30, Math.max(20, Math.round(next.duration_s / 60 / 1.5))) }, planContext(plan)), next.date, TT_NEXT_WHY, false);
+      await check(
+        db
+          .from("planned_workouts")
+          .update({ type: rec.type, title: rec.title, objective: rec.objective, why: rec.why, steps: rec.steps, duration_s: Math.round(rec.durationS), distance_m: rec.distanceM, key: false })
+          .eq("id", next.id),
+      );
+      eased = `${next.title} (${formatDay(next.date)})`;
+    }
+    await snapshot(db, userId, plan.id, `Added a time trial (${w.title}) on ${formatDay(c.date)} in place of ${c.title}${eased ? `; ${eased} is now a recovery run` : ""}`, "athlete");
+    return { id: c.id, date: c.date, title: w.title, replaced: c.title, eased, versionBefore: plan.current_version };
+  }
+  const t = tooBig!;
+  throw new TimeTrialRefused(
+    `Even a 3 km time trial with a short warm-up (about ${t.min} min of running) would be more than 10 % bigger than your biggest run in the last 30 days (${t.longest} min), so it wasn't added. Build up your runs a little first.`,
+  );
 }
 
 /** Reverses startPlanEarlier: puts back the plan's weeks and settings and the workouts it replaced. */
