@@ -102,7 +102,7 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
         <Card>
           <CardHeader title="Session" className="mb-4" />
           <Steps steps={w.steps} />
-          {w.status === "planned" && w.type !== "rest" && w.type !== "race" && w.steps?.length > 0 && (
+          {w.status === "planned" && w.type !== "rest" && w.type !== "race" && w.type !== "time_trial" && w.steps?.length > 0 && (
             <div className="mt-4 border-t border-[var(--hairline)] pt-4">
               <StepEditor id={w.id} initial={toEditable(w.steps)} />
             </div>

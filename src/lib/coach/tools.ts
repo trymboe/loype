@@ -541,6 +541,7 @@ async function setStepsTool(ctx: ToolContext, input: z.infer<(typeof schemas)["s
   const { plan, w } = found;
   if (w.status !== "planned" || w.date < ctx.today) return `Not changed: ${w.title} is ${w.date < ctx.today ? "in the past" : w.status}.`;
   if (w.type === "rest") return "That's a rest day; swap it with edit_workout instead.";
+  if (w.type === "time_trial") return "Not changed: a time trial keeps its fixed distance and target from recent runs. Move it, swap it, or replace it with replace_workout instead.";
   const simple = (x: { kind: string; minutes: number | null; distance_m: number | null; zone: string | null; note: string | null }) => ({
     kind: x.kind,
     ...(x.minutes != null ? { durationS: Math.round(x.minutes * 60) } : {}),

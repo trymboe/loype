@@ -70,6 +70,8 @@ export interface PlanConfig {
   includeStrides: boolean;
   /** a time trial in week 1 as a baseline; missing means none */
   baselineTimeTrial?: boolean;
+  /** days the time trial must not land on when a plan is recalculated (already run or kept); never stored */
+  timeTrialBlockedDates?: string[];
 }
 
 export interface Baseline {

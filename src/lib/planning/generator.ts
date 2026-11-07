@@ -451,7 +451,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
       }
 
       // baseline time trial (week 1, when chosen): on a quality day at least 2 days from the long run, in place of one hard session
-      const ttDay = i === 0 && config.baselineTimeTrial && loading(ph) ? (pickQualityDays(days.filter((d) => addDaysIso(ws, d) >= config.startDate), wLong, 1)[0] ?? null) : null;
+      const ttDay = i === 0 && config.baselineTimeTrial && loading(ph) ? (pickQualityDays(days.filter((d) => addDaysIso(ws, d) >= config.startDate && !config.timeTrialBlockedDates?.includes(addDaysIso(ws, d))), wLong, 1)[0] ?? null) : null;
 
       // quality: hard sessions by runs per week, phase and intensity; none in the first two weeks if you run little now
       let hardAllowed = hardSessions(runsW, ph, intensity);
@@ -642,7 +642,7 @@ export function generatePlan(goal: Goal, config: PlanConfig, baseline: Baseline)
     version: PLANNER_VERSION,
     goal,
     // the long-run day stays as you set it: "best fit" (null) is chosen again whenever the plan is recalculated
-    config: { ...config, runDays: avail, longRunDay: fixedLong, phases: undefined, volume, intensity },
+    config: { ...config, runDays: avail, longRunDay: fixedLong, phases: undefined, timeTrialBlockedDates: undefined, volume, intensity },
     baseline,
     weeks: weekRows,
     workouts,
