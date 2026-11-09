@@ -255,6 +255,30 @@ describe("ensureWeeklyRecap", () => {
     expect(db.rows("weekly_recaps")).toHaveLength(1);
   });
 
+  it("restates frozen estimates when the fitness model changes method", async () => {
+    const db = seed();
+    const first = structuredClone((await ensureWeeklyRecap(db as any, "u", "2026-11-09"))!);
+    db.rows("weekly_recaps")[0].seen_at = "2026-11-09T08:00:00Z";
+    expect(first.model_version).toBe("fitness@1");
+    // the new model has finished its recompute, with weekly history for the reviewed week
+    db.rows("fitness_state")[0].model_version = "fitness@2";
+    db.rows("fitness_state")[0].output = model(44, 30);
+    for (const [metric, value] of [["vdot", 44], ["race_10k", 2950]] as const)
+      db.rows("fitness_snapshots").push({ user_id: "u", kind: "retrospective", model_version: "fitness@2", as_of: "2026-11-08", metric, value, lower_bound: metric === "vdot" ? 43 : null, upper_bound: metric === "vdot" ? 45.5 : null, confidence: "medium" });
+    db.rows("fitness_snapshots").push({ user_id: "u", kind: "retrospective", model_version: "fitness@2", as_of: "2026-11-01", metric: "vdot", value: 43, lower_bound: 42, upper_bound: 44.5, confidence: "medium" });
+    const again = (await ensureWeeklyRecap(db as any, "u", "2026-11-10"))!;
+    expect(again.model_version).toBe("fitness@2");
+    expect(again.estimates.vdot!.value).toBe(44);
+    expect(again.estimates.predictions.find((p) => p.key === "10k")!.timeS).toBe(2950);
+    // the goal race is re-predicted from the restated VDOT
+    expect(again.estimates.race!.predictedS!).toBeLessThan(first.estimates.race!.predictedS!);
+    // load and plan numbers are kept, and a restated recap isn't shown again
+    expect(again.estimates.ctl).toBe(first.estimates.ctl);
+    expect(again.seen_at).toBe("2026-11-09T08:00:00Z");
+    // the review compares with the new model's own history
+    expect(again.recap.changes.find((c) => c.key === "vdot")).toMatchObject({ before: 43, after: 44 });
+  });
+
   it("makes nothing for an account with no runs and no plan", async () => {
     const db = new FakeDb({ training_plans: [], activities: [], weekly_recaps: [] });
     expect(await ensureWeeklyRecap(db as any, "u", "2026-11-09")).toBeNull();

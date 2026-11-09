@@ -1,13 +1,13 @@
 /**
- * Scores one run with the current physiology (`fitness@1`): training load,
+ * Scores one run with the current physiology (`fitness@2`): training load,
  * intensity, aerobic efficiency, HR decoupling, an HR-based VO2max reading
  * and a workout classification. Pure; recomputed whenever max/rest HR change.
  */
-import type { RunFeatures } from "./features";
+import type { RunFeatures, Segment } from "./features";
 import { hrrFraction, hrZones, type Physiology } from "./physiology";
 import { vo2AtSpeed } from "./vdot";
 
-export const MODEL_VERSION = "fitness@1";
+export const MODEL_VERSION = "fitness@2";
 
 export interface RunRecord {
   id: string;
@@ -49,8 +49,10 @@ export interface RunScore {
   ef: number | null;
   /** HR decoupling, %: drop in efficiency from first to second half. > 5 % on an easy run suggests limited aerobic endurance (or heat, dehydration). */
   decouplingPct: number | null;
-  /** VO2max implied by the steady HR–speed relationship (Swain: %HRR ≈ %VO2 reserve). */
+  /** VO2max (VDOT scale) implied by this run's HR–speed relationship; see hrSpeedReading. */
   vo2maxFromHr: number | null;
+  /** minutes of the run that qualified for that reading */
+  vo2maxMinutes: number | null;
   zoneSeconds: number[] | null;
   classification: RunClass;
   classificationConfidence: number;
@@ -89,6 +91,7 @@ export function scoreRun(run: RunRecord, p: Physiology, ctx: { vdot: number | nu
     ef: null,
     decouplingPct: null,
     vo2maxFromHr: null,
+    vo2maxMinutes: null,
     zoneSeconds: null,
     classification: "unknown",
     classificationConfidence: 0,
@@ -149,16 +152,81 @@ export function scoreRun(run: RunRecord, p: Physiology, ctx: { vdot: number | nu
         out.decouplingPct = Math.round(((ef1 - ef2) / ef1) * 1000) / 10;
       }
     }
-    const x = hrrFraction(steadyHr, p);
-    const hilly = f.steady!.gainPerKm != null && f.steady!.gainPerKm > 20;
-    const steadyPacing = f.speedCv == null || f.speedCv < 0.15;
-    if (x != null && x >= 0.5 && x <= 0.95 && !hilly && steadyPacing && !run.isIndoor) {
-      out.vo2maxFromHr = Math.round((3.5 + (vo2AtSpeed(v) - 3.5) / x) * 10) / 10;
+  }
+  if (bothReliable && !run.isIndoor) {
+    const r = hrSpeedReading(f.segments ?? [], p);
+    if (r) {
+      out.vo2maxFromHr = r.vdot;
+      out.vo2maxMinutes = r.minutes;
     }
   }
 
   classify(out, run, f, ctx);
   return finishClass(out, run);
+}
+
+/** Minimum qualifying minutes for a per-run reading. */
+export const MIN_READING_MINUTES = 6;
+/** Extra oxygen cost per unit grade relative to level running (ACSM: 0.9·v·grade vs 0.2·v). */
+const GRADE_COST = 4.5;
+
+/**
+ * VO2max from the HR–speed relationship of one run, minute by minute.
+ *
+ * Swain et al. (1994/1997): %HR reserve ≈ %VO2 reserve. With the ACSM running
+ * cost, which is linear in speed (VO2 = 3.5 + 0.2·v·(1 + 4.5·grade)), the
+ * oxygen reserve used at speed v is proportional to v, so the speed at which
+ * HR would reach its maximum (vVO2max) is v_level / %HRR: a straight line
+ * from resting HR at standstill through the observed point, extrapolated to
+ * max HR. This is the per-run idea behind watch estimates (Firstbeat/Garmin).
+ * The reading is put on the VDOT scale with Daniels' oxygen cost at vVO2max,
+ * so it is comparable with race-based VDOT.
+ *
+ * Only minutes where HR has had time to settle count: at least 5 min in, no
+ * stop in the last 3 min, speed within ±10 % of the two minutes before and HR
+ * within 5 bpm of the minute before. That keeps the steady parts of interval
+ * sessions (warm-up, cool-down, longer reps) and drops the reps and
+ * recoveries where HR lags speed. Grades over 8 % and HR outside 50–92 % of
+ * HR reserve are skipped. The run's reading is the time-weighted median.
+ */
+export function hrSpeedReading(segs: Segment[], p: Physiology): { vdot: number; minutes: number; spread: number } | null {
+  if (!p.maxHr || !p.restHr) return null;
+  const byK = new Map(segs.map((s) => [s.k, s]));
+  const speed = (s: Segment) => (s.d / s.s) * 60; // m/min
+  const ok = (s: Segment | undefined): s is Segment => !!s && s.s >= 50 && s.stopS <= 5;
+  const vals: { v: number; w: number }[] = [];
+  for (const s of segs) {
+    if (s.k < 5 || s.hr == null) continue;
+    const a = byK.get(s.k - 2);
+    const b = byK.get(s.k - 1);
+    if (!ok(s) || !ok(a) || !ok(b) || b.hr == null) continue;
+    const v = speed(s);
+    if (v < 100) continue; // walking
+    if (Math.abs(speed(a) - v) > 0.1 * v || Math.abs(speed(b) - v) > 0.1 * v || Math.abs(b.hr - s.hr) > 5) continue;
+    const c = byK.get(s.k + 1);
+    let grade = 0;
+    if (b.alt != null && c?.alt != null && s.alt != null) grade = (c.alt - b.alt) / (b.d / 2 + s.d + c.d / 2);
+    else if (b.alt != null && s.alt != null) grade = (s.alt - b.alt) / (b.d / 2 + s.d / 2);
+    if (Math.abs(grade) > 0.08) continue;
+    const x = hrrFraction(s.hr, p);
+    if (x == null || x < 0.5 || x > 0.92) continue;
+    const vMax = (v * (1 + GRADE_COST * grade)) / x;
+    vals.push({ v: vo2AtSpeed(vMax), w: s.s });
+  }
+  if (vals.length < MIN_READING_MINUTES) return null;
+  vals.sort((x, y) => x.v - y.v);
+  const total = vals.reduce((a, b) => a + b.w, 0);
+  let acc = 0;
+  let med = vals[vals.length - 1].v;
+  for (const i of vals) {
+    acc += i.w;
+    if (acc >= total / 2) {
+      med = i.v;
+      break;
+    }
+  }
+  const dev = vals.map((i) => Math.abs(i.v - med)).sort((x, y) => x - y);
+  return { vdot: Math.round(med * 10) / 10, minutes: Math.round(total / 60), spread: Math.round(1.4826 * dev[Math.floor(dev.length / 2)] * 10) / 10 };
 }
 
 function classify(out: RunScore, run: RunRecord, f: RunFeatures, ctx: { medianRecentMovingS: number | null }) {
