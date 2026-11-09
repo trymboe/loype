@@ -72,6 +72,19 @@ class Query implements PromiseLike<any> {
     this.filters.push((r) => (r[c] ?? null) === v);
     return this;
   }
+  /** PostgREST `or` with `col.is.null` and `col.neq.value` terms (enough for the tests). */
+  or(expr: string) {
+    const terms = expr.split(",").map((t) => {
+      const [col, op, ...rest] = t.split(".");
+      const val = rest.join(".");
+      if (op === "is" && val === "null") return (r: Row) => (r[col] ?? null) === null;
+      if (op === "neq") return (r: Row) => r[col] != null && String(r[col]) !== val;
+      if (op === "eq") return (r: Row) => String(r[col]) === val;
+      throw new Error(`fake or: ${t}`);
+    });
+    this.filters.push((r) => terms.some((f) => f(r)));
+    return this;
+  }
   in(c: string, v: any[]) {
     this.filters.push((r) => v.includes(r[c]));
     return this;

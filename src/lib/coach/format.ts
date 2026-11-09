@@ -207,7 +207,7 @@ export function renderSnapshot(s: SnapshotInput): string {
     const e = f.estimate;
     if (e?.withheld) L.push(`VDOT (VO2max-equivalent performance estimate): WITHHELD — ${e.reason}`);
     else if (e) {
-      L.push(`VDOT ${e.vdot.toFixed(1)} (range ${e.lower.toFixed(1)}–${e.upper.toFixed(1)}, ${e.confidence} confidence, method: ${e.method === "performance" ? "best recent efforts" : "heart-rate vs speed"}). This is a performance-derived estimate, not a lab VO2max and not Garmin's VO2max.`);
+      L.push(`VDOT ${e.vdot.toFixed(1)} (range ${e.lower.toFixed(1)}–${e.upper.toFixed(1)}, ${e.confidence} confidence, method: ${e.method === "performance" ? "best recent efforts" : e.method === "hr_calibrated" ? `heart rate vs pace in every run (level ${e.hrLevel ?? "?"}), calibrated with hard efforts (offset ${e.offset ?? 0})` : "heart rate vs pace in every run"}). Tracked from all runs like a watch estimate, not a lab VO2max and not Garmin's own number.`);
       for (const n of e.notes ?? []) L.push(`  note: ${n}`);
       const ev = (e.evidence ?? []).slice(0, 5);
       if (ev.length) L.push(`  evidence: ${ev.map((x: any) => `${x.date} ${x.detail ?? x.kind} → ${Number(x.value).toFixed(1)} (run ${x.activityId})`).join("; ")}`);

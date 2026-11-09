@@ -1,30 +1,44 @@
 /**
- * Fitness estimate (`fitness@1`): a VO2max-equivalent (Daniels VDOT) with a
- * range and a confidence, built only from evidence in the last 90 days.
+ * Fitness estimate (`fitness@2`): a VO2max-equivalent (Daniels VDOT) with a
+ * range and a confidence, tracked from every run, the way watches do it.
  *
- * Evidence, strongest first:
- *  1. Near-maximal performances: races, or best efforts ≥ 1.5 km run at
- *     ≥ 90 % of heart-rate reserve. VDOT from distance + time.
- *  2. The steady HR–speed relationship of ordinary runs (Swain: %HRR ≈ %VO2R),
- *     one reading per run. Each is noisy (heat, hills, fatigue, wrist HR), so
- *     we take a recency-weighted median and report the spread.
- * Every recorded best effort is a floor: you ran it, so the estimate is never
- * below what your fastest recent effort implies.
- *
- * The estimate is withheld when there are fewer than 3 usable readings.
- * A single great session moves the estimate only through the median, so one
- * outlier can't swing it (spec: don't over-react).
+ *  1. Every outdoor run with reliable HR and GPS gives a reading from its
+ *     minute-by-minute HR–speed relationship (scoring.ts, hrSpeedReading).
+ *     Each is noisy (heat, hills, fatigue, wrist HR).
+ *  2. The level is a recency-weighted mean of the readings from the last
+ *     6 weeks (21-day half-life), after dropping outliers more than 2.5
+ *     robust SDs from the weighted median, so one odd run can't swing it but
+ *     a real trend shows within a few weeks.
+ *  3. Races and near-maximal efforts (best efforts ≥ 1.5 km at ≥ 90 % of HR
+ *     reserve, planned time trials) calibrate it to you: the gap between the
+ *     performance and the HR level around that date becomes a personal
+ *     offset (decaying over ~6 months, shrunk towards 0 with little
+ *     evidence). Watches calibrate the same way, since HR-based estimates
+ *     carry an individual bias (running economy, max HR error).
+ *  4. A best effort in the last 4 weeks is a floor: you ran it.
+ * Without HR readings, recent near-maximal efforts are used directly.
  */
 import { addDaysIso, daysBetween } from "../../dates";
 import type { Physiology } from "./physiology";
 import type { RunRecord, RunScore } from "./scoring";
 import { predictTimeS, trainingPaces, vdotFromPerformance, type PaceZone } from "./vdot";
 
-export const WINDOW_DAYS = 90;
+export const WINDOW_DAYS = 42;
+/** Wider window used when the last 6 weeks hold too few readings (lower confidence). */
+export const FALLBACK_WINDOW_DAYS = 90;
+export const PERFORMANCE_WINDOW_DAYS = 90;
+export const CALIBRATION_WINDOW_DAYS = 365;
+export const FLOOR_WINDOW_DAYS = 28;
 export const MIN_READINGS = 3;
 /** Model error for a single HR-based reading, in VDOT points (assumed; literature reports SEE ≈ 3–5 ml/kg/min for submaximal methods). */
 const HR_MODEL_SD = 3;
-const RECENCY_HALF_LIFE_DAYS = 30;
+const RECENCY_HALF_LIFE_DAYS = 21;
+const CALIBRATION_HALF_LIFE_DAYS = 180;
+/** Prior weight (in performances) pulling the personal offset towards 0. */
+const CALIBRATION_PRIOR = 0.5;
+const MAX_OFFSET = 6;
+/** Qualifying minutes for a reading to count fully. */
+const FULL_WEIGHT_MINUTES = 20;
 
 export type Confidence = "high" | "medium" | "low";
 
@@ -37,6 +51,8 @@ export interface Evidence {
   detail: string;
 }
 
+export type EstimateMethod = "performance" | "hr_speed" | "hr_calibrated";
+
 export type FitnessEstimate =
   | {
       withheld: false;
@@ -45,7 +61,11 @@ export type FitnessEstimate =
       lower: number;
       upper: number;
       confidence: Confidence;
-      method: "performance" | "hr_speed";
+      method: EstimateMethod;
+      /** HR-based level before the personal offset, and the offset itself (fitness@2) */
+      hrLevel?: number | null;
+      offset?: number | null;
+      readings?: number;
       evidence: Evidence[];
       notes: string[];
     }
@@ -56,7 +76,8 @@ export interface ScoredRun {
   score: RunScore;
 }
 
-const recencyWeight = (date: string, asOf: string) => Math.pow(0.5, daysBetween(date, asOf) / RECENCY_HALF_LIFE_DAYS);
+const halfLife = (days: number, h: number) => Math.pow(0.5, days / h);
+const recencyWeight = (date: string, asOf: string) => halfLife(daysBetween(date, asOf), 30);
 
 function weightedMedian(items: { value: number; weight: number }[]): number {
   const s = [...items].sort((a, b) => a.value - b.value);
@@ -75,88 +96,179 @@ function mad(values: number[]): number {
   return 1.4826 * dev[Math.floor(dev.length / 2)];
 }
 
-export function estimateFitness(asOf: string, runs: ScoredRun[], p: Physiology): FitnessEstimate {
-  const from = addDaysIso(asOf, -WINDOW_DAYS);
-  const recent = runs.filter((r) => r.run.date > from && r.run.date <= asOf && r.run.usableForFitness);
-  const evidence: Evidence[] = [];
+export interface HrLevel {
+  value: number;
+  n: number;
+  /** effective number of readings after weighting */
+  nEff: number;
+  spread: number;
+  used: Evidence[];
+}
 
-  // performance evidence + floor
-  let floor: Evidence | null = null;
-  const nearMax: Evidence[] = [];
-  for (const { run, score } of recent) {
-    if (!run.paceReliable || !run.features) continue;
+/**
+ * Robust, recency-weighted level of the HR readings around `center`. With
+ * `pastOnly`, only readings on or before `center` (the estimate for a day);
+ * otherwise readings on both sides (the level at a past performance).
+ */
+export function hrLevel(readings: Evidence[], center: string, windowDays: number, pastOnly: boolean): HrLevel | null {
+  const pool = readings
+    .filter((r) => {
+      const age = daysBetween(r.date, center);
+      return pastOnly ? age >= 0 && age < windowDays : Math.abs(age) < windowDays;
+    })
+    .map((r) => ({ ...r, weight: r.weight * halfLife(Math.abs(daysBetween(r.date, center)), RECENCY_HALF_LIFE_DAYS) }));
+  if (pool.length < (pastOnly ? MIN_READINGS : 2)) return null;
+  const med = weightedMedian(pool);
+  const spread = mad(pool.map((r) => r.value));
+  const cut = Math.max(3, 2.5 * spread);
+  const kept = pool.filter((r) => Math.abs(r.value - med) <= cut);
+  const w = kept.reduce((a, b) => a + b.weight, 0);
+  const value = kept.reduce((a, b) => a + b.value * b.weight, 0) / w;
+  const nEff = w ** 2 / kept.reduce((a, b) => a + b.weight ** 2, 0);
+  return { value, n: kept.length, nEff, spread, used: kept };
+}
+
+/** Near-maximal performances in [from, to]: races, planned time trials, or best efforts ≥ 1.5 km at ≥ 90 % HRR. Best one per run. */
+function performances(runs: ScoredRun[], from: string, to: string, asOf: string, p: Physiology): Evidence[] {
+  const perRun = new Map<string, Evidence>();
+  for (const { run, score } of runs) {
+    if (run.date <= from || run.date > to || !run.paceReliable || !run.features) continue;
+    const isRace = score.classification === "race";
     for (const e of run.features.bestEfforts) {
       if (e.distanceM < 1500) continue;
-      const v = vdotFromPerformance(e.distanceM, e.timeS);
-      const label = `${fmtDist(e.distanceM)} in ${fmtTime(e.timeS)}`;
-      if (!floor || v > floor.value) floor = { activityId: run.id, date: run.date, kind: "floor", value: r1(v), weight: 0, detail: label };
       const x = e.avgHr != null && p.maxHr && p.restHr ? (e.avgHr - p.restHr.value) / (p.maxHr.value - p.restHr.value) : null;
-      const isRace = score.classification === "race";
-      if (isRace || (x != null && x >= 0.9 && run.hrReliable)) {
-        nearMax.push({
-          activityId: run.id,
-          date: run.date,
-          kind: "performance",
-          value: r1(v),
-          weight: recencyWeight(run.date, asOf) * (isRace ? 1.5 : 1),
-          detail: `${label}${isRace ? " (race)" : ` at ${Math.round(x! * 100)} % HR reserve`}`,
-        });
-      }
+      if (!isRace && !(x != null && x >= 0.9 && run.hrReliable)) continue;
+      const v = vdotFromPerformance(e.distanceM, e.timeS);
+      const ev: Evidence = {
+        activityId: run.id,
+        date: run.date,
+        kind: "performance",
+        value: r1(v),
+        weight: recencyWeight(run.date, asOf) * (isRace ? 1.5 : 1),
+        detail: `${fmtDist(e.distanceM)} in ${fmtTime(e.timeS)}${isRace ? " (race)" : ` at ${Math.round(x! * 100)} % HR reserve`}`,
+      };
+      const prev = perRun.get(run.id);
+      if (!prev || prev.value < ev.value) perRun.set(run.id, ev);
     }
   }
-  // keep the best near-max effort per run
-  const perRun = new Map<string, Evidence>();
-  for (const e of nearMax) if (!perRun.has(e.activityId) || perRun.get(e.activityId)!.value < e.value) perRun.set(e.activityId, e);
-  const perf = [...perRun.values()];
+  return [...perRun.values()];
+}
 
-  const hr: Evidence[] = recent
+export function estimateFitness(asOf: string, runs: ScoredRun[], p: Physiology): FitnessEstimate {
+  const usable = runs.filter((r) => r.run.date <= asOf && r.run.usableForFitness);
+  const evidence: Evidence[] = [];
+
+  // per-run HR readings (all of them up to asOf; the windows below pick what counts)
+  const readings: Evidence[] = usable
     .filter((r) => r.score.vo2maxFromHr != null)
     .map(({ run, score }) => ({
       activityId: run.id,
       date: run.date,
       kind: "hr_speed" as const,
       value: score.vo2maxFromHr!,
-      weight: recencyWeight(run.date, asOf) * Math.min(1, (run.features?.steady?.movingS ?? 0) / 2400),
-      detail: `${fmtDist(run.distanceM ?? 0)} at ${Math.round((score.intensity ?? 0) * 100)} % HR reserve`,
+      weight: Math.min(1, (score.vo2maxMinutes ?? FULL_WEIGHT_MINUTES) / FULL_WEIGHT_MINUTES),
+      detail: `${fmtDist(run.distanceM ?? 0)}, ${score.vo2maxMinutes ?? "?"} steady min at ${Math.round((score.intensity ?? 0) * 100)} % HR reserve`,
     }));
+
+  // floor: the best effort ≥ 1.5 km in the last 4 weeks
+  let floor: Evidence | null = null;
+  const floorFrom = addDaysIso(asOf, -FLOOR_WINDOW_DAYS);
+  for (const { run } of usable) {
+    if (run.date <= floorFrom || !run.paceReliable || !run.features) continue;
+    for (const e of run.features.bestEfforts) {
+      if (e.distanceM < 1500) continue;
+      const v = vdotFromPerformance(e.distanceM, e.timeS);
+      if (!floor || v > floor.value) floor = { activityId: run.id, date: run.date, kind: "floor", value: r1(v), weight: 0, detail: `${fmtDist(e.distanceM)} in ${fmtTime(e.timeS)}` };
+    }
+  }
 
   const notes: string[] = [];
   if (p.maxHr?.source === "observed") notes.push(`Uses max HR ${p.maxHr.value} bpm, the highest seen in your runs. If your real max is higher, this estimate is conservative. You can set it under More → Athlete profile.`);
   if (p.maxHr?.source === "age_formula") notes.push("Max HR comes from an age formula, which is often off by ±10 bpm. Set it under More → Athlete profile.");
   if (p.restHr?.source === "overnight_proxy") notes.push("Resting HR is approximated from your overnight average HR.");
 
-  let est: { vdot: number; half: number; method: "performance" | "hr_speed"; confidence: Confidence } | null = null;
-  if (perf.length >= 1) {
-    const top = [...perf].sort((a, b) => b.value * b.weight - a.value * a.weight).slice(0, 3);
-    const w = top.reduce((a, b) => a + b.weight, 0);
-    const vdot = top.reduce((a, b) => a + b.value * b.weight, 0) / w;
-    est = { vdot, half: top.length >= 2 ? 1.5 : 2.5, method: "performance", confidence: top.length >= 2 ? "high" : "medium" };
-    evidence.push(...top);
-  } else if (hr.length >= MIN_READINGS) {
-    const vdot = weightedMedian(hr);
-    const spread = mad(hr.map((h) => h.value));
-    const se = Math.sqrt(spread ** 2 + HR_MODEL_SD ** 2) / Math.sqrt(Math.min(hr.length, 8));
-    const half = Math.max(2, 1.96 * se + (p.maxHr?.source === "manual" ? 0 : 1));
-    const confidence: Confidence = hr.length >= 6 && spread < 3 && p.maxHr?.source === "manual" ? "medium" : "low";
-    est = { vdot, half, method: "hr_speed", confidence };
-    evidence.push(...hr);
-    notes.push(`Based on the heart rate–pace relationship in ${hr.length} steady runs, not on races. Heat, hills and wrist-HR errors add noise; a race or all-out time trial would sharpen it.`);
+  let est: { vdot: number; half: number; method: EstimateMethod; confidence: Confidence; hrLevel: number | null; offset: number | null; readings: number } | null = null;
+
+  let level = hrLevel(readings, asOf, WINDOW_DAYS, true);
+  let wide = false;
+  if (!level) {
+    level = hrLevel(readings, asOf, FALLBACK_WINDOW_DAYS, true);
+    wide = level != null;
+  }
+
+  if (level) {
+    // personal calibration from performances in the last year
+    const perfs = performances(usable, addDaysIso(asOf, -CALIBRATION_WINDOW_DAYS), asOf, asOf, p);
+    let wSum = 0;
+    let dSum = 0;
+    const calib: Evidence[] = [];
+    for (const perf of perfs) {
+      const around = hrLevel(
+        readings.filter((r) => r.date <= asOf),
+        perf.date,
+        28,
+        false,
+      );
+      if (!around) continue;
+      const w = halfLife(daysBetween(perf.date, asOf), CALIBRATION_HALF_LIFE_DAYS) * (perf.detail.includes("(race)") ? 1.5 : 1);
+      wSum += w;
+      dSum += w * (perf.value - around.value);
+      calib.push({ ...perf, weight: w, detail: `${perf.detail}; HR level then ${r1(around.value)}` });
+    }
+    const offset = calib.length ? Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, dSum / (wSum + CALIBRATION_PRIOR))) : 0;
+    const calibrated = calib.length > 0;
+    const se = Math.sqrt(level.spread ** 2 + HR_MODEL_SD ** 2) / Math.sqrt(Math.max(1, Math.min(level.nEff, 10)));
+    const half = Math.max(1.5, 1.96 * se + (calibrated ? 0.5 : 1.5) + (p.maxHr?.source === "manual" ? 0 : 1) + (wide ? 1 : 0));
+    const solid = !wide && level.n >= 6 && level.spread < 3 && p.maxHr?.source === "manual";
+    const confidence: Confidence = solid && calibrated ? "high" : solid || (calibrated && !wide) ? "medium" : "low";
+    est = { vdot: level.value + offset, half, method: calibrated ? "hr_calibrated" : "hr_speed", confidence, hrLevel: r1(level.value), offset: calibrated ? r1(offset) : null, readings: level.n };
+    evidence.push(...[...level.used].sort((a, b) => b.date.localeCompare(a.date)), ...calib);
+    notes.push(
+      `Tracked from the heart rate–pace relationship in ${level.n} runs from the last ${wide ? FALLBACK_WINDOW_DAYS : WINDOW_DAYS} days, newer runs counting more. Heat, altitude, hills and wrist-HR errors add noise to single runs.`,
+    );
+    if (calibrated)
+      notes.push(
+        `Calibrated to you with ${calib.length === 1 ? "a hard effort" : `${calib.length} hard efforts`}: ${offset >= 0 ? "+" : ""}${r1(offset)} on top of the heart-rate level of ${r1(level.value)}.`,
+      );
+    else notes.push("Not yet calibrated with a race or all-out time trial; one would anchor the level.");
+  } else {
+    const perf = performances(usable, addDaysIso(asOf, -PERFORMANCE_WINDOW_DAYS), asOf, asOf, p);
+    if (perf.length >= 1) {
+      const top = [...perf].sort((a, b) => b.value * b.weight - a.value * a.weight).slice(0, 3);
+      const w = top.reduce((a, b) => a + b.weight, 0);
+      const vdot = top.reduce((a, b) => a + b.value * b.weight, 0) / w;
+      est = { vdot, half: top.length >= 2 ? 1.5 : 2.5, method: "performance", confidence: top.length >= 2 ? "high" : "medium", hrLevel: null, offset: null, readings: 0 };
+      evidence.push(...top);
+    }
   }
   if (floor) evidence.push(floor);
 
   if (!est) {
     const reason = !p.maxHr || !p.restHr
       ? "Needs max and resting heart rate. Wear the watch overnight or enter them under More → Athlete profile."
-      : `Not enough evidence in the last ${WINDOW_DAYS} days: needs ${MIN_READINGS} steady runs of 15+ minutes with reliable heart rate and GPS, or one race. Found ${hr.length}.`;
+      : `Not enough evidence in the last ${FALLBACK_WINDOW_DAYS} days: needs ${MIN_READINGS} outdoor runs with reliable heart rate and GPS and at least ${6} steady minutes each, or one race. Found ${readings.filter((r) => daysBetween(r.date, asOf) < FALLBACK_WINDOW_DAYS).length}.`;
     return { withheld: true, asOf, reason, evidence };
   }
   let { vdot } = est;
   if (floor && floor.value > vdot) {
-    notes.push(`Raised to ${r1(floor.value)} by your ${floor.detail} on ${floor.date}: you can't be slower than what you've already run.`);
+    notes.push(`Raised to ${r1(floor.value)} by your ${floor.detail} on ${floor.date}: you can't be slower than what you've just run.`);
     vdot = floor.value;
   }
   const lower = Math.max(floor?.value ?? 0, vdot - est.half);
-  return { withheld: false, asOf, vdot: r1(vdot), lower: r1(lower), upper: r1(vdot + est.half), confidence: est.confidence, method: est.method, evidence, notes };
+  return {
+    withheld: false,
+    asOf,
+    vdot: r1(vdot),
+    lower: r1(lower),
+    upper: r1(vdot + est.half),
+    confidence: est.confidence,
+    method: est.method,
+    hrLevel: est.hrLevel,
+    offset: est.offset,
+    readings: est.readings,
+    evidence,
+    notes,
+  };
 }
 
 export interface RacePrediction {

@@ -37,9 +37,90 @@ export const reviewedWeek = (today: string) => addDaysIso(weekStart(today), -7);
  * A recap stored in an older format is rebuilt (keeping its frozen estimates) and shown again.
  */
 export async function ensureWeeklyRecap(db: SupabaseClient, userId: string, today: string, opts: { maintain?: boolean } = {}): Promise<WeeklyRecapRow | null> {
-  const ws = reviewedWeek(today);
+  try {
+    await restateRecaps(db, userId);
+  } catch {
+    // restating history is best effort; the week's recap still works
+  }
+  return recapForWeek(db, userId, reviewedWeek(today), today, opts);
+}
+
+/**
+ * When the fitness model changes method (a new model version), the estimates
+ * frozen in earlier recaps are restated with the new model's retrospective
+ * snapshot for the end of that week, so the history compares like with like.
+ * Plan-related numbers (planned vs done, the plan projection) are kept; the
+ * goal-race prediction is recomputed from the restated VDOT and the
+ * projection shifted by the same amount. Waits until the model has finished
+ * a full recompute (all runs have current features).
+ */
+export async function restateRecaps(db: SupabaseClient, userId: string): Promise<number> {
+  const { data: fs } = await db.from("fitness_state").select("model_version, inputs_fingerprint").eq("user_id", userId).maybeSingle();
+  const version = fs?.model_version as string | undefined;
+  if (!version || fs?.inputs_fingerprint === "partial") return 0;
+  const { data: stale } = await db.from("weekly_recaps").select(COLS).eq("user_id", userId).or(`model_version.is.null,model_version.neq.${version}`).order("week_start");
+  let n = 0;
+  for (const row of (stale ?? []) as WeeklyRecapRow[]) {
+    const asOf = addDaysIso(row.week_start, 6);
+    const { data: hist } = await db
+      .from("fitness_snapshots")
+      .select("metric, value, lower_bound, upper_bound, confidence")
+      .eq("user_id", userId)
+      .eq("kind", "retrospective")
+      .eq("model_version", version)
+      .eq("as_of", asOf);
+    const snap = snapshotFromHistory((hist ?? []) as any[], asOf, version);
+    if (!snap) continue;
+    const estimates = restateEstimates(row.estimates, snap);
+    const { error } = await db.from("weekly_recaps").update({ estimates, model_version: version }).eq("user_id", userId).eq("week_start", row.week_start);
+    if (error) throw new Error(error.message);
+    await recapForWeek(db, userId, row.week_start, asOf, { rebuild: true });
+    n++;
+  }
+  return n;
+}
+
+/** The old snapshot with its model-derived numbers replaced by the restated ones. */
+export function restateEstimates(old: EstimateSnapshot, snap: EstimateSnapshot): EstimateSnapshot {
+  let race = old.race;
+  if (race && snap.vdot) {
+    const v = snap.vdot;
+    const p = predictRace(race.distanceM, { vdot: v.value, lower: v.lower ?? v.value, upper: v.upper ?? v.value, confidence: v.confidence ?? "low" }, old.longestRecentM ?? 0);
+    const shift = race.predictedS != null ? p.timeS - race.predictedS : 0;
+    const projectedS = race.projectedS != null ? Math.round(race.projectedS + shift) : null;
+    const t = race.targetTimeS;
+    // same order as raceStatus; the stored projection has no range, so its point value stands in
+    const verdict = !t ? "no_target" : p.timeS <= t ? "ahead" : p.fastS <= t ? "in_range" : projectedS != null && projectedS <= t ? "projected" : "stretch";
+    race = {
+      ...race,
+      predictedS: p.timeS,
+      fastS: p.fastS,
+      slowS: p.slowS,
+      projectedS,
+      verdict,
+    };
+  }
+  return {
+    ...old,
+    modelVersion: snap.modelVersion,
+    vdot: snap.vdot,
+    predictions: snap.predictions,
+    thresholdPaceS: snap.thresholdPaceS,
+    thresholdHr: snap.thresholdHr,
+    efTrendPct: snap.efTrendPct ?? old.efTrendPct,
+    race,
+  };
+}
+
+async function recapForWeek(
+  db: SupabaseClient,
+  userId: string,
+  ws: string,
+  today: string,
+  opts: { maintain?: boolean; rebuild?: boolean } = {},
+): Promise<WeeklyRecapRow | null> {
   const { data: existing } = await db.from("weekly_recaps").select(COLS).eq("user_id", userId).eq("week_start", ws).maybeSingle();
-  if (existing && (existing as WeeklyRecapRow).recap?.version === RECAP_VERSION) return existing as WeeklyRecapRow;
+  if (existing && !opts.rebuild && (existing as WeeklyRecapRow).recap?.version === RECAP_VERSION) return existing as WeeklyRecapRow;
 
   let plan = await activePlan(db, userId);
   if (!existing && opts.maintain && plan && plan.config?.refreshedWeek !== weekStart(today)) {
@@ -175,10 +256,11 @@ export async function ensureWeeklyRecap(db: SupabaseClient, userId: string, toda
   });
 
   if (existing) {
-    // show the new format once more
-    const { error } = await db.from("weekly_recaps").update({ recap, seen_at: null }).eq("user_id", userId).eq("week_start", ws);
+    // a new format is shown once more; a restated one keeps its seen state
+    const seen_at = opts.rebuild ? (existing as WeeklyRecapRow).seen_at : null;
+    const { error } = await db.from("weekly_recaps").update({ recap, seen_at }).eq("user_id", userId).eq("week_start", ws);
     if (error) throw new Error(error.message);
-    return { ...(existing as WeeklyRecapRow), recap, seen_at: null };
+    return { ...(existing as WeeklyRecapRow), recap, seen_at };
   }
   const row = { user_id: userId, week_start: ws, estimates: current, recap, model_version: fs?.model_version ?? null };
   const { data: saved, error } = await db.from("weekly_recaps").insert(row).select(COLS).maybeSingle();

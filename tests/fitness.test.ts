@@ -106,7 +106,7 @@ describe("physiology", () => {
   });
 });
 
-// 5:00/km at HR 148 with rest 50 / max 190 implies VO2max ≈ 50 by the Swain relation
+// 5:00/km at HR 148 with rest 50 / max 190: 70 % HRR, so vVO2max = 200 / 0.7 ≈ 286 m/min, Daniels VO2 ≈ 55.9
 const steady = (hr = 148, speed = 1000 / 300, durationS = 2400) => ({ segments: [{ durationS, speedMs: speed, hr }] });
 
 describe("fitness estimate", () => {
@@ -123,8 +123,8 @@ describe("fitness estimate", () => {
     expect(out.estimate.withheld).toBe(false);
     if (out.estimate.withheld) return;
     expect(out.estimate.method).toBe("hr_speed");
-    expect(out.estimate.vdot).toBeGreaterThan(48);
-    expect(out.estimate.vdot).toBeLessThan(52);
+    expect(out.estimate.vdot).toBeGreaterThan(54.5);
+    expect(out.estimate.vdot).toBeLessThan(57.5);
     expect(out.estimate.lower).toBeLessThan(out.estimate.vdot);
     expect(out.estimate.upper).toBeGreaterThan(out.estimate.vdot);
 
@@ -135,15 +135,63 @@ describe("fitness estimate", () => {
     expect(Math.abs(out2.estimate.vdot - out.estimate.vdot)).toBeLessThan(1.5);
   });
 
-  it("uses a near-maximal effort as performance evidence", () => {
-    const runs = [0, 4, 8].map((d) => makeRun(steady(), addDaysIso("2026-10-01", d)));
-    // 5 km in 20:00 at 93 % HRR
+  it("calibrates the HR level with a near-maximal effort", () => {
+    // 5:00/km at HR 165 (82 % HRR) reads ≈ 46
+    const runs = [0, 4, 8].map((d) => makeRun(steady(165), addDaysIso("2026-10-01", d)));
+    // 5 km in 20:00 at 93 % HRR: VDOT ≈ 49.8
     runs.push(makeRun({ segments: [{ durationS: 300, speedMs: 3, hr: 140 }, { durationS: 1200, speedMs: 5000 / 1200, hr: 181 }] }, "2026-10-20"));
     const scored = runs.map((run) => ({ run, score: scoreRun(run, phys(), { vdot: null, medianRecentMovingS: null }) }));
     const e = estimateFitness("2026-10-30", scored, phys());
     if (e.withheld) throw new Error("withheld");
-    expect(e.method).toBe("performance");
+    expect(e.method).toBe("hr_calibrated");
+    expect(e.hrLevel!).toBeGreaterThan(44.5);
+    expect(e.hrLevel!).toBeLessThan(47.5);
+    expect(e.offset!).toBeGreaterThan(1.5);
+    // a recent best effort is still a floor
     expect(e.vdot).toBeCloseTo(vdotFromPerformance(5000, 1200), 0);
+  });
+
+  it("tracks progress from ordinary runs after a single race", () => {
+    const profile = { max_hr: 190, max_hr_source: "manual", resting_hr: 50, resting_hr_source: "manual", birth_year: null, sex: null };
+    // August: easy runs at 5:00/km and HR 165, and one 5 km race
+    const runs = [0, 3, 6, 9, 12, 15].map((d) => makeRun(steady(165), addDaysIso("2026-08-01", d)));
+    runs.push(makeRun({ segments: [{ durationS: 300, speedMs: 3, hr: 140 }, { durationS: 1200, speedMs: 5000 / 1200, hr: 181 }] }, "2026-08-20", { name: "Parkrun" }));
+    // October/November: same pace, HR 10 bpm lower
+    for (let d = 0; d < 40; d += 3) runs.push(makeRun(steady(155), addDaysIso("2026-10-01", d)));
+    const at = (asOf: string) => {
+      const out = runModel({ asOf, profile, runs, others: [], wellness: [] });
+      if (out.estimate.withheld) throw new Error("withheld");
+      return out.estimate;
+    };
+    const sep = at("2026-09-20");
+    const nov = at("2026-11-09");
+    expect(nov.method).toBe("hr_calibrated");
+    expect(nov.vdot - sep.vdot).toBeGreaterThan(2);
+    // the race still calibrates the level months later
+    expect(nov.offset).not.toBeNull();
+  });
+
+  it("reads the steady parts of an interval session and skips the reps", () => {
+    const segs = [{ durationS: 900, speedMs: 1000 / 300, hr: 148 }];
+    for (let i = 0; i < 6; i++) segs.push({ durationS: 90, speedMs: 5, hr: 175 }, { durationS: 90, speedMs: 2.5, hr: 160 });
+    segs.push({ durationS: 600, speedMs: 1000 / 300, hr: 148 });
+    const r = makeRun({ segments: segs }, "2026-10-01");
+    const s = scoreRun(r, phys(), { vdot: null, medianRecentMovingS: null });
+    expect(s.classification).toBe("intervals");
+    expect(s.vo2maxFromHr).not.toBeNull();
+    expect(s.vo2maxFromHr!).toBeGreaterThan(54.5);
+    expect(s.vo2maxFromHr!).toBeLessThan(57.5);
+  });
+
+  it("adjusts the reading for hills", () => {
+    const flat = makeRun({ segments: [{ durationS: 2400, speedMs: 1000 / 300, hr: 148 }] }, "2026-10-01");
+    const hill = makeRun({ segments: [{ durationS: 2400, speedMs: 1000 / 300, hr: 161, climbMPerS: 0.1 }] }, "2026-10-01");
+    const a = scoreRun(flat, phys(), { vdot: null, medianRecentMovingS: null }).vo2maxFromHr!;
+    const b = scoreRun(hill, phys(), { vdot: null, medianRecentMovingS: null }).vo2maxFromHr!;
+    expect(a).toBeGreaterThan(50);
+    expect(b).toBeGreaterThan(50);
+    // 3 % uphill costs ≈ 13 % more, about what the extra 13 bpm costs
+    expect(Math.abs(a - b)).toBeLessThan(2);
   });
 
   it("slows long-race predictions when long runs are missing", () => {

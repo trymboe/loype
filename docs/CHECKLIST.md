@@ -21,7 +21,7 @@ Legend: ✅ done · 🟡 partial · ⏳ pending · ⛔ blocked (needs credential
 - ✅ Calendar subscription feed (iCalendar) with one-tap Google Calendar / webcal subscribe, optional timed events
 
 ## Phase 2 — Fitness intelligence
-- ✅ Per-run features (`features@1`) and scores (`fitness@1`): TRIMP load, intensity (%HRR), efficiency factor, HR decoupling, HR-zone time, best efforts, classification with manual override
+- ✅ Per-run features (`features@2`) and scores (`fitness@2`, VO2max tracked from every run): TRIMP load, intensity (%HRR), efficiency factor, HR decoupling, HR-zone time, best efforts, classification with manual override
 - ✅ Max/resting HR detection with manual override (More → Athlete profile)
 - ✅ VO2max-equivalent (VDOT) with range + confidence, withheld when evidence is thin; race predictions with endurance correction; threshold pace/HR; pace and HR zones
 - ✅ Fitness/fatigue/form (CTL/ATL/TSB) incl. cross-training from Garmin summaries; aerobic-efficiency trend

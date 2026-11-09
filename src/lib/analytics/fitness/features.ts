@@ -1,5 +1,5 @@
 /**
- * Per-run features extracted once from the stored streams (`features@1`).
+ * Per-run features extracted once from the stored streams (`features@2`).
  *
  * Everything here depends only on the recording, never on the athlete's
  * current max/resting HR or fitness. The fitness model (model.ts) turns these
@@ -7,7 +7,10 @@
  * every run without re-reading every stream.
  */
 
-export const FEATURES_VERSION = "features@1";
+export const FEATURES_VERSION = "features@2";
+
+/** Length of the moving-time windows used for the per-run HR–speed relationship. */
+export const SEGMENT_S = 60;
 
 export const BEST_EFFORT_DISTANCES = [400, 1000, 1609.344, 3000, 5000, 10_000, 15_000, 21_097.5, 42_195] as const;
 
@@ -37,6 +40,23 @@ export interface HalfStats {
   avgHr: number | null;
 }
 
+/**
+ * One minute of moving time. Consecutive windows have consecutive `k`
+ * (window k covers moving time k·60 … (k+1)·60 s); a gap in `k` means the
+ * window had too little data to keep.
+ */
+export interface Segment {
+  k: number;
+  /** moving seconds and metres in the window */
+  s: number;
+  d: number;
+  /** time-weighted mean HR and altitude, when recorded */
+  hr: number | null;
+  alt: number | null;
+  /** seconds stopped or paused that fell inside this window */
+  stopS: number;
+}
+
 export interface RunFeatures {
   version: typeof FEATURES_VERSION;
   timerS: number;
@@ -56,6 +76,8 @@ export interface RunFeatures {
   /** Count of distinct fast bouts (≥ 30 s at > 115 % of the run's median speed). */
   fastBouts: number;
   bestEfforts: BestEffort[];
+  /** Minute-by-minute speed, HR and altitude (moving time), for the HR–speed VO2max reading. */
+  segments: Segment[];
 }
 
 const isMoving = (s: StreamInput, i: number) => (s.motion_states?.[i - 1] ?? "m") === "m";
@@ -102,6 +124,7 @@ export function extractFeatures(s: StreamInput): RunFeatures {
     ...steadyStats(s, moving, dist, hr, alt),
     ...pacingStats(s, moving, dist),
     bestEfforts: bestEfforts(s.t, timer, dist, hr),
+    segments: segments(s, moving, dist, hr, alt),
   };
 }
 
@@ -190,6 +213,53 @@ function steadyStats(
       { movingS: half[1].movingS, distanceM: half[1].distanceM, avgHr: avgHr(half[1]) },
     ],
   };
+}
+
+/** One-minute moving-time windows: distance, mean HR, mean altitude, and stopped time. */
+export function segments(s: StreamInput, moving: number[], dist: (number | null)[], hr: (number | null)[], alt: (number | null)[]): Segment[] {
+  const n = s.t.length;
+  const acc = new Map<number, { s: number; d: number; hrSum: number; hrS: number; altSum: number; altS: number; stopS: number }>();
+  const get = (k: number) => {
+    let a = acc.get(k);
+    if (!a) acc.set(k, (a = { s: 0, d: 0, hrSum: 0, hrS: 0, altSum: 0, altS: 0, stopS: 0 }));
+    return a;
+  };
+  for (let i = 1; i < n; i++) {
+    const dt = s.t[i] - s.t[i - 1];
+    if (dt <= 0) continue;
+    const k = Math.floor(moving[i - 1] / SEGMENT_S);
+    if (!isMoving(s, i) || dt > 30) {
+      get(k).stopS += dt;
+      continue;
+    }
+    const d0 = dist[i - 1];
+    const d1 = dist[i];
+    if (d0 == null || d1 == null) continue;
+    const a = get(k);
+    a.s += dt;
+    a.d += Math.max(0, d1 - d0);
+    const h = hr[i];
+    if (h != null && h >= 30 && h <= 230) {
+      a.hrSum += h * dt;
+      a.hrS += dt;
+    }
+    const al = alt[i];
+    if (al != null) {
+      a.altSum += al * dt;
+      a.altS += dt;
+    }
+  }
+  return [...acc.entries()]
+    .filter(([, a]) => a.s >= SEGMENT_S / 2)
+    .sort((x, y) => x[0] - y[0])
+    .map(([k, a]) => ({
+      k,
+      s: Math.round(a.s * 10) / 10,
+      d: Math.round(a.d * 10) / 10,
+      hr: a.hrS >= a.s * 0.8 ? Math.round((a.hrSum / a.hrS) * 10) / 10 : null,
+      alt: a.altS >= a.s * 0.8 ? Math.round((a.altSum / a.altS) * 10) / 10 : null,
+      stopS: Math.round(a.stopS),
+    }));
 }
 
 /** 60-s moving-speed variability and fast-bout count (interval detection). */
