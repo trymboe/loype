@@ -6,7 +6,7 @@ import { addDaysIso, daysBetween, formatDay } from "../dates";
 import { formatDuration, formatPace } from "../units";
 import { fmtTime } from "../analytics/fitness/estimate";
 import { recomputeFitness } from "../fitness/service";
-import { TimeTrialRefused, addTimeTrial, checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, restoreVersion, snapshot, startPlanEarlier, updateGoal, type GoalEdit, type PlanRestartUndo } from "../planning/service";
+import { TimeTrialRefused, addTimeTrial, checkStepEdit, decideProposal, editWorkout, frequencyLabel, loadIssues, planContext, RECONSIDER_DAYS, restoreVersion, snapshot, startPlanEarlier, updateGoal, type GoalEdit, type PlanRestartUndo } from "../planning/service";
 import { editableSteps } from "../planning/edit-steps";
 import { moveIssues, validateSchedule } from "../planning/validate";
 import { buildWorkout, stepsDistance, stepsDuration } from "../planning/workouts";
@@ -274,7 +274,7 @@ export const TOOLS: OpenAI.Responses.FunctionTool[] = [
     }),
   ),
   fn("restore_plan_version", "Put every not-yet-done workout back to how it was in an earlier plan version (from get_plan_history).", obj({ version: { type: "integer" } })),
-  fn("respond_to_proposal", "Accept a pending plan-change proposal (from the app's adaptation rules), or keep the plan as it is.", obj({ proposal_id: s("Proposal id"), accept: { type: "boolean" } })),
+  fn("respond_to_proposal", "Accept a pending plan-change proposal (from the app's adaptation rules), or keep the plan as it is. A proposal the athlete declined in the last 14 days can still be accepted when they ask for it (e.g. updating paces to a new fitness estimate).", obj({ proposal_id: s("Proposal id"), accept: { type: "boolean" } })),
   fn("update_route", "Rename a saved route and/or mark it as a favourite. Null leaves a field unchanged.", obj({ route_id: s("Route id"), name: ns("New name, or null"), favorite: { type: ["boolean", "null"] } })),
   fn("link_route_to_workout", "Attach a saved route to a planned workout (shown on the workout), or detach it.", obj({ route_id: s("Route id"), workout_id: s("Workout id"), link: { type: "boolean" } })),
   fn("save_run_as_route", "Save the GPS track of a recorded run as a route.", obj({ activity_id: s("Run id") })),
@@ -432,13 +432,16 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
       return `Done: every not-yet-done workout is back to how it was in version ${input.version}.`;
     }
     case "respond_to_proposal": {
-      const { data: p } = await ctx.db.from("adaptation_proposals").select("id, plan_id, title, status").eq("id", input.proposal_id).eq("user_id", ctx.userId).maybeSingle();
+      const { data: p } = await ctx.db.from("adaptation_proposals").select("id, plan_id, title, status, decided_at").eq("id", input.proposal_id).eq("user_id", ctx.userId).maybeSingle();
       if (!p) return "No such proposal.";
-      if (p.status !== "pending") return `That proposal is already ${p.status}.`;
+      const reconsider = input.accept && p.status === "rejected";
+      if (p.status !== "pending" && !reconsider) return `That proposal is already ${p.status}.`;
+      if (reconsider && p.decided_at && daysBetween(p.decided_at.slice(0, 10), ctx.today) > RECONSIDER_DAYS) return `That proposal was declined more than ${RECONSIDER_DAYS} days ago and can't be applied any more.`;
       const { data: plan } = await ctx.db.from("training_plans").select("current_version").eq("id", p.plan_id).single();
-      await decideProposal(ctx.db, ctx.userId, p.id, input.accept);
-      if (input.accept) ctx.actions.push({ kind: "plan", summary: `Accepted: ${p.title}`, planId: p.plan_id, versionBefore: plan?.current_version ?? undefined });
-      return input.accept ? `Accepted "${p.title}"; the plan is updated.` : `Kept the plan; "${p.title}" was declined.`;
+      const r = await decideProposal(ctx.db, ctx.userId, p.id, input.accept, undefined, ctx.today);
+      if (!input.accept) return `Kept the plan; "${p.title}" was declined.`;
+      ctx.actions.push({ kind: "plan", summary: `Accepted: ${p.title}`, planId: p.plan_id, versionBefore: plan?.current_version ?? undefined });
+      return `Accepted "${p.title}"${reconsider ? " (it had been declined earlier)" : ""}; ${r?.applied ?? 0} workout${r?.applied === 1 ? "" : "s"} updated.`;
     }
     case "update_route": {
       const patch: Record<string, unknown> = {};

@@ -18,7 +18,7 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
   return (
     <section className={pending ? "card rise relative overflow-hidden p-5" : "card rise p-5"}>
       {pending && <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />}
-      <p className={pending ? "eyebrow text-accent" : "eyebrow"}>{pending ? "Suggested change" : "Applied change"}</p>
+      <p className={pending ? "eyebrow text-accent" : "eyebrow"}>{pending ? "Suggested change" : p.status === "rejected" ? "Declined change" : "Applied change"}</p>
       <p className="mt-1 text-[1.0625rem] font-semibold tracking-[-0.01em]">{p.title}</p>
       <p className="mt-1 text-sm leading-relaxed text-muted">{p.explanation}</p>
       {p.evidence.length > 0 && (
@@ -28,7 +28,15 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
           ))}
         </ul>
       )}
-      {pending ? (
+      {p.status === "rejected" ? (
+        <form action={decideProposalAction} className="mt-4">
+          <input type="hidden" name="id" value={p.id} />
+          <p className="mb-2 text-xs text-muted">You kept your plan{p.decided_at ? ` on ${formatDay(p.decided_at.slice(0, 10))}` : ""}. Changed your mind?</p>
+          <button name="decision" value="accept" className="btn btn-primary btn-sm">
+            Apply it after all
+          </button>
+        </form>
+      ) : pending ? (
         <>
           <form action={decideProposalAction} className="mt-3">
             <input type="hidden" name="id" value={p.id} />
