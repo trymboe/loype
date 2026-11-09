@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import Link from "next/link";
+import { useOptimistic, useState, useTransition } from "react";
+import Link from "@/components/link";
 import { Check, Link2 } from "lucide-react";
 import clsx from "clsx";
 import { CardHeader } from "@/components/ui";
@@ -16,10 +16,12 @@ export interface WorkoutOption {
 }
 
 /** Pick upcoming planned workouts to run on this route. */
-export function LinkWorkout({ routeId, workouts }: { routeId: string; workouts: WorkoutOption[] }) {
+export function LinkWorkout({ routeId, workouts: saved }: { routeId: string; workouts: WorkoutOption[] }) {
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // a tapped workout ticks on (or off) at once; the server confirms behind it
+  const [workouts, toggle] = useOptimistic(saved, (ws, id: string) => ws.map((w) => (w.id === id ? { ...w, linkedHere: !w.linkedHere } : w)));
   const linked = workouts.filter((w) => w.linkedHere);
   const shown = open ? workouts : linked;
 
@@ -50,6 +52,7 @@ export function LinkWorkout({ routeId, workouts }: { routeId: string; workouts: 
                 disabled={pending || !open}
                 onClick={() =>
                   start(async () => {
+                    toggle(w.id);
                     const res = await linkWorkoutAction(routeId, w.id, !w.linkedHere);
                     setError(res.error ?? null);
                   })

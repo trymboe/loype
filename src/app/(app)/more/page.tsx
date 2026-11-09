@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { BookOpen, CalendarDays, ChevronRight, Compass, Download, Footprints, HeartPulse, KeyRound, Link2, LogOut, Trash2 } from "lucide-react";
 import { IconTile, PageHeader } from "@/components/ui";
 

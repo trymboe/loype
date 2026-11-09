@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { connectGarmin, type KeyState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export function GarminKeyForm({ replacing }: { replacing: boolean }) {
   const [state, action, pending] = useActionState<KeyState, FormData>(connectGarmin, {});
@@ -25,9 +26,9 @@ export function GarminKeyForm({ replacing }: { replacing: boolean }) {
       </label>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm text-good">Connected</p>}
-      <button disabled={pending} className="btn btn-primary btn-block">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Verifying with Garmin…" : replacing ? "Replace key" : "Connect Garmin"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

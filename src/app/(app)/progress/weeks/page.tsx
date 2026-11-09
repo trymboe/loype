@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import clsx from "clsx";
 import { CalendarRange, ChevronRight } from "lucide-react";
 import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";

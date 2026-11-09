@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { ChevronRight, Map as MapIcon } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui";
 import { RouteThumb } from "@/components/route-thumb";

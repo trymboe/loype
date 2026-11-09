@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { deletePlanAction, updateGoalAction, type GoalEditState } from "../actions";
 import { DAYS } from "../goal-options";
 import { Field, FrequencyPicker, Toggle, TrainingStylePicker } from "../plan-form";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export interface GoalFormInitial {
   name: string;
@@ -104,9 +105,9 @@ export function GoalForm({ kind, initial }: { kind: string; initial: GoalFormIni
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
       {state.saved && !pending && <p className="rounded-xl bg-accent/10 p-3 text-sm">{state.saved}</p>}
-      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Saving…" : "Save changes"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -128,9 +129,9 @@ export function DeletePlan() {
             <button type="button" disabled={pending} onClick={() => setConfirming(false)} className="btn btn-secondary">
               Cancel
             </button>
-            <button disabled={pending} className="btn bg-danger text-white">
+            <SubmitButton disabled={pending} className="btn bg-danger text-white">
               {pending ? "Deleting…" : "Yes, delete"}
-            </button>
+            </SubmitButton>
           </div>
         </form>
       )}

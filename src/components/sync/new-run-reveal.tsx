@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/link";
 import { CalendarCheck, Flame, Timer, Trophy, X } from "lucide-react";
 import clsx from "clsx";
 import { RevealMap } from "./reveal-map";

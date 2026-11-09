@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { saveProfile, type ProfileState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const input = "input";
 
@@ -41,9 +42,9 @@ export function ProfileForm({ initial, detected }: { initial: Initial; detected:
       </Field>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm text-good">Saved</p>}
-      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Saving…" : "Save"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

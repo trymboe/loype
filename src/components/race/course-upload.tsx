@@ -9,8 +9,8 @@ export function CourseUpload({ replacing }: { replacing?: boolean }) {
   const form = useRef<HTMLFormElement>(null);
   return (
     <form ref={form} action={action} className="space-y-2">
-      <label className={replacing ? "btn btn-secondary btn-sm cursor-pointer" : "btn btn-primary cursor-pointer"} aria-disabled={pending}>
-        <Upload size={16} />
+      <label className={replacing ? "btn btn-secondary btn-sm cursor-pointer" : "btn btn-primary cursor-pointer"} aria-disabled={pending} aria-busy={pending}>
+        {!pending && <Upload size={16} />}
         {pending ? "Reading course…" : replacing ? "Replace GPX" : "Upload course GPX"}
         <input
           type="file"

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Sans } from "next/font/google";
+import { NavProgress } from "@/components/feedback/nav-progress";
 import "./globals.css";
 
 // Instrument Sans: compact, crisp figures that stay tight with tabular-nums, and a warm text face.
@@ -26,7 +27,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} antialiased`}>{children}</body>
+      <body className={`${sans.variable} antialiased`}>
+        <NavProgress />
+        {children}
+      </body>
     </html>
   );
 }

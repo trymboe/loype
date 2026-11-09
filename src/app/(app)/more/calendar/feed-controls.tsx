@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { setFeedTimeAction, type TimeState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export function CopyField({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -56,9 +57,9 @@ export function TimeForm({ startTime }: { startTime: string | null }) {
       )}
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm text-good">Saved</p>}
-      <button disabled={pending} className="btn btn-secondary btn-block">
+      <SubmitButton disabled={pending} className="btn btn-secondary btn-block">
         {pending ? "Saving…" : "Save"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

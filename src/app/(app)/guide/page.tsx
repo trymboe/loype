@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import type { ReactNode } from "react";
 import { Activity, CalendarDays, Ellipsis, KeyRound, LineChart, Map as MapIcon, MessageCircle, RefreshCw, Send, Smartphone, Sun, Watch } from "lucide-react";
 import { ButtonLink, Card, CardHeader, IconTile, PageHeader } from "@/components/ui";
@@ -6,6 +6,7 @@ import { getSessionUser, createAdminClient } from "@/lib/db/server";
 import { loadOnboardingFacts } from "@/lib/onboarding/facts";
 import { nextStep } from "@/lib/onboarding/state";
 import { startSetupAction } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "How Løype works" };
 export const dynamic = "force-dynamic";
@@ -141,7 +142,7 @@ export default async function GuidePage({ searchParams }: { searchParams: Promis
           <ButtonLink href="/">Go to Today</ButtonLink>
         ) : (
           <form action={startSetupAction}>
-            <button className="btn btn-primary btn-block min-h-12">{first ? "Start setup" : "Continue setup"}</button>
+            <SubmitButton className="btn btn-primary btn-block min-h-12">{first ? "Start setup" : "Continue setup"}</SubmitButton>
           </form>
         )}
       </div>

@@ -3,6 +3,7 @@ import { restoreVersionAction } from "../actions";
 import { createUserClient } from "@/lib/db/server";
 import { formatDay } from "@/lib/dates";
 import { GOAL_LABEL } from "@/lib/planning/types";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "Plan history" };
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export default async function PlanHistoryPage() {
                       <form action={restoreVersionAction}>
                         <input type="hidden" name="planId" value={p.id} />
                         <input type="hidden" name="version" value={v.version} />
-                        <button className="btn btn-secondary btn-sm">Restore</button>
+                        <SubmitButton className="btn btn-secondary btn-sm">Restore</SubmitButton>
                       </form>
                     )}
                   </li>

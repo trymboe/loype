@@ -1,6 +1,7 @@
 import { decideProposalAction, undoProposalAction } from "@/app/(app)/plan/actions";
 import { formatDay } from "@/lib/dates";
 import type { Change } from "@/lib/planning/adapt";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export interface ProposalRow {
   id: string;
@@ -32,9 +33,9 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
         <form action={decideProposalAction} className="mt-4">
           <input type="hidden" name="id" value={p.id} />
           <p className="mb-2 text-xs text-muted">You kept your plan{p.decided_at ? ` on ${formatDay(p.decided_at.slice(0, 10))}` : ""}. Changed your mind?</p>
-          <button name="decision" value="accept" className="btn btn-primary btn-sm">
+          <SubmitButton name="decision" value="accept" className="btn btn-primary btn-sm">
             Apply it after all
-          </button>
+          </SubmitButton>
         </form>
       ) : pending ? (
         <>
@@ -64,18 +65,18 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
                 ))}
               </ul>
               {p.changes.length > 1 && (
-                <button name="decision" value="modify" className="btn btn-secondary btn-sm mt-2">
+                <SubmitButton name="decision" value="modify" className="btn btn-secondary btn-sm mt-2">
                   Accept only the ticked ones
-                </button>
+                </SubmitButton>
               )}
             </details>
             <div className="mt-4 flex gap-2">
-              <button name="decision" value="accept" className="btn btn-primary btn-sm">
+              <SubmitButton name="decision" value="accept" className="btn btn-primary btn-sm">
                 Accept{p.changes.length > 1 ? " all" : ""}
-              </button>
-              <button name="decision" value="reject" className="btn btn-secondary btn-sm">
+              </SubmitButton>
+              <SubmitButton name="decision" value="reject" className="btn btn-secondary btn-sm">
                 Keep my plan
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </>
@@ -102,7 +103,7 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
           </details>
           <form action={undoProposalAction} className="mt-4">
             <input type="hidden" name="id" value={p.id} />
-            <button className="btn btn-secondary btn-sm">Undo</button>
+            <SubmitButton className="btn btn-secondary btn-sm">Undo</SubmitButton>
           </form>
         </>
       )}

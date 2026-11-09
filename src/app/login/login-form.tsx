@@ -9,6 +9,7 @@ import {
   type LoginState,
   type PasswordState,
 } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const input = "input";
 const button = "btn btn-primary btn-block min-h-12";
@@ -41,9 +42,9 @@ function PasswordForm() {
       <input name="email" type="email" autoComplete="username" required placeholder="you@example.com" className={input} />
       <input name="password" type="password" autoComplete="current-password" required placeholder="Password" className={input} />
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      <button disabled={pending} className={button}>
+      <SubmitButton disabled={pending} className={button}>
         {pending ? "Signing in…" : "Sign in"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -55,9 +56,9 @@ function EmailLinkForm() {
     <form action={action} className="space-y-3">
       <input name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={input} />
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      <button disabled={pending} className={button}>
+      <SubmitButton disabled={pending} className={button}>
         {pending ? "Sending…" : "Email me a sign-in link"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -79,9 +80,9 @@ function CodeForm({ email }: { email: string }) {
         className={`${input} tabular text-center text-2xl tracking-[0.4em]`}
       />
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      <button disabled={pending} className={button}>
+      <SubmitButton disabled={pending} className={button}>
         {pending ? "Signing in…" : "Sign in"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { ChevronRight } from "lucide-react";
 import type { ActivityListItem } from "@/lib/db/queries";
 import { formatDay, localTime } from "@/lib/dates";

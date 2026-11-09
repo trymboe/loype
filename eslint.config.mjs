@@ -12,6 +12,14 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    // Our Link wrapper starts the top loading bar on every tap.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/components/link.tsx"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "next/link", message: "Import Link from @/components/link so taps show the loading bar." }] }],
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

@@ -5,6 +5,7 @@ import { Download, Watch } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { WATCH_STATE } from "@/components/watch/states";
 import { watchAction, type WatchState } from "./watch-actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export interface WatchSync {
   state: string;
@@ -45,19 +46,19 @@ export function WatchCard({ id, sync, connected, sendable, thresholdMissing }: {
           <form action={action} className="flex flex-wrap gap-2">
             <input type="hidden" name="id" value={id} />
             {sendable && (
-              <button name="op" value="send" disabled={pending} className="btn btn-secondary btn-sm">
+              <SubmitButton name="op" value="send" disabled={pending} className="btn btn-secondary btn-sm">
                 {pending ? "Sending…" : sync && sync.state !== "removed" ? "Send again" : "Send now"}
-              </button>
+              </SubmitButton>
             )}
             {delivered && sync.state !== "on_watch" && (
-              <button name="op" value="confirm" disabled={pending} className="btn btn-secondary btn-sm">
+              <SubmitButton name="op" value="confirm" disabled={pending} className="btn btn-secondary btn-sm">
                 I see it on my watch
-              </button>
+              </SubmitButton>
             )}
             {sync?.state === "on_watch" && (
-              <button name="op" value="unconfirm" disabled={pending} className="btn btn-secondary btn-sm">
+              <SubmitButton name="op" value="unconfirm" disabled={pending} className="btn btn-secondary btn-sm">
                 It&apos;s not there
-              </button>
+              </SubmitButton>
             )}
           </form>
         </>

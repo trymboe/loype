@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import Link from "next/link";
+import Link from "@/components/link";
 import { Activity, Send, Watch } from "lucide-react";
 import { Badge, IconTile, PageHeader, type Tone } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";

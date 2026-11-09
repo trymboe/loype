@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import clsx from "clsx";
 import { EXPERIENCE_LABEL, type AthleteBackground, type Experience } from "@/lib/onboarding/state";
 import { saveAboutAction, type AboutState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 interface Initial {
   max_hr: number | null;
@@ -79,9 +80,9 @@ export function AboutForm({ initial, background, detected }: { initial: Initial;
       </section>
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
-      <button disabled={pending || !exp} className="btn btn-primary btn-block min-h-12">
+      <SubmitButton disabled={pending || !exp} className="btn btn-primary btn-block min-h-12">
         {pending ? "Saving…" : "Continue"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

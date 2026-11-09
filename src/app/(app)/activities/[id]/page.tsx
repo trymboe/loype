@@ -15,6 +15,7 @@ import { createUserClient } from "@/lib/db/server";
 import { formatDay, localTime } from "@/lib/dates";
 import { formatDuration, formatKm, formatPace, formatPaceFromSpeed } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -150,9 +151,9 @@ export default async function ActivityPage({ params }: { params: Promise<{ id: s
       {a.has_gps && (
         <div className="mt-3 flex flex-wrap gap-2">
           <form action={saveActivityAsRouteAction.bind(null, a.id)}>
-            <button className="btn btn-secondary btn-sm">
+            <SubmitButton className="btn btn-secondary btn-sm">
               <MapIcon size={16} /> Save as route
-            </button>
+            </SubmitButton>
           </form>
           <a href={`/api/activities/${a.id}/gpx`} className="btn btn-secondary btn-sm" download>
             <Download size={16} /> Export GPX

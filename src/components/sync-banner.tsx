@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 
 /** Surfaces integration problems wherever the user is, so failures are never silent. */

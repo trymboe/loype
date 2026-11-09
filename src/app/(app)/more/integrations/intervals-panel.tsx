@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { applyThresholdAction, connectIntervalsAction, disconnectIntervalsAction, pushNowAction, type IntervalsState } from "./intervals-actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export function IntervalsKeyForm({ replacing }: { replacing: boolean }) {
   const [state, action, pending] = useActionState<IntervalsState, FormData>(connectIntervalsAction, {});
@@ -19,9 +20,9 @@ export function IntervalsKeyForm({ replacing }: { replacing: boolean }) {
       </label>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.message && <p className="text-sm text-good">{state.message}</p>}
-      <button disabled={pending} className="btn btn-primary btn-block">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Checking with Intervals.icu…" : replacing ? "Replace key" : "Connect Intervals.icu"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -32,12 +33,12 @@ export function IntervalsPushControls() {
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <form action={action}>
-          <button disabled={pending} className="btn btn-primary btn-sm">
+          <SubmitButton disabled={pending} className="btn btn-primary btn-sm">
             {pending ? "Sending…" : "Send upcoming workouts now"}
-          </button>
+          </SubmitButton>
         </form>
         <form action={disconnectIntervalsAction}>
-          <button className="btn btn-secondary btn-sm">Disconnect</button>
+          <SubmitButton className="btn btn-secondary btn-sm">Disconnect</SubmitButton>
         </form>
       </div>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
@@ -50,9 +51,9 @@ export function ApplyThresholdButton({ pace }: { pace: string }) {
   const [state, action, pending] = useActionState<IntervalsState, FormData>(applyThresholdAction, {});
   return (
     <form action={action} className="space-y-2">
-      <button disabled={pending} className="btn btn-primary btn-sm">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-sm">
         {pending ? "Updating Intervals.icu…" : `Set threshold pace to ${pace}/km in Intervals.icu`}
-      </button>
+      </SubmitButton>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.message && <p className="text-sm text-good">{state.message}</p>}
     </form>

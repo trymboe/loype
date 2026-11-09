@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { History, KeyRound, Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { CoachChat } from "@/components/coach/chat";

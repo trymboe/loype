@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import { useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import Link from "@/components/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
@@ -62,11 +62,14 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
   const [busy, start] = useTransition();
   const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; id: string; x: number; y: number; moved: boolean } | null>(null);
 
+  // a dropped workout lands on its new day at once; it hops back if the server says no
+  const [shown, moveShown] = useOptimistic(workouts, (ws, m: { id: string; date: string }) => ws.map((w) => (w.id === m.id ? { ...w, date: m.date } : w)));
+
   const byDate = useMemo(() => {
     const m = new Map<string, MonthWorkout[]>();
-    for (const w of workouts) if (w.type !== "rest") m.set(w.date, [...(m.get(w.date) ?? []), w]);
+    for (const w of shown) if (w.type !== "rest") m.set(w.date, [...(m.get(w.date) ?? []), w]);
     return m;
-  }, [workouts]);
+  }, [shown]);
 
   const gridStart = (() => {
     const d = parse(month);
@@ -79,6 +82,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
   const move = (id: string, date: string, confirm: boolean) =>
     start(async () => {
       setError(null);
+      moveShown({ id, date });
       const fd = new FormData();
       fd.set("id", id);
       fd.set("op", "move");
@@ -213,7 +217,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
         </div>
       )}
       <p className="mt-3 text-xs leading-relaxed text-muted">E easy · L long · T tempo · I intervals · RP race pace · H hills</p>
-      {busy && <p className="mt-2 text-xs text-muted">Moving…</p>}
+      {busy && !pendingMove && <p className="mt-2 text-xs text-muted">Moving…</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       {pendingMove && (
         <div className="mt-3 space-y-2 rounded-xl bg-warn/10 p-3">
@@ -223,7 +227,7 @@ export function PlanMonth({ workouts, today, first, last }: { workouts: MonthWor
             ))}
           </ul>
           <div className="flex gap-2">
-            <button type="button" disabled={busy} className="btn btn-primary btn-sm" onClick={() => move(pendingMove.id, pendingMove.date, true)}>
+            <button type="button" disabled={busy} aria-busy={busy} className="btn btn-primary btn-sm" onClick={() => move(pendingMove.id, pendingMove.date, true)}>
               Move anyway
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPendingMove(null)}>

@@ -7,6 +7,7 @@ import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { relativeTime } from "@/lib/dates";
 import { disableFeedAction, rotateFeedAction } from "./actions";
 import { CopyField, TimeForm } from "./feed-controls";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "Calendar" };
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function CalendarPage() {
             <p className="min-w-0 flex-1 text-[1.0625rem] font-semibold tracking-[-0.01em]">Show your plan in your calendar</p>
           </div>
           <form action={rotateFeedAction} className="mt-5">
-            <button className="btn btn-primary btn-block min-h-12">Turn on calendar feed</button>
+            <SubmitButton className="btn btn-primary btn-block min-h-12">Turn on calendar feed</SubmitButton>
           </form>
         </Card>
       ) : (
@@ -64,10 +65,10 @@ export default async function CalendarPage() {
             <CardHeader title="Calendar link" aside={feed.lastFetchedAt ? `Last read ${relativeTime(feed.lastFetchedAt)}` : "Not read yet"} />
             <div className="mt-4 grid grid-cols-2 gap-2">
               <form action={rotateFeedAction}>
-                <button className="btn btn-secondary btn-block">New link</button>
+                <SubmitButton className="btn btn-secondary btn-block">New link</SubmitButton>
               </form>
               <form action={disableFeedAction}>
-                <button className="btn btn-secondary btn-block text-danger">Turn off</button>
+                <SubmitButton className="btn btn-secondary btn-block text-danger">Turn off</SubmitButton>
               </form>
             </div>
           </Card>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import clsx from "clsx";
 import { ChevronRight, Flag, Trash2 } from "lucide-react";
 import { Badge, ButtonLink, Card, CardHeader, EmptyState, PageHeader, Stat } from "@/components/ui";
@@ -20,6 +20,7 @@ import { fmtDist, fmtTime } from "@/lib/analytics/fitness/estimate";
 import { formatDay, todayIn, weekStart } from "@/lib/dates";
 import { formatKm, formatPace } from "@/lib/units";
 import { userTimezone } from "@/lib/user-tz";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "Race" };
 export const dynamic = "force-dynamic";
@@ -259,9 +260,9 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
             <h2 className="section-title">Course</h2>
             {course && (
               <form action={removeCourseAction}>
-                <button type="submit" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-danger">
+                <SubmitButton className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-danger">
                   <Trash2 size={13} /> Remove
-                </button>
+                </SubmitButton>
               </form>
             )}
           </div>

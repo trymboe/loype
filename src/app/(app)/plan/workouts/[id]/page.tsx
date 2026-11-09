@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat, type Tone } from "@/components/ui";
