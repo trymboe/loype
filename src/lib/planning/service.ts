@@ -8,7 +8,7 @@ import { runLoad } from "../analytics/running-load";
 import { buildBaseline } from "./baseline";
 import { SPIKE_MAX, TT_WHY, distanceKey, generatePlan, goalDistance, raceLabelFor } from "./generator";
 import { assessExecution, matchRuns } from "./match";
-import { proposeAdaptations, type AdaptWorkout, type Change } from "./adapt";
+import { proposeAdaptations, retarget, type AdaptWorkout, type Change } from "./adapt";
 import { buildWorkout, finalize, stepsDistance, stepsDuration, type TargetContext, type WorkoutSpec } from "./workouts";
 import { editIssues, hardSeconds, rebuildSteps, titleFor, type EditableStep } from "./edit-steps";
 import { HARD_TYPES, PLANNER_VERSION, WORKOUT_LABEL, isHard, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type Step, type WorkoutType } from "./types";
@@ -657,31 +657,70 @@ const fieldsToRow = (f: Change["after"]) => ({
 
 const same = (row: any, f: Change["after"]) => row.type === f.type && row.title === f.title && JSON.stringify(row.steps) === JSON.stringify(f.steps);
 
-/** Accept: apply each change whose workout hasn't been edited since; reject: just record it. */
-export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean, only?: string[]) {
+/**
+ * Fresh pace changes for a fitness (rule A) proposal: every future workout
+ * retargeted to the new VDOT, built from the rows as they are now. The stored
+ * changes go stale as soon as the weekly refresh rewrites the coming weeks,
+ * so applying those alone would leave most workouts on the old paces.
+ */
+function paceChanges(plan: any, rows: any[], patch: { vdot: number; racePace: number | null }, today: string): Change[] {
+  const ctx = planContext(plan);
+  const newCtx: TargetContext = { ...ctx, baseline: { ...ctx.baseline, vdot: patch.vdot, paceZones: trainingPaces(patch.vdot) }, racePace: patch.racePace };
+  return rows
+    .filter((w) => w.date >= today && w.status === "planned" && !w.locked && !["rest", "race", "time_trial"].includes(w.type))
+    .map((w) => {
+      const before = { type: w.type, title: w.title, objective: w.objective, why: w.why, steps: w.steps, durationS: w.duration_s, distanceM: w.distance_m };
+      const steps = retarget(w.steps, newCtx);
+      return { workoutId: w.id, date: w.date, before, after: { ...before, steps, distanceM: stepsDistance(steps) } };
+    })
+    .filter((c) => JSON.stringify(c.before.steps) !== JSON.stringify(c.after.steps));
+}
+
+/** Proposals the athlete declined can still be applied for this long, from the plan page or the coach. */
+export const RECONSIDER_DAYS = 14;
+
+/**
+ * Accept: apply each change whose workout hasn't been edited since; reject:
+ * just record it. A declined proposal can be accepted later (a mis-tap, or the
+ * athlete changed their mind, often after asking the coach); only changes from
+ * today on are applied then.
+ */
+export async function decideProposal(db: SupabaseClient, userId: string, id: string, accept: boolean, only?: string[], today?: string) {
   const p = await single(db.from("adaptation_proposals").select("*").eq("id", id).eq("user_id", userId));
-  if (p.status !== "pending") return;
+  const reconsider = accept && p.status === "rejected";
+  if (p.status !== "pending" && !reconsider) return;
+  if (reconsider && p.decided_at && daysBetween(p.decided_at.slice(0, 10), today ?? new Date().toISOString().slice(0, 10)) > RECONSIDER_DAYS) return;
   const all = p.changes as Change[];
-  const chosen = only ? all.filter((c) => only.includes(c.workoutId)) : all;
-  if (accept && chosen.length === 0) accept = false;
+  let chosen = only ? all.filter((c) => only.includes(c.workoutId)) : all;
+  if (accept && chosen.length === 0 && !p.baseline_patch) accept = false;
   if (!accept) {
     await check(db.from("adaptation_proposals").update({ status: "rejected", decided_at: new Date().toISOString() }).eq("id", id));
     return;
   }
-  const changes = chosen;
-  const modified = changes.length < all.length;
-  const { data: rows } = await db.from("planned_workouts").select("*").in("id", changes.map((c) => c.workoutId));
-  let applied = 0;
-  for (const c of changes) {
-    const row = (rows ?? []).find((r: any) => r.id === c.workoutId);
+  const { data: plan } = await db.from("training_plans").select("*, goal:goals(*)").eq("id", p.plan_id).single();
+  let rows: any[];
+  if (p.rule === "A" && p.baseline_patch && today) {
+    // retarget from the rows as they are now; with "only", the ticked dates
+    const wanted = only ? new Set(chosen.map((c) => c.date)) : null;
+    rows = await fetchAll<any>((from, to) => db.from("planned_workouts").select("*").eq("plan_id", p.plan_id).gte("date", today).order("date").range(from, to));
+    chosen = paceChanges(plan, rows, p.baseline_patch, today).filter((c) => !wanted || wanted.has(c.date));
+  } else {
+    if (today) chosen = chosen.filter((c) => c.date >= today);
+    const { data } = await db.from("planned_workouts").select("*").in("id", chosen.map((c) => c.workoutId));
+    rows = data ?? [];
+  }
+  const changes: Change[] = [];
+  for (const c of chosen) {
+    const row = rows.find((r: any) => r.id === c.workoutId);
     if (!row || row.status !== "planned" || row.locked || !same(row, c.before) || (c.toDate && row.date !== c.date)) continue;
     await check(db.from("planned_workouts").update({ ...fieldsToRow(c.after), ...(c.toDate ? { date: c.toDate } : {}), source: "adaptation" }).eq("id", c.workoutId));
-    applied++;
+    changes.push(c);
   }
+  const applied = changes.length;
+  const modified = only != null && only.length < all.length;
   let patch = p.baseline_patch;
   if (patch) {
-    const { data: plan } = await db.from("training_plans").select("baseline, race_pace").eq("id", p.plan_id).single();
-    patch = { ...patch, prev: { vdot: plan!.baseline.vdot, paceZones: plan!.baseline.paceZones, racePace: plan!.race_pace } };
+    patch = { vdot: patch.vdot, racePace: patch.racePace, prev: { vdot: plan!.baseline.vdot, paceZones: plan!.baseline.paceZones, racePace: plan!.race_pace } };
     await check(
       db
         .from("training_plans")
@@ -690,13 +729,14 @@ export async function decideProposal(db: SupabaseClient, userId: string, id: str
     );
   }
   const version = await snapshot(db, userId, p.plan_id, `Accepted${modified ? " with changes" : ""}: ${p.title} (${applied} workout${applied === 1 ? "" : "s"} changed)`, "adaptation");
-  // a modified acceptance keeps only the chosen changes, so undo reverts exactly those
+  // store what was actually applied, so undo reverts exactly those
   await check(
     db
       .from("adaptation_proposals")
-      .update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch, ...(modified ? { changes, title: `${p.title} (${changes.length} of ${all.length} workouts)` } : {}) })
+      .update({ status: "accepted", decided_at: new Date().toISOString(), resulting_version: version, baseline_patch: patch, changes, ...(modified ? { title: `${p.title} (${applied} of ${all.length} workouts)` } : {}) })
       .eq("id", id),
   );
+  return { applied };
 }
 
 export async function undoProposal(db: SupabaseClient, userId: string, id: string) {

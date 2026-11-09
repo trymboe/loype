@@ -45,7 +45,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       .from("adaptation_proposals")
       .select("id, rule, title, explanation, evidence, changes, status, decided_at")
       .eq("plan_id", plan.id)
-      .or(`status.eq.pending,and(status.eq.accepted,decided_at.gte.${addDaysIso(today, -14)})`)
+      .or(`status.eq.pending,and(status.in.(accepted,rejected),decided_at.gte.${addDaysIso(today, -14)})`)
       .order("created_at", { ascending: false }),
     db.from("activities").select("local_date, moving_s").eq("sport", "running").is("duplicate_of", null).gte("local_date", (plan.weeks as PlanWeek[])[0]?.start ?? today),
   ]);
@@ -61,6 +61,13 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const title = goal.kind === "race" && goal.name ? goal.name : GOAL_LABEL[goal.kind as keyof typeof GOAL_LABEL];
   const pending = (proposals ?? []).filter((p: any) => p.status === "pending");
   const applied = (proposals ?? []).filter((p: any) => p.status === "accepted");
+  // declined lately and still relevant: can be applied after all (a mis-tap, or a change of mind)
+  const declined = (proposals ?? []).filter(
+    (p: any) =>
+      p.status === "rejected" &&
+      !pending.some((q: any) => q.rule === p.rule) &&
+      (p.rule === "A" || (p.changes as { date: string }[]).some((c) => c.date >= today)),
+  );
   const todays = ws.filter((w) => w.date === today && w.type !== "rest");
   const hasTimeTrial = ws.some((w) => w.type === "time_trial" && (w.status === "completed" || (w.status === "planned" && w.date >= today)));
 
@@ -100,6 +107,9 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       />
       <div className="stagger space-y-3">
         {pending.map((p: any) => (
+          <ProposalCard key={p.id} p={p as ProposalRow} />
+        ))}
+        {declined.map((p: any) => (
           <ProposalCard key={p.id} p={p as ProposalRow} />
         ))}
 

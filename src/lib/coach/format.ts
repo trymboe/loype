@@ -280,7 +280,7 @@ export function renderSnapshot(s: SnapshotInput): string {
     for (const w of next) L.push(workoutLine(w, true));
     if (s.proposals.length) {
       L.push("", "Recent plan-change proposals:");
-      for (const p of s.proposals) L.push(`${p.created_at.slice(0, 10)} [${p.rule === "coach" ? "from coach" : `rule ${p.rule}`}] ${p.title}: ${p.status}${p.status === "pending" ? ` (proposal id ${p.id}; the athlete can accept or keep their plan, or ask you to)` : ""}`);
+      for (const p of s.proposals) L.push(`${p.created_at.slice(0, 10)} [${p.rule === "coach" ? "from coach" : `rule ${p.rule}`}] ${p.title}: ${p.status}${p.status === "pending" ? ` (proposal id ${p.id}; the athlete can accept or keep their plan, or ask you to)` : p.status === "rejected" && p.id ? ` (proposal id ${p.id}; declined, but can still be applied with respond_to_proposal if the athlete asks)` : ""}`);
     }
   }
 

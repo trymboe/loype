@@ -210,7 +210,7 @@ export async function decideProposalAction(form: FormData) {
   // "modify": accept only the workouts left ticked
   const decision = form.get("decision");
   const only = decision === "modify" ? form.getAll("only").map(String).filter((x) => z.string().uuid().safeParse(x).success) : undefined;
-  await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only);
+  await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only, todayIn(await userTimezone()));
   revalidatePath("/plan", "layout");
   revalidatePath("/");
 }
