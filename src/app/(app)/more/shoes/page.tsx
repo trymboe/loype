@@ -7,6 +7,7 @@ import { DEFAULT_RETIRE_M, shoeSubtitle, type ShoeMileage } from "@/lib/shoes/mi
 import { listShoesWithMileage } from "@/lib/shoes/service";
 import { formatKm } from "@/lib/units";
 import { addShoeAction, setDefaultShoeAction, setRetiredAction, updateShoeAction } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "Shoes" };
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function ShoesPage() {
               <span className="text-sm font-semibold">Default</span>
               <input type="checkbox" name="is_default" className="switch" defaultChecked={!active.some((s) => s.is_default)} />
             </label>
-            <button className="btn btn-primary btn-block min-h-12">Add shoe</button>
+            <SubmitButton className="btn btn-primary btn-block min-h-12">Add shoe</SubmitButton>
           </form>
         </Card>
         {retired.length > 0 && (
@@ -80,13 +81,13 @@ function ShoeCard({ shoe: s }: { shoe: ShoeMileage }) {
         {!s.retired_at && !s.is_default && (
           <form action={setDefaultShoeAction}>
             <input type="hidden" name="shoeId" value={s.id} />
-            <button className="btn btn-secondary btn-sm">Set as default</button>
+            <SubmitButton className="btn btn-secondary btn-sm">Set as default</SubmitButton>
           </form>
         )}
         <form action={setRetiredAction}>
           <input type="hidden" name="shoeId" value={s.id} />
           <input type="hidden" name="retire" value={s.retired_at ? "0" : "1"} />
-          <button className="btn btn-secondary btn-sm">{s.retired_at ? "Bring back" : "Retire"}</button>
+          <SubmitButton className="btn btn-secondary btn-sm">{s.retired_at ? "Bring back" : "Retire"}</SubmitButton>
         </form>
       </div>
       <details className="mt-4 text-sm">
@@ -94,7 +95,7 @@ function ShoeCard({ shoe: s }: { shoe: ShoeMileage }) {
         <form action={updateShoeAction} className="mt-4 space-y-4">
           <input type="hidden" name="shoeId" value={s.id} />
           <ShoeFields shoe={s} />
-          <button className="btn btn-primary btn-block">Save</button>
+          <SubmitButton className="btn btn-primary btn-block">Save</SubmitButton>
         </form>
       </details>
     </Card>

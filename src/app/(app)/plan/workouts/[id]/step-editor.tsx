@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { editWorkoutAction, type EditState } from "../../actions";
 import type { EditableSimple, EditableStep } from "@/lib/planning/edit-steps";
 import type { Zone } from "@/lib/planning/types";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const ZONES: { key: Zone; label: string }[] = [
   { key: "recovery", label: "Recovery" },
@@ -218,9 +219,9 @@ export function StepEditor({ id, initial }: { id: string; initial: EditableStep[
         </ul>
       )}
       <div className="flex gap-2">
-        <button disabled={pending || steps.length === 0} className="btn btn-primary min-h-11 flex-1">
+        <SubmitButton disabled={pending || steps.length === 0} className="btn btn-primary min-h-11 flex-1">
           {pending ? "Saving…" : confirming ? "Save anyway" : "Save steps"}
-        </button>
+        </SubmitButton>
         <button
           type="button"
           onClick={() => {

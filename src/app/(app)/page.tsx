@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { redirect } from "next/navigation";
 import { ChevronRight, Watch } from "lucide-react";
 import { RouteThumb } from "@/components/route-thumb";

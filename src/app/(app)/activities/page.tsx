@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { Activity } from "lucide-react";
 import { ActivityRow } from "@/components/activity-row";
 import { ButtonLink, EmptyState, PageHeader } from "@/components/ui";

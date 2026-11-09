@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { notFound } from "next/navigation";
 import { Badge, PageHeader, Stat } from "@/components/ui";
 import { RouteView } from "@/components/routes/route-view";

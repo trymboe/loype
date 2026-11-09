@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import Link from "next/link";
+import Link from "@/components/link";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 

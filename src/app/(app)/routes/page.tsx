@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { Map as MapIcon, Plus, Star } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { RouteThumb } from "@/components/route-thumb";

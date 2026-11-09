@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/link";
 import { CalendarDays, Check, Map as MapIcon, Activity, Undo2 } from "lucide-react";
 import { undoCoachAction } from "@/app/(app)/coach/actions";
 
@@ -32,6 +32,7 @@ export function ChangesCard({ changes, messageIds, undone: initiallyUndone, busy
             type="button"
             className="btn btn-secondary btn-sm"
             disabled={pending || busy}
+            aria-busy={pending}
             onClick={() =>
               start(async () => {
                 setError(null);
@@ -44,7 +45,7 @@ export function ChangesCard({ changes, messageIds, undone: initiallyUndone, busy
               })
             }
           >
-            <Undo2 size={15} /> {pending ? "Undoing…" : "Undo"}
+            {!pending && <Undo2 size={15} />} {pending ? "Undoing…" : "Undo"}
           </button>
         )}
       </div>

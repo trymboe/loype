@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronRight, Flag, History, Lock, Minus, Target, X } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";

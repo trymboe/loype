@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { ChevronRight, Compass } from "lucide-react";
 import { IconTile } from "@/components/ui";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";

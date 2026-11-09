@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { ArrowRight, Clock } from "lucide-react";
 import { PageHeader } from "./ui";
 

@@ -14,6 +14,7 @@ import { OpenInGoogleMaps } from "./google-maps";
 import { SURFACE_COLOR_EXPR, surfaceGeoJson } from "@/lib/routes/surface";
 import { cumulativeDistance, elevationStats, joinSegments, lineLength, simplify, type LngLat } from "@/lib/routes/geometry";
 import { saveRouteAction } from "@/app/(app)/routes/actions";
+import { startNavProgress } from "@/components/feedback/nav-progress";
 
 interface Segment {
   coords: LngLat[];
@@ -515,9 +516,14 @@ export function RoutePlanner({ initial, center, runs, preset }: { initial: Plann
       snapped: state.segments.map((s) => s.snapped),
       source,
     });
-    setSaving(false);
-    if (res.error) setNotice(res.error);
-    else if (res.id) router.push(`/routes/${res.id}`);
+    if (res.error || !res.id) {
+      setSaving(false);
+      if (res.error) setNotice(res.error);
+      return;
+    }
+    // stay in the saving state until the route page replaces this one
+    startNavProgress();
+    router.push(`/routes/${res.id}`);
   };
 
   const canSave = state.segments.length > 0 && !pending && !saving && distanceM >= 50;

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { CalendarDays, ChevronRight } from "lucide-react";
 import { IconTile } from "@/components/ui";
 import { createUserClient } from "@/lib/db/server";

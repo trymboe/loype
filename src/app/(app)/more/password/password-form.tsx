@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { changePassword, type ChangePasswordState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const input = "input";
 
@@ -20,9 +21,9 @@ export function PasswordForm({ email }: { email: string }) {
       <input name="confirm" type="password" autoComplete="new-password" required minLength={10} placeholder="Confirm new password" aria-label="Confirm new password" className={input} />
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
       {state.ok && <p className="text-sm text-good">Password changed.</p>}
-      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Saving…" : "Change password"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

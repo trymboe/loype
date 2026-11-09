@@ -5,6 +5,7 @@ import clsx from "clsx";
 import type { AthleteBackground } from "@/lib/onboarding/state";
 import { createPlanAction, type PlanFormState } from "./actions";
 import { DAYS, GOALS } from "./goal-options";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const input = "input";
 
@@ -145,9 +146,9 @@ export function PlanForm({ defaults }: { defaults: PlanFormDefaults }) {
       )}
 
       {state.error && <p className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{state.error}</p>}
-      <button disabled={pending} className="btn btn-primary btn-block min-h-12">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block min-h-12">
         {pending ? "Building your plan…" : "Build my plan"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

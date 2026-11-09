@@ -2,6 +2,7 @@ import { setActivityShoeAction } from "@/app/(app)/more/shoes/actions";
 import { createUserClient, getSessionUser } from "@/lib/db/server";
 import { listShoes } from "@/lib/shoes/service";
 import type { ShoeRow } from "@/lib/shoes/mileage";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 /** Shoe picker for one run on the activity page. Hidden until the athlete has a shoe. */
 export async function ShoeSelect({ activityId, shoeId }: { activityId: string; shoeId: string | null }) {
@@ -29,7 +30,7 @@ export async function ShoeSelect({ activityId, shoeId }: { activityId: string; s
             </option>
           ))}
         </select>
-        <button className="btn btn-secondary btn-sm">Save</button>
+        <SubmitButton className="btn btn-secondary btn-sm">Save</SubmitButton>
       </form>
     </section>
   );

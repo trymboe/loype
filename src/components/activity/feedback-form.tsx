@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import clsx from "clsx";
 import { saveFeedback } from "@/app/(app)/activities/[id]/actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const RPE_LABELS: Record<number, string> = {
   1: "Very easy", 2: "Easy", 3: "Easy", 4: "Comfortable", 5: "Moderate",
@@ -88,9 +89,9 @@ export function FeedbackForm({ activityId, initial }: { activityId: string; init
         </div>
       )}
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      <button disabled={!rpe || pending || saved} className="btn btn-primary btn-block mt-5">
+      <SubmitButton disabled={!rpe || pending || saved} aria-busy={pending} className="btn btn-primary btn-block mt-5">
         {pending ? "Saving…" : saved ? "Check-in saved" : "Save check-in"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { editWorkoutAction, type EditState } from "../../actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 const btn = "btn btn-secondary btn-sm";
 
@@ -9,9 +10,9 @@ export function WorkoutActions({ id, date, today, locked, status, type }: { id: 
   const [state, action, pending] = useActionState<EditState, FormData>(editWorkoutAction, {});
   const [moveTo, setMoveTo] = useState(date);
   const Op = ({ op, children }: { op: string; children: React.ReactNode }) => (
-    <button name="op" value={op} disabled={pending} className={btn}>
+    <SubmitButton name="op" value={op} disabled={pending} className={btn}>
       {children}
-    </button>
+    </SubmitButton>
   );
   return (
     <section className="card rise space-y-4 p-5">
@@ -22,9 +23,9 @@ export function WorkoutActions({ id, date, today, locked, status, type }: { id: 
         {state.issues && state.issuesFor === moveTo && <input type="hidden" name="confirm" value="1" />}
         <div className="flex gap-2">
           <input type="date" name="date" min={today} value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="input min-w-0 flex-1" />
-          <button disabled={pending || moveTo === date} className="btn btn-primary min-h-12 shrink-0">
+          <SubmitButton disabled={pending || moveTo === date} className="btn btn-primary min-h-12 shrink-0">
             {state.issues && state.issuesFor === moveTo ? "Move anyway" : "Move"}
-          </button>
+          </SubmitButton>
         </div>
         {state.issues && state.issuesFor === moveTo && (
           <ul className="space-y-1">

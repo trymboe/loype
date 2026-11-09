@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { Award, CalendarCheck, Flame, Gauge, Medal, Route, Sigma } from "lucide-react";
 import { Badge, Card, CardHeader, IconTile } from "@/components/ui";
 import { formatDay } from "@/lib/dates";

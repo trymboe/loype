@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/link";
 import { deleteDataAction, type DeleteState } from "./actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export function DeleteForm({ scope, label }: { scope: "training" | "everything"; label: string }) {
   const [state, action, pending] = useActionState<DeleteState, FormData>(deleteDataAction, {});
@@ -27,9 +28,9 @@ export function DeleteForm({ scope, label }: { scope: "training" | "everything";
         <input name="confirm" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" autoCapitalize="off" className="input" />
       </label>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      <button disabled={pending || text.trim().toLowerCase() !== "delete"} className="btn btn-block min-h-12 bg-danger font-semibold text-white disabled:opacity-40">
+      <SubmitButton disabled={pending || text.trim().toLowerCase() !== "delete"} className="btn btn-block min-h-12 bg-danger font-semibold text-white disabled:opacity-40">
         {pending ? "Deleting…" : label}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

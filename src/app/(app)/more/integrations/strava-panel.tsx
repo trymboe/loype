@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { connectStravaAction, disconnectStravaAction, reconnectStravaAction, type StravaState } from "./strava-actions";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export function StravaAppForm({ replacing }: { replacing: boolean }) {
   const [state, action, pending] = useActionState<StravaState, FormData>(connectStravaAction, {});
@@ -16,9 +17,9 @@ export function StravaAppForm({ replacing }: { replacing: boolean }) {
         <input name="clientSecret" type="password" autoComplete="off" required className="input font-mono" />
       </label>
       {state.error && <p className="text-sm text-danger">{state.error}</p>}
-      <button disabled={pending} className="btn btn-primary btn-block">
+      <SubmitButton disabled={pending} className="btn btn-primary btn-block">
         {pending ? "Opening Strava…" : replacing ? "Save and reconnect" : "Connect Strava"}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -28,11 +29,11 @@ export function StravaControls({ canReconnect }: { canReconnect: boolean }) {
     <div className="flex flex-wrap gap-2">
       {canReconnect && (
         <form action={reconnectStravaAction}>
-          <button className="btn btn-secondary btn-sm">Reconnect</button>
+          <SubmitButton className="btn btn-secondary btn-sm">Reconnect</SubmitButton>
         </form>
       )}
       <form action={disconnectStravaAction}>
-        <button className="btn btn-secondary btn-sm">Disconnect</button>
+        <SubmitButton className="btn btn-secondary btn-sm">Disconnect</SubmitButton>
       </form>
     </div>
   );

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { Check, CircleAlert, Sparkles, TrendingUp } from "lucide-react";
 import clsx from "clsx";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
@@ -15,6 +15,7 @@ import { PlanForm } from "../plan/plan-form";
 import { AboutForm } from "./about-form";
 import { dismissSetupAction, markBaselineSeenAction } from "./actions";
 import { ImportStep } from "./import-step";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 export const metadata = { title: "Set up Løype" };
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
       <div className="stagger mt-5 space-y-3">{await body(step, { db, userId: user.id, today, runCount: facts.runCount })}</div>
       {step !== "done" && (
         <form action={dismissSetupAction} className="mt-8 text-center">
-          <button className="text-sm font-medium text-muted underline-offset-2 hover:underline">Skip setup for now</button>
+          <SubmitButton className="inline-flex items-center gap-1.5 text-sm font-medium text-muted underline-offset-2 hover:underline">Skip setup for now</SubmitButton>
         </form>
       )}
     </>
@@ -189,10 +190,10 @@ async function BaselineStep({ c }: { c: Ctx }) {
       <PointList title="Worth developing" icon={<TrendingUp size={16} />} tone="text-accent" points={summary.develop} empty="Nothing yet" />
       {summary.caveats.length > 0 && <PointList title="About the data" icon={<CircleAlert size={16} />} tone="text-warn" points={summary.caveats} />}
       <form action={markBaselineSeenAction}>
-        <button className="btn btn-primary btn-block min-h-12">
+        <SubmitButton className="btn btn-primary btn-block min-h-12">
           <Check size={16} />
           Looks right, continue
-        </button>
+        </SubmitButton>
       </form>
     </>
   );

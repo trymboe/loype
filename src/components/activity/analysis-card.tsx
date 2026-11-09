@@ -3,6 +3,7 @@ import { Badge, Stat } from "@/components/ui";
 import { fmtDist } from "@/lib/analytics/fitness/estimate";
 import { RUN_CLASS_LABEL, type RunClass } from "@/lib/analytics/fitness/scoring";
 import { formatDuration } from "@/lib/units";
+import { SubmitButton } from "@/components/feedback/submit-button";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,7 +57,7 @@ export function AnalysisCard({ activityId, score, features, override }: { activi
               </option>
             ))}
         </select>
-        <button className="btn btn-secondary btn-sm">Save type</button>
+        <SubmitButton className="btn btn-secondary btn-sm">Save type</SubmitButton>
       </form>
 
       <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5 border-t border-[var(--hairline)] pt-5 sm:grid-cols-4">

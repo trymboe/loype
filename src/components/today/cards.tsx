@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import clsx from "clsx";
 import { ChevronRight, Flag, Lightbulb, Sparkles, TriangleAlert } from "lucide-react";
 import { Badge, Card, CardHeader, Stat } from "@/components/ui";

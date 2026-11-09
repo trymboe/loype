@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { Badge, Card, Stat } from "@/components/ui";
 import { EfficiencyChart, FitnessTrendChart, LoadChart, type TrendPoint } from "@/components/fitness-charts";
 import { fmtDist } from "@/lib/analytics/fitness/estimate";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/link";
 import { ChevronRight, Footprints } from "lucide-react";
 import { Badge, IconTile } from "@/components/ui";
 import { createUserClient, getSessionUser } from "@/lib/db/server";
