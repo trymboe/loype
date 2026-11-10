@@ -204,13 +204,22 @@ async function userOrThrow() {
   return user;
 }
 
-export async function decideProposalAction(form: FormData) {
+const DECISION = z.enum(["accept", "modify", "reject"]);
+
+/**
+ * Bound per button with `formAction={decideProposalAction.bind(null, "accept")}`.
+ * Don't read the decision from the submit button's name/value: for a form
+ * rendered by a server component, React leaves the submitter out of the
+ * FormData, so every tap arrived without a decision and was treated as
+ * "Keep my plan".
+ */
+export async function decideProposalAction(decision: string, form: FormData) {
   const user = await userOrThrow();
   const id = z.string().uuid().parse(form.get("id"));
+  const d = DECISION.parse(decision);
   // "modify": accept only the workouts left ticked
-  const decision = form.get("decision");
-  const only = decision === "modify" ? form.getAll("only").map(String).filter((x) => z.string().uuid().safeParse(x).success) : undefined;
-  await decideProposal(createAdminClient(), user.id, id, decision === "accept" || decision === "modify", only, todayIn(await userTimezone()));
+  const only = d === "modify" ? form.getAll("only").map(String).filter((x) => z.string().uuid().safeParse(x).success) : undefined;
+  await decideProposal(createAdminClient(), user.id, id, d !== "reject", only, todayIn(await userTimezone()));
   revalidatePath("/plan", "layout");
   revalidatePath("/");
 }
