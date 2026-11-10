@@ -30,16 +30,16 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
         </ul>
       )}
       {p.status === "rejected" ? (
-        <form action={decideProposalAction} className="mt-4">
+        <form className="mt-4">
           <input type="hidden" name="id" value={p.id} />
           <p className="mb-2 text-xs text-muted">You kept your plan{p.decided_at ? ` on ${formatDay(p.decided_at.slice(0, 10))}` : ""}. Changed your mind?</p>
-          <SubmitButton name="decision" value="accept" className="btn btn-primary btn-sm">
+          <SubmitButton formAction={decideProposalAction.bind(null, "accept")} className="btn btn-primary btn-sm">
             Apply it after all
           </SubmitButton>
         </form>
       ) : pending ? (
         <>
-          <form action={decideProposalAction} className="mt-3">
+          <form className="mt-3">
             <input type="hidden" name="id" value={p.id} />
             <details className="text-sm">
               <summary className="cursor-pointer font-medium text-accent">
@@ -65,16 +65,16 @@ export function ProposalCard({ p }: { p: ProposalRow }) {
                 ))}
               </ul>
               {p.changes.length > 1 && (
-                <SubmitButton name="decision" value="modify" className="btn btn-secondary btn-sm mt-2">
+                <SubmitButton formAction={decideProposalAction.bind(null, "modify")} className="btn btn-secondary btn-sm mt-2">
                   Accept only the ticked ones
                 </SubmitButton>
               )}
             </details>
             <div className="mt-4 flex gap-2">
-              <SubmitButton name="decision" value="accept" className="btn btn-primary btn-sm">
+              <SubmitButton formAction={decideProposalAction.bind(null, "accept")} className="btn btn-primary btn-sm">
                 Accept{p.changes.length > 1 ? " all" : ""}
               </SubmitButton>
-              <SubmitButton name="decision" value="reject" className="btn btn-secondary btn-sm">
+              <SubmitButton formAction={decideProposalAction.bind(null, "reject")} className="btn btn-secondary btn-sm">
                 Keep my plan
               </SubmitButton>
             </div>
