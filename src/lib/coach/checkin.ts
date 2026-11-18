@@ -1,13 +1,12 @@
 import "server-only";
-import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { addDaysIso } from "../dates";
-import { env } from "../env";
 import { formatDuration, formatPace } from "../units";
 import type { LoadDay } from "../analytics/fitness/load";
 import { isDemanding, type Step, type WorkoutType } from "../planning/types";
 import { loadRuns, toWorkoutRow } from "./data";
+import { generateText, openAIText, providerOrder, type CoachClients } from "./llm";
 import { runLine, weeklyTotals, workoutLine, type RunRow, type WeekRow, type WorkoutRow } from "./format";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -167,14 +166,9 @@ export async function loadCheckinData(db: SupabaseClient, userId: string, activi
   };
 }
 
-/** Plain text from a Responses API result, shortened to a check-in's length. */
-export function checkinText(res: { output_text?: string | null; output?: any[] }): string | null {
-  const raw =
-    res.output_text ??
-    (res.output ?? [])
-      .filter((o: any) => o?.type === "message")
-      .flatMap((m: any) => (m.content ?? []).map((c: any) => (c.type === "output_text" ? c.text : "")))
-      .join("");
+/** Plain text (a string, or a Responses API result), shortened to a check-in's length. */
+export function checkinText(res: string | { output_text?: string | null; output?: any[] }): string | null {
+  const raw = typeof res === "string" ? res : openAIText(res);
   const t = (raw ?? "").replace(/\s+/g, " ").trim();
   if (!t) return null;
   return t.length > 400 ? `${t.slice(0, 397).trimEnd()}…` : t;
@@ -191,26 +185,20 @@ export interface Checkin {
  * (no API key) and nothing current is cached. `db` must be the service-role
  * client; every query is scoped to `userId`.
  */
-export async function getOrCreateCheckin(db: SupabaseClient, userId: string, activityId: string, client: OpenAI | null): Promise<Checkin | null> {
+export async function getOrCreateCheckin(db: SupabaseClient, userId: string, activityId: string, clients: CoachClients | null): Promise<Checkin | null> {
   const data = await loadCheckinData(db, userId, activityId);
   if (!data) return null;
   const hash = checkinHash(data.workout.id, data.feedback);
   const { data: cached } = await db.from("coach_checkins").select("input_hash, text").eq("activity_id", activityId).eq("user_id", userId).maybeSingle();
   if (cached?.input_hash === hash) return { text: cached.text, workoutId: data.workout.id };
-  if (!client) return null;
-  const res = await client.responses.create({
-    model: env.coachModel(),
-    instructions: CHECKIN_PROMPT,
-    input: buildCheckinInput(data),
-    reasoning: { effort: "medium" },
-    store: false,
-    max_output_tokens: 4000,
-  });
-  const text = checkinText(res as any);
-  if (!text) return null;
+  if (!clients || !providerOrder(clients).length) return null;
+  // Claude first, OpenAI if that fails
+  const res = await generateText(clients, CHECKIN_PROMPT, buildCheckinInput(data));
+  const text = res && checkinText(res.text);
+  if (!res || !text) return null;
   const { error } = await db
     .from("coach_checkins")
-    .upsert({ activity_id: activityId, user_id: userId, workout_id: data.workout.id, input_hash: hash, text, model: env.coachModel(), prompt_version: CHECKIN_VERSION }, { onConflict: "activity_id" });
+    .upsert({ activity_id: activityId, user_id: userId, workout_id: data.workout.id, input_hash: hash, text, model: res.model, prompt_version: CHECKIN_VERSION }, { onConflict: "activity_id" });
   if (error) throw new Error(error.message);
   return { text, workoutId: data.workout.id };
 }

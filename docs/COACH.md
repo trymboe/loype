@@ -4,10 +4,19 @@ A chat coach on the Coach tab (floating button on phones, side menu on desktop).
 
 ## Model and API
 
-- OpenAI Responses API, model `gpt-6-luna` (override with `COACH_MODEL`), reasoning effort `high`, streamed.
-- Key: `OPENAI_API_KEY` in Vercel. Without it the tab explains how to add one.
-- `store: false`: nothing is kept at OpenAI. Reasoning comes back as encrypted content (`include: ["reasoning.encrypted_content"]`) and is stored with the conversation, so every turn replays exactly what the model saw.
-- `prompt_cache_key` per conversation; the instructions and tool list are fixed so the prefix caches.
+Two providers, in this order (`src/lib/coach/llm.ts`):
+
+1. **Claude** (Anthropic Messages API) when `ANTHROPIC_API_KEY` is set: model `claude-sonnet-5-5` (override with `COACH_CLAUDE_MODEL`), adaptive thinking at effort `high`, streamed.
+2. **OpenAI** (Responses API) when `OPENAI_API_KEY` is set: model `gpt-6-luna` (override with `COACH_MODEL`), reasoning effort `high`, streamed.
+
+Fallback: with both keys, every request goes to Claude first. If a Claude request fails (after one SDK retry) or Claude declines it (`stop_reason: "refusal"`) before any text reached the athlete, the rest of that reply runs on OpenAI. The next message tries Claude again. With only one key, that provider is used alone. Run check-ins (`checkin.ts`) follow the same order.
+
+Storage and replay:
+- Each stored message keeps the format of the provider that produced it. `llm.ts` converts a stored history to either format: Claude messages become Responses items and back (tool calls and results carry over; Claude thinking only goes back to Claude, OpenAI's encrypted reasoning only to OpenAI).
+- A conversation is pinned to the primary model (`coach_conversations.model`). A conversation started on another model, or another prompt version, continues from its visible text only.
+- Claude: the full history is replayed verbatim, thinking blocks and signatures included, so the history stays append-only. Requests send `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`), so a block that no longer matches its conversation (e.g. after a failed turn was repaired) is dropped instead of failing the request. Top-level `cache_control` caches the system prompt, tools and history.
+- OpenAI: `store: false`, nothing is kept at OpenAI. Reasoning comes back as encrypted content (`include: ["reasoning.encrypted_content"]`) and is stored with the conversation. `prompt_cache_key` per conversation.
+- The instructions and tool list are fixed, so the prefix caches on both.
 
 ## Data the coach sees
 

@@ -298,7 +298,7 @@ describe("coach conversation loop", async () => {
   const { runCoachTurn, loadTranscript, undoCoachActions } = await import("@/lib/coach/service");
   const turn = async (db: FakeDb, client: any, text: string, conversationId: string | null = null) => {
     const events: any[] = [];
-    for await (const e of runCoachTurn({ db: db as any, userId: U, conversationId, text, today, timezone: "Asia/Ho_Chi_Minh" }, client)) events.push(e);
+    for await (const e of runCoachTurn({ db: db as any, userId: U, conversationId, text, today, timezone: "Asia/Ho_Chi_Minh" }, { anthropic: null, openai: client })) events.push(e);
     return events;
   };
 
@@ -475,5 +475,186 @@ describe("coach conversation loop", async () => {
     expect(client.requests).toHaveLength(16);
     expect(client.requests[15].tool_choice).toBe("none");
     expect(client.requests[0].tool_choice).toBe("auto");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Claude (Anthropic) as the primary model, with OpenAI as the fallback
+// ---------------------------------------------------------------------------
+
+type ClaudeStep = Out[] | { fail: string } | { refuse: true };
+
+/** Stands in for client.beta.messages.stream: each call plays the next scripted response. */
+function fakeClaude(script: ClaudeStep[]) {
+  const requests: any[] = [];
+  let n = 0;
+  return {
+    requests,
+    beta: {
+      messages: {
+        stream(params: any) {
+          requests.push(structuredClone(params));
+          const step = script.shift();
+          if (!step) throw new Error("model called more times than scripted");
+          const r = n++;
+          if ("fail" in step) {
+            return {
+              // like the SDK, the error surfaces while reading the stream
+              async *[Symbol.asyncIterator]() {
+                throw new Error(step.fail);
+              },
+              finalMessage: async () => {
+                throw new Error(step.fail);
+              },
+            };
+          }
+          const blocks: any[] =
+            "refuse" in step
+              ? []
+              : step.map((o, i) =>
+                  o.type === "text" ? { type: "text", text: o.text, citations: null } : { type: "tool_use", id: `toolu_${r}_${i}`, name: o.name, input: o.args, caller: { type: "direct" } },
+                );
+          const content = [{ type: "thinking", thinking: "", signature: `sig-${r}` }, ...blocks];
+          const events: any[] = blocks.map((b) =>
+            b.type === "text" ? { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: b.text } } : { type: "content_block_start", index: 0, content_block: { ...b, input: {} } },
+          );
+          const stop = "refuse" in step ? "refusal" : blocks.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn";
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield* events;
+            },
+            finalMessage: async () => ({ id: `msg_${r}`, model: params.model, role: "assistant", content, stop_reason: stop, usage: { input_tokens: 1, output_tokens: 1 } }),
+          };
+        },
+      },
+    },
+  };
+}
+
+describe("coach on Claude", async () => {
+  vi.stubEnv("OPENAI_API_KEY", "test");
+  const { runCoachTurn, loadTranscript } = await import("@/lib/coach/service");
+  const { normaliseAnthropic } = await import("@/lib/coach/llm");
+  const turn = async (db: FakeDb, clients: any, text: string, conversationId: string | null = null) => {
+    const events: any[] = [];
+    for await (const e of runCoachTurn({ db: db as any, userId: U, conversationId, text, today, timezone: "Asia/Ho_Chi_Minh" }, clients)) events.push(e);
+    return events;
+  };
+
+  it("runs the tool loop on Claude Sonnet and replays thinking verbatim next turn", async () => {
+    const db = seed();
+    const claude = fakeClaude([
+      [{ type: "call", name: "edit_workout", args: { workout_id: id(2), action: "skip", date: null, confirmed: false } }],
+      [{ type: "text", text: "Done, Saturday's easy run is off." }],
+    ]);
+    const events = await turn(db, { anthropic: claude, openai: fakeClient([]) }, "Drop Saturday's run");
+
+    const first = claude.requests[0];
+    expect(first.model).toBe("claude-sonnet-5-5");
+    expect(first.system).toMatch(/running coach inside Løype/);
+    expect(first.thinking).toEqual({ type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } });
+    expect(first.betas).toContain("thinking-binding-controls-2026-08-01");
+    expect(first.tool_choice).toEqual({ type: "auto" });
+    expect(first.tools.find((t: any) => t.name === "edit_plan").input_schema.type).toBe("object");
+    expect(first.messages).toHaveLength(1);
+    expect(first.messages[0].content[0].text).toMatch(/^<athlete_data>/);
+    expect(first.messages[0].content.at(-1)).toEqual({ type: "text", text: "Drop Saturday's run" });
+
+    // the tool result goes back in one user message, after the model's own blocks
+    const second = claude.requests[1].messages;
+    expect(second.at(-2).content.map((b: any) => b.type)).toEqual(["thinking", "tool_use"]);
+    expect(second.at(-2).content[1]).not.toHaveProperty("caller");
+    expect(second.at(-1)).toMatchObject({ role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_0_0" }] });
+    expect(workoutRow(db, 2).status).toBe("skipped");
+    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toBe("Done, Saturday's easy run is off.");
+    expect(events.some((e) => e.type === "actions")).toBe(true);
+
+    const conv = db.rows("coach_conversations")[0];
+    expect(conv.model).toBe("claude-sonnet-5-5");
+    const t = await loadTranscript(db as any, U, conv.id);
+    expect(t[1].text).toBe("Done, Saturday's easy run is off.");
+
+    // the next turn sends the stored history unchanged, thinking signatures included
+    const claude2 = fakeClaude([[{ type: "text", text: "Sure." }]]);
+    await turn(db, { anthropic: claude2, openai: null }, "Thanks", conv.id);
+    const replay = claude2.requests[0].messages;
+    expect(replay.slice(0, 4)).toEqual([claude.requests[1].messages[0], ...claude.requests[1].messages.slice(1), { role: "assistant", content: [{ type: "thinking", thinking: "", signature: "sig-1" }, { type: "text", text: "Done, Saturday's easy run is off." }] }]);
+    expect(replay).toHaveLength(5);
+  });
+
+  it("falls back to OpenAI when a Claude request fails, and Claude picks the conversation up again later", async () => {
+    const db = seed();
+    const claude = fakeClaude([{ fail: "529 overloaded" }]);
+    const openai = fakeClient([[{ type: "call", name: "get_routes", args: {} }], [{ type: "text", text: "No routes yet." }]]);
+    const events = await turn(db, { anthropic: claude, openai }, "Any routes?");
+    expect(claude.requests).toHaveLength(1);
+    // after the failure the whole turn stays on OpenAI
+    expect(openai.requests).toHaveLength(2);
+    expect(openai.requests[0].input.at(-1)).toEqual({ role: "user", content: [expect.objectContaining({ type: "input_text" }), { type: "input_text", text: "Any routes?" }] });
+    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toBe("No routes yet.");
+    expect(events.at(-1)).toEqual({ type: "done" });
+    const conv = db.rows("coach_conversations")[0];
+    expect(conv.model).toBe("claude-sonnet-5-5");
+
+    // next turn on Claude: the OpenAI rows become Claude messages, without OpenAI's reasoning
+    const claude2 = fakeClaude([[{ type: "text", text: "Still none." }]]);
+    await turn(db, { anthropic: claude2, openai: null }, "And now?", conv.id);
+    const msgs = claude2.requests[0].messages;
+    expect(msgs.map((m: any) => m.role)).toEqual(["user", "assistant", "user", "assistant", "user"]);
+    expect(msgs[1].content).toEqual([{ type: "tool_use", id: "call_0_0", name: "get_routes", input: {} }]);
+    expect(msgs[2].content[0]).toMatchObject({ type: "tool_result", tool_use_id: "call_0_0" });
+    expect(msgs[3].content).toEqual([{ type: "text", text: "No routes yet." }]);
+    expect(JSON.stringify(msgs)).not.toMatch(/enc-|reasoning/);
+  });
+
+  it("falls back to OpenAI when Claude declines", async () => {
+    const db = seed();
+    const openai = fakeClient([[{ type: "text", text: "Here you go." }]]);
+    const events = await turn(db, { anthropic: fakeClaude([{ refuse: true }]), openai }, "Hi");
+    expect(openai.requests).toHaveLength(1);
+    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toBe("Here you go.");
+  });
+
+  it("surfaces the Claude error when there's no OpenAI key to fall back to", async () => {
+    const db = seed();
+    await expect(turn(db, { anthropic: fakeClaude([{ fail: "invalid x-api-key" }]), openai: null }, "Hi")).rejects.toThrow(/invalid x-api-key/);
+  });
+
+  it("forbids tools on the last round", async () => {
+    const db = seed();
+    const loop: ClaudeStep[] = Array.from({ length: 15 }, () => [{ type: "call", name: "get_weekly_volume", args: { weeks: 4 } }]);
+    const claude = fakeClaude([...loop, [{ type: "text", text: "Here's what I found." }]]);
+    await turn(db, { anthropic: claude, openai: null }, "Volume?");
+    expect(claude.requests).toHaveLength(16);
+    expect(claude.requests[15].tool_choice).toEqual({ type: "none" });
+  });
+
+  it("continues an older OpenAI conversation from its visible text", async () => {
+    const db = seed();
+    await turn(db, { anthropic: null, openai: fakeClient([[{ type: "call", name: "get_routes", args: {} }], [{ type: "text", text: "None yet." }]]) }, "Any routes?");
+    const conv = db.rows("coach_conversations")[0];
+    expect(conv.model).toBe("gpt-6-luna");
+    const claude = fakeClaude([[{ type: "text", text: "Ok." }]]);
+    await turn(db, { anthropic: claude, openai: null }, "Ok", conv.id);
+    const msgs = claude.requests[0].messages;
+    expect(msgs.slice(0, 2)).toEqual([
+      { role: "user", content: [{ type: "text", text: "Any routes?" }] },
+      { role: "assistant", content: [{ type: "text", text: "None yet." }] },
+    ]);
+    expect(db.rows("coach_conversations")[0].model).toBe("claude-sonnet-5-5");
+  });
+
+  it("repairs a history cut short by a failed turn", () => {
+    const fixed = normaliseAnthropic([
+      { role: "user", content: [{ type: "text", text: "a" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "get_routes", input: {} }] },
+      { role: "user", content: [{ type: "text", text: "b" }] },
+      { role: "user", content: [{ type: "text", text: "c" }] },
+    ]);
+    expect(fixed).toEqual([
+      { role: "user", content: [{ type: "text", text: "a" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "get_routes", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "Not run: the reply was interrupted.", is_error: true }, { type: "text", text: "b" }, { type: "text", text: "c" }] },
+    ]);
   });
 });

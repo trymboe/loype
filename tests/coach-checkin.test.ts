@@ -85,6 +85,9 @@ function seed() {
   });
 }
 
+/** The coach's clients with only the OpenAI one set. */
+const oa = (client: any) => ({ anthropic: null, openai: client });
+
 /** Stands in for client.responses.create. */
 function fakeClient(replies: string[]) {
   const requests: any[] = [];
@@ -169,7 +172,7 @@ describe("check-in caching", () => {
   it("generates once, serves the cache, and regenerates when the feedback changes", async () => {
     const db = seed();
     const client = fakeClient(["Reps were quicker than planned at RPE 9 with a tight achilles; keep the next easy run truly easy.", "Good session at a manageable RPE 7; the plan stays as it is."]);
-    const first = await getOrCreateCheckin(db as any, U, RUN, client as any);
+    const first = await getOrCreateCheckin(db as any, U, RUN, oa(client));
     expect(first?.text).toMatch(/^Reps were quicker/);
     expect(client.requests).toHaveLength(1);
     const req = client.requests[0];
@@ -180,7 +183,7 @@ describe("check-in caching", () => {
     expect(db.rows("coach_checkins")[0]).toMatchObject({ activity_id: RUN, user_id: U, workout_id: W, prompt_version: "checkin@1" });
 
     // cached: no second call, even without a client
-    expect((await getOrCreateCheckin(db as any, U, RUN, client as any))?.text).toBe(first!.text);
+    expect((await getOrCreateCheckin(db as any, U, RUN, oa(client)))?.text).toBe(first!.text);
     expect((await getOrCreateCheckin(db as any, U, RUN, null))?.text).toBe(first!.text);
     expect(client.requests).toHaveLength(1);
 
@@ -188,7 +191,7 @@ describe("check-in caching", () => {
     db.rows("workout_feedback")[0].rpe = 7;
     db.rows("workout_feedback")[0].discomfort = null;
     expect(await getOrCreateCheckin(db as any, U, RUN, null)).toBeNull();
-    const second = await getOrCreateCheckin(db as any, U, RUN, client as any);
+    const second = await getOrCreateCheckin(db as any, U, RUN, oa(client));
     expect(second?.text).toMatch(/^Good session/);
     expect(client.requests).toHaveLength(2);
     expect(client.requests[1].input).toContain("RPE 7/10");
@@ -199,8 +202,8 @@ describe("check-in caching", () => {
   it("does nothing for non-key runs, other athletes' runs, or when there's no API key", async () => {
     const db = seed();
     const client = fakeClient([]);
-    expect(await getOrCreateCheckin(db as any, U, EASY_RUN, client as any)).toBeNull();
-    expect(await getOrCreateCheckin(db as any, OTHER, RUN, client as any)).toBeNull();
+    expect(await getOrCreateCheckin(db as any, U, EASY_RUN, oa(client))).toBeNull();
+    expect(await getOrCreateCheckin(db as any, OTHER, RUN, oa(client))).toBeNull();
     expect(await getOrCreateCheckin(db as any, U, RUN, null)).toBeNull();
     expect(client.responses.create).not.toHaveBeenCalled();
     expect(db.rows("coach_checkins")).toHaveLength(0);
@@ -208,18 +211,56 @@ describe("check-in caching", () => {
 
   it("stores nothing when the model returns no text", async () => {
     const db = seed();
-    expect(await getOrCreateCheckin(db as any, U, RUN, fakeClient([" "]) as any)).toBeNull();
+    expect(await getOrCreateCheckin(db as any, U, RUN, oa(fakeClient([" "])))).toBeNull();
     expect(db.rows("coach_checkins")).toHaveLength(0);
   });
 
   it("gives the coach chat the run and its check-in for a follow-up", async () => {
     const db = seed();
-    await getOrCreateCheckin(db as any, U, RUN, fakeClient(["Quick reps, watch that achilles."]) as any);
+    await getOrCreateCheckin(db as any, U, RUN, oa(fakeClient(["Quick reps, watch that achilles."])));
     const c = (await checkinContext(db as any, U, RUN))!;
     expect(c).toContain(`run on 2026-11-05 (run id ${RUN})`);
     expect(c).toContain('Your check-in on it, shown to them: "Quick reps, watch that achilles."');
     expect(c).toContain("Planned session:");
     expect(await checkinContext(db as any, OTHER, RUN)).toBeNull();
+  });
+});
+
+describe("check-in on Claude", () => {
+  const claude = (reply: string | Error, stop = "end_turn") => {
+    const requests: any[] = [];
+    return {
+      requests,
+      messages: {
+        create: vi.fn(async (params: any) => {
+          requests.push(params);
+          if (reply instanceof Error) throw reply;
+          return { model: params.model, stop_reason: stop, content: [{ type: "thinking", thinking: "", signature: "s" }, { type: "text", text: reply }] };
+        }),
+      },
+    };
+  };
+
+  it("writes the check-in with Claude when there's an Anthropic key", async () => {
+    const db = seed();
+    const a = claude("Strong reps; keep Saturday easy.");
+    const o = fakeClient([]);
+    const c = await getOrCreateCheckin(db as any, U, RUN, { anthropic: a as any, openai: o as any });
+    expect(c?.text).toBe("Strong reps; keep Saturday easy.");
+    expect(a.requests[0]).toMatchObject({ model: "claude-sonnet-5-5", system: expect.stringMatching(/one or two sentences/) });
+    expect(a.requests[0].messages[0].content).toContain("Planned session:");
+    expect(o.responses.create).not.toHaveBeenCalled();
+    expect(db.rows("coach_checkins")[0].model).toBe("claude-sonnet-5-5");
+  });
+
+  it("falls back to OpenAI when Claude fails or declines", async () => {
+    for (const a of [claude(new Error("overloaded")), claude("", "refusal")]) {
+      const db = seed();
+      const o = fakeClient(["From OpenAI."]);
+      const c = await getOrCreateCheckin(db as any, U, RUN, { anthropic: a as any, openai: o as any });
+      expect(c?.text).toBe("From OpenAI.");
+      expect(db.rows("coach_checkins")[0].model).toBe("gpt-6-luna");
+    }
   });
 });
 
@@ -251,7 +292,7 @@ describe("follow-up in the coach chat", async () => {
       },
     };
     const context = (await checkinContext(db as any, U, RUN))!;
-    for await (const e of runCoachTurn({ db: db as any, userId: U, conversationId: null, text: "Should I change Saturday?", today: "2026-11-06", timezone: "Europe/Oslo", context }, client as any)) void e;
+    for await (const e of runCoachTurn({ db: db as any, userId: U, conversationId: null, text: "Should I change Saturday?", today: "2026-11-06", timezone: "Europe/Oslo", context }, { anthropic: null, openai: client as any })) void e;
     const user = requests[0].input.at(-1);
     expect(user.content.map((c: any) => c.text)).toEqual([expect.stringMatching(/^<athlete_data>/), `<run_context>\n${context}\n</run_context>`, "Should I change Saturday?"]);
     expect(db.rows("coach_messages").find((m) => m.kind === "user")!.display_text).toBe("Should I change Saturday?");
