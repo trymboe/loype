@@ -19,7 +19,7 @@ export interface BaselineRun {
 }
 
 export interface BaselineFitness {
-  estimate: { withheld: boolean; vdot?: number; lower?: number; upper?: number; confidence?: "high" | "medium" | "low" } | null;
+  estimate: { withheld: boolean; vdot?: number; paceVdot?: number; lower?: number; upper?: number; confidence?: "high" | "medium" | "low" } | null;
   paceZones: PaceZone[] | null;
   hrZones: HrZone[] | null;
   threshold: { hr: number | null } | null;
@@ -76,7 +76,8 @@ export function buildBaseline(asOf: string, fitness: BaselineFitness | null, run
   const has = e && !e.withheld && e.vdot != null;
   return {
     asOf,
-    vdot: has ? e!.vdot! : null,
+    // the plan's paces and race pace come from the recency-weighted pace basis
+    vdot: has ? (e!.paceVdot ?? e!.vdot!) : null,
     vdotRange: has && e!.lower != null && e!.upper != null ? [e!.lower, e!.upper] : null,
     vdotConfidence: has ? (e!.confidence ?? null) : null,
     paceZones: has ? fitness!.paceZones : null,

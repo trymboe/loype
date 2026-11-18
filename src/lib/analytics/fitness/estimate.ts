@@ -17,6 +17,15 @@
  *     carry an individual bias (running economy, max HR error).
  *  4. A best effort in the last 4 weeks is a floor: you ran it.
  * Without HR readings, recent near-maximal efforts are used directly.
+ *
+ * Training paces use a separate, more recent "pace basis" (paceLevel): the
+ * readings weighted with a 10-day half-life, as a trimmed mean that drops the
+ * lowest quarter (heat, humidity, altitude, dehydration and cardiac drift all
+ * raise HR at a given pace, so they pull single readings down far more often
+ * than anything pushes them up) and the top tenth (wrist-HR dropouts). The
+ * same calibration offset and floor apply, and it is kept inside the
+ * estimate's range and at most 2 VDOT above the 6-week level, so a hot streak
+ * can't push sessions much faster than the evidence supports.
  */
 import { addDaysIso, daysBetween } from "../../dates";
 import type { Physiology } from "./physiology";
@@ -37,6 +46,15 @@ const CALIBRATION_HALF_LIFE_DAYS = 180;
 /** Prior weight (in performances) pulling the personal offset towards 0. */
 const CALIBRATION_PRIOR = 0.5;
 const MAX_OFFSET = 6;
+/** Bumped when the pace basis changes, so stored outputs are recomputed. */
+export const PACE_BASIS_VERSION = 1;
+const PACE_HALF_LIFE_DAYS = 10;
+const PACE_RECENT_DAYS = 21;
+const PACE_TRIM_LOW = 0.25;
+const PACE_TRIM_HIGH = 0.1;
+/** The pace basis never runs further than this ahead of the 6-week level. */
+const PACE_MAX_AHEAD = 2;
+const PACE_MAX_JUMP = 4;
 /** Qualifying minutes for a reading to count fully. */
 const FULL_WEIGHT_MINUTES = 20;
 
@@ -66,6 +84,9 @@ export type FitnessEstimate =
       hrLevel?: number | null;
       offset?: number | null;
       readings?: number;
+      /** VDOT the training paces are set from (recency-weighted, see paceLevel); absent on older outputs */
+      paceVdot?: number;
+      paceReadings?: number;
       evidence: Evidence[];
       notes: string[];
     }
@@ -128,6 +149,56 @@ export function hrLevel(readings: Evidence[], center: string, windowDays: number
   return { value, n: kept.length, nEff, spread, used: kept };
 }
 
+/**
+ * Weighted trimmed mean: sorts by value and removes `low` of the total weight
+ * from the bottom and `high` from the top (splitting a reading at the edge).
+ */
+export function trimmedMean(items: { value: number; weight: number }[], low: number, high: number): number {
+  const s = [...items].sort((a, b) => a.value - b.value);
+  const total = s.reduce((a, b) => a + b.weight, 0);
+  const lo = total * low;
+  const hi = total * (1 - high);
+  let acc = 0;
+  let w = 0;
+  let sum = 0;
+  for (const i of s) {
+    const start = acc;
+    acc += i.weight;
+    const kept = Math.max(0, Math.min(acc, hi) - Math.max(start, lo));
+    w += kept;
+    sum += kept * i.value;
+  }
+  return w > 0 ? sum / w : weightedMedian(s);
+}
+
+export interface PaceLevel {
+  value: number;
+  n: number;
+  used: Evidence[];
+}
+
+/**
+ * The HR level training paces are set from: the readings of the last 6
+ * weeks with a 10-day half-life, as an asymmetric trimmed mean (see the file
+ * header). Needs 3 readings, 2 of them in the last 3 weeks; otherwise null
+ * and paces follow the main estimate.
+ */
+export function paceLevel(readings: Evidence[], asOf: string): PaceLevel | null {
+  const pool = readings
+    .filter((r) => {
+      const age = daysBetween(r.date, asOf);
+      return age >= 0 && age < WINDOW_DAYS;
+    })
+    .map((r) => ({ ...r, weight: r.weight * halfLife(daysBetween(r.date, asOf), PACE_HALF_LIFE_DAYS) }));
+  if (pool.length < MIN_READINGS || pool.filter((r) => daysBetween(r.date, asOf) < PACE_RECENT_DAYS).length < 2) return null;
+  // implausible readings are dropped first: far below the weighted median (2.5 robust SDs, as in hrLevel), or
+  // more than 4 above it (fitness doesn't jump that fast; usually a wrist-HR dropout)
+  const med = weightedMedian(pool);
+  const cut = Math.max(3, 2.5 * mad(pool.map((r) => r.value)));
+  const kept = pool.filter((r) => r.value >= med - cut && r.value <= med + PACE_MAX_JUMP);
+  return { value: trimmedMean(kept, PACE_TRIM_LOW, PACE_TRIM_HIGH), n: kept.length, used: kept };
+}
+
 /** Near-maximal performances in [from, to]: races, planned time trials, or best efforts ≥ 1.5 km at ≥ 90 % HRR. Best one per run. */
 function performances(runs: ScoredRun[], from: string, to: string, asOf: string, p: Physiology): Evidence[] {
   const perRun = new Map<string, Evidence>();
@@ -188,6 +259,7 @@ export function estimateFitness(asOf: string, runs: ScoredRun[], p: Physiology):
   if (p.restHr?.source === "overnight_proxy") notes.push("Resting HR is approximated from your overnight average HR.");
 
   let est: { vdot: number; half: number; method: EstimateMethod; confidence: Confidence; hrLevel: number | null; offset: number | null; readings: number } | null = null;
+  let pace: { vdot: number; n: number } | null = null;
 
   let level = hrLevel(readings, asOf, WINDOW_DAYS, true);
   let wide = false;
@@ -222,6 +294,8 @@ export function estimateFitness(asOf: string, runs: ScoredRun[], p: Physiology):
     const solid = !wide && level.n >= 6 && level.spread < 3 && p.maxHr?.source === "manual";
     const confidence: Confidence = solid && calibrated ? "high" : solid || (calibrated && !wide) ? "medium" : "low";
     est = { vdot: level.value + offset, half, method: calibrated ? "hr_calibrated" : "hr_speed", confidence, hrLevel: r1(level.value), offset: calibrated ? r1(offset) : null, readings: level.n };
+    const recent = wide ? null : paceLevel(readings, asOf);
+    if (recent) pace = { vdot: recent.value + offset, n: recent.n };
     evidence.push(...[...level.used].sort((a, b) => b.date.localeCompare(a.date)), ...calib);
     notes.push(
       `Tracked from the heart rate–pace relationship in ${level.n} runs from the last ${wide ? FALLBACK_WINDOW_DAYS : WINDOW_DAYS} days, newer runs counting more. Heat, altitude, hills and wrist-HR errors add noise to single runs.`,
@@ -255,17 +329,29 @@ export function estimateFitness(asOf: string, runs: ScoredRun[], p: Physiology):
     vdot = floor.value;
   }
   const lower = Math.max(floor?.value ?? 0, vdot - est.half);
+  const upper = vdot + est.half;
+  // training paces: the recent level, kept inside the range, above the floor and at most 2 ahead of the estimate
+  let paceVdot = vdot;
+  if (pace) {
+    paceVdot = Math.max(lower, Math.min(upper, vdot + PACE_MAX_AHEAD, pace.vdot));
+    if (Math.abs(r1(paceVdot) - r1(vdot)) >= 0.1)
+      notes.push(
+        `Training paces use VDOT ${r1(paceVdot)}: your last ${pace.n} runs weighted towards the newest (10-day half-life), leaving out the lowest quarter of readings, which heat, humidity and heart-rate drift pull down, and the top tenth.`,
+      );
+  }
   return {
     withheld: false,
     asOf,
     vdot: r1(vdot),
     lower: r1(lower),
-    upper: r1(vdot + est.half),
+    upper: r1(upper),
     confidence: est.confidence,
     method: est.method,
     hrLevel: est.hrLevel,
     offset: est.offset,
     readings: est.readings,
+    paceVdot: r1(paceVdot),
+    paceReadings: pace?.n ?? 0,
     evidence,
     notes,
   };
@@ -325,8 +411,11 @@ export interface ThresholdEstimate {
   hrNote: string | null;
 }
 
+/** The VDOT training paces are set from (older outputs have no paceVdot). */
+export const paceBasis = (est: Extract<FitnessEstimate, { withheld: false }>): number => est.paceVdot ?? est.vdot;
+
 export function thresholdFrom(est: Extract<FitnessEstimate, { withheld: false }>, p: Physiology): ThresholdEstimate {
-  const t = trainingPaces(est.vdot).find((z) => z.key === "threshold")!;
+  const t = trainingPaces(paceBasis(est)).find((z) => z.key === "threshold")!;
   const lo = trainingPaces(est.lower).find((z) => z.key === "threshold")!;
   const hi = trainingPaces(est.upper).find((z) => z.key === "threshold")!;
   const hr = p.maxHr && p.restHr ? Math.round(p.restHr.value + 0.88 * (p.maxHr.value - p.restHr.value)) : null;
@@ -339,7 +428,7 @@ export function thresholdFrom(est: Extract<FitnessEstimate, { withheld: false }>
 }
 
 export function paceZones(est: Extract<FitnessEstimate, { withheld: false }>): PaceZone[] {
-  return trainingPaces(est.vdot);
+  return trainingPaces(paceBasis(est));
 }
 
 export interface EfficiencyPoint {

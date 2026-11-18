@@ -86,11 +86,15 @@ export interface AdaptInput {
   raceLabel: string | null;
   workouts: AdaptWorkout[];
   runs: AdaptRun[];
-  fitness: { vdot: number; confidence: "high" | "medium" | "low" } | null;
+  /** vdot: the pace basis (recency-weighted); paceReadings: runs behind it in the last 6 weeks */
+  fitness: { vdot: number; confidence: "high" | "medium" | "low"; paceReadings?: number } | null;
   existingKeys: Set<string>;
   /** Garmin wellness (HRV, resting/sleeping HR, sleep, Body Battery), last ~60 days */
   wellness?: WellnessPoint[];
 }
+
+/** Runs in the last 6 weeks behind the pace basis for a low-confidence estimate to move paces. */
+export const PACE_MIN_READINGS = 4;
 
 const fields = (w: AdaptWorkout | WorkoutFields): WorkoutFields => ({
   type: w.type,
@@ -228,9 +232,13 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
   let newVdot: number | null = null;
   const evidence: string[] = [];
   let reason = "";
-  if (input.fitness && fromVdot != null && input.fitness.confidence !== "low" && Math.abs(input.fitness.vdot - fromVdot) >= 1) {
+  // a low-confidence estimate still counts when the pace basis rests on enough recent runs
+  const trusted = input.fitness != null && (input.fitness.confidence !== "low" || (input.fitness.paceReadings ?? 0) >= PACE_MIN_READINGS);
+  if (input.fitness && fromVdot != null && trusted && Math.abs(input.fitness.vdot - fromVdot) >= 1) {
     newVdot = input.fitness.vdot;
-    evidence.push(`Fitness estimate: VDOT ${fromVdot.toFixed(1)} when the paces were set, ${newVdot.toFixed(1)} now (${input.fitness.confidence} confidence)`);
+    evidence.push(
+      `Pace basis: VDOT ${fromVdot.toFixed(1)} when the paces were set, ${newVdot.toFixed(1)} now${input.fitness.paceReadings ? ` (recency-weighted from ${input.fitness.paceReadings} runs in the last 6 weeks)` : ` (${input.fitness.confidence} confidence)`}`,
+    );
     reason = newVdot > fromVdot ? "Your fitness estimate has gone up" : "Your fitness estimate has gone down";
   } else if (fromVdot != null) {
     const done = input.workouts
@@ -277,7 +285,8 @@ export const RULE_DETAIL: Record<Rule, { looksAt: string; why: string; evidence:
   A: {
     looksAt: "Your fitness estimate (VDOT) compared with the one your paces were set from, or two to three recent quality sessions run clearly faster than target without feeling very hard.",
     why: "Training paces only do their job when they match your current fitness. Too slow and the session under-loads the system it targets; too fast and threshold work turns into VO2max work and needs more recovery.",
-    evidence: "Paces follow Daniels' VDOT tables. A change is only proposed when the estimate moves by at least 1 VDOT with medium or high confidence, which is about the size of a real fitness change rather than day-to-day noise.",
+    evidence:
+      "Paces follow Daniels' VDOT tables, set from a recency-weighted level of your recent runs (10-day half-life, lowest quarter and top tenth of readings left out, never more than 2 VDOT above the 6-week estimate). A change is only proposed when it moves by at least 1 VDOT, about the size of a real fitness change rather than day-to-day noise, and the estimate has medium or high confidence or rests on at least 4 runs from the last 6 weeks.",
     ifKept: "Your sessions keep their current paces. The plan's structure is the same either way, and the suggestion is not repeated for the same estimate.",
   },
   B: {

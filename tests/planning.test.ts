@@ -283,6 +283,13 @@ describe("adaptation", () => {
     expect(proposeAdaptations({ ...input, fitness: { vdot: 43, confidence: "low" } })).toEqual([]);
   });
 
+  it("moves paces on a low-confidence estimate when the recent pace basis rests on enough runs", () => {
+    expect(proposeAdaptations({ ...input, fitness: { vdot: 43, confidence: "low", paceReadings: 3 } })).toEqual([]);
+    const p = proposeAdaptations({ ...input, fitness: { vdot: 43, confidence: "low", paceReadings: 8 } });
+    expect(p).toHaveLength(1);
+    expect(p[0].baselinePatch!.vdot).toBe(43);
+  });
+
   it("eases the week after missed sessions (B) without making them up", () => {
     const missedWs = ws.map((w) => (w.date >= "2026-11-10" && w.date < today ? { ...w, status: "missed" } : w));
     const p = proposeAdaptations({ ...input, workouts: missedWs, runs: runs.filter((r) => r.date < "2026-11-10") });

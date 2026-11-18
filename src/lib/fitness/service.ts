@@ -6,6 +6,7 @@ import { fetchAll } from "../db/paginate";
 import { extractFeatures, FEATURES_VERSION, type RunFeatures } from "../analytics/fitness/features";
 import { retrospectiveDates, runModel, snapshotsFrom, type ModelInput, type ModelOutput, type OtherActivity } from "../analytics/fitness/model";
 import { MODEL_VERSION, type RunClass, type RunRecord } from "../analytics/fitness/scoring";
+import { PACE_BASIS_VERSION } from "../analytics/fitness/estimate";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -130,7 +131,7 @@ export async function recomputeFitness(db: SupabaseClient, userId: string, asOf:
   };
 
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ v: MODEL_VERSION, f: FEATURES_VERSION, asOf, profile, runs: runs.map((r) => [r.id, r.date, !!r.features, r.classificationOverride, r.usableForFitness, !!r.plannedTimeTrial]), w: wellness.length, wl: wellness.at(-1), o: otherActs.length }))
+    .update(JSON.stringify({ v: MODEL_VERSION, pb: PACE_BASIS_VERSION, f: FEATURES_VERSION, asOf, profile, runs: runs.map((r) => [r.id, r.date, !!r.features, r.classificationOverride, r.usableForFitness, !!r.plannedTimeTrial]), w: wellness.length, wl: wellness.at(-1), o: otherActs.length }))
     .digest("hex");
   const { data: state } = await db.from("fitness_state").select("inputs_fingerprint").eq("user_id", userId).maybeSingle();
   if (state?.inputs_fingerprint === fingerprint && pending === 0) return { status: "up_to_date", featuresComputed: computed, featuresPending: 0 };
