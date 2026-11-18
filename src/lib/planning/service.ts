@@ -268,7 +268,7 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
   // 3. proposals
   const { data: state } = await db.from("fitness_state").select("output").eq("user_id", userId).maybeSingle();
   const est = state?.output?.estimate;
-  const { data: existing } = await db.from("adaptation_proposals").select("id, key, status, changes").eq("plan_id", plan.id);
+  const { data: existing } = await db.from("adaptation_proposals").select("id, rule, key, status, changes").eq("plan_id", plan.id);
   // pending proposals that now touch the past are out of date
   const stale = (existing ?? []).filter((p: any) => p.status === "pending" && (p.changes as Change[]).some((c) => c.date < today)).map((p: any) => p.id);
   if (stale.length) await check(db.from("adaptation_proposals").update({ status: "superseded", decided_at: new Date().toISOString() }).in("id", stale));
@@ -281,11 +281,15 @@ export async function runPlanMaintenance(db: SupabaseClient, userId: string, tod
     raceLabel: ctx.raceLabel,
     workouts: ws.map(toAdapt(feedback)),
     runs: runs.map((r: any) => ({ date: r.local_date, movingS: r.moving_s, classification: classOf(r), rpe: feedback.get(r.id)?.rpe ?? null, legs: feedback.get(r.id)?.legs ?? null, load: loadOf(r) })),
-    fitness: est && !est.withheld ? { vdot: est.vdot, confidence: est.confidence } : null,
-    existingKeys: new Set((existing ?? []).map((p: any) => p.key)),
+    fitness: est && !est.withheld ? { vdot: est.paceVdot ?? est.vdot, confidence: est.confidence, paceReadings: est.paceReadings ?? 0 } : null,
+    // a pace update that went stale (superseded) may be proposed again
+    existingKeys: new Set((existing ?? []).filter((p: any) => !(p.rule === "A" && p.status === "superseded")).map((p: any) => p.key)),
     wellness: await loadWellness(db, userId, today),
   });
   if (proposals.length) {
+    // a re-proposed pace update replaces its superseded row (keys are unique per plan)
+    const again = proposals.filter((p) => p.rule === "A").map((p) => p.key).filter((k) => (existing ?? []).some((e: any) => e.key === k && e.status === "superseded"));
+    if (again.length) await check(db.from("adaptation_proposals").delete().eq("plan_id", plan.id).eq("status", "superseded").in("key", again));
     await check(
       db.from("adaptation_proposals").insert(
         proposals.map((p) => ({

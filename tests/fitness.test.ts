@@ -4,7 +4,7 @@ import { deriveActivity } from "@/lib/analytics/summarize";
 import { extractFeatures } from "@/lib/analytics/fitness/features";
 import { derivePhysiology, hrZones, type Physiology } from "@/lib/analytics/fitness/physiology";
 import { scoreRun, trimpFromAverage, type RunRecord } from "@/lib/analytics/fitness/scoring";
-import { endurancePenalty, estimateFitness } from "@/lib/analytics/fitness/estimate";
+import { endurancePenalty, estimateFitness, paceLevel, trimmedMean, type Evidence } from "@/lib/analytics/fitness/estimate";
 import { loadSeries } from "@/lib/analytics/fitness/load";
 import { runModel, retrospectiveDates, snapshotsFrom } from "@/lib/analytics/fitness/model";
 import { predictTimeS, trainingPaces, vdotFromPerformance } from "@/lib/analytics/fitness/vdot";
@@ -233,5 +233,64 @@ describe("snapshots", () => {
     const rows = snapshotsFrom(out);
     expect(rows.find((r) => r.metric === "vdot")!.value).toBeGreaterThan(45);
     expect(rows.find((r) => r.metric === "race_5k")).toBeTruthy();
+  });
+});
+
+describe("pace basis", () => {
+  const reading = (date: string, value: number): Evidence => ({ activityId: date, date, kind: "hr_speed", value, weight: 1, detail: "" });
+  // a pattern like real data in a hot climate: recent runs read 46–47, a few hot ones 41–43
+  const asOf = "2026-11-18";
+  const readings = [
+    ["2026-11-18", 45.9],
+    ["2026-11-15", 47.1],
+    ["2026-11-12", 46.6],
+    ["2026-11-09", 42.8],
+    ["2026-11-07", 46.6],
+    ["2026-11-05", 41.2],
+    ["2026-11-02", 43.0],
+    ["2026-10-23", 47.6],
+    ["2026-10-21", 42.9],
+    ["2026-10-08", 41.5],
+  ].map(([d, v]) => reading(d as string, v as number));
+
+  it("trims weight from both ends", () => {
+    const xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => ({ value, weight: 1 }));
+    expect(trimmedMean(xs, 0, 0)).toBeCloseTo(5.5);
+    expect(trimmedMean(xs, 0.2, 0.1)).toBeCloseTo((3 + 4 + 5 + 6 + 7 + 8 + 9) / 7);
+    // a reading split at the edge counts partly
+    expect(trimmedMean(xs, 0.25, 0)).toBeCloseTo((0.5 * 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10) / 7.5);
+  });
+
+  it("favours recent runs and isn't dragged down by hot, low readings", () => {
+    const lvl = paceLevel(readings, asOf)!;
+    expect(lvl.n).toBe(10);
+    expect(lvl.value).toBeGreaterThan(45.5);
+    expect(lvl.value).toBeLessThan(46.6);
+    // a plain 21-day-half-life mean sits lower
+    const plain = readings.reduce((a, r) => a + r.value * Math.pow(0.5, (Date.parse(asOf) - Date.parse(r.date)) / 864e5 / 21), 0) / readings.reduce((a, r) => a + Math.pow(0.5, (Date.parse(asOf) - Date.parse(r.date)) / 864e5 / 21), 0);
+    expect(lvl.value).toBeGreaterThan(plain + 0.5);
+  });
+
+  it("is not set by a single run", () => {
+    const one = [...readings.slice(1), reading("2026-11-18", 55)];
+    expect(paceLevel(one, asOf)!.value).toBeLessThan(47.5);
+  });
+
+  it("needs recent runs", () => {
+    expect(paceLevel(readings.filter((r) => r.date < "2026-11-01"), asOf)).toBeNull();
+    expect(paceLevel(readings.slice(0, 2), asOf)).toBeNull();
+  });
+
+  it("sets the training paces from the pace basis, within the estimate's range", () => {
+    const profile = { max_hr: 190, max_hr_source: "manual", resting_hr: 50, resting_hr_source: "manual", birth_year: null, sex: null };
+    // older runs at HR 165, the last two weeks at HR 162 (same pace): fitter lately
+    const runs = [0, 4, 8, 12, 16].map((d) => makeRun(steady(165), addDaysIso("2026-10-01", d)));
+    for (const d of [0, 4, 8, 12]) runs.push(makeRun(steady(162), addDaysIso("2026-10-17", d)));
+    const out = runModel({ asOf: "2026-10-30", profile, runs, others: [], wellness: [] });
+    if (out.estimate.withheld) throw new Error("withheld");
+    const e = out.estimate;
+    expect(e.paceVdot!).toBeGreaterThan(e.vdot);
+    expect(e.paceVdot!).toBeLessThanOrEqual(Math.min(e.upper, e.vdot + 2));
+    expect(out.paceZones).toEqual(trainingPaces(e.paceVdot!));
   });
 });

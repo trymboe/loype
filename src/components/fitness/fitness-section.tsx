@@ -134,7 +134,7 @@ export function FitnessSection({ out, history }: { out: CompactOutput; history: 
             </p>
           </div>
           <div>
-            <p className="label mb-2">Training paces</p>
+            <p className="label mb-2">Training paces{!e.withheld && e.paceVdot != null ? ` · VDOT ${e.paceVdot.toFixed(1)}` : ""}</p>
             {out.paceZones ? (
               <table className="tabular w-full text-sm">
                 <tbody>
