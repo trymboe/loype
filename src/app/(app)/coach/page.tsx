@@ -107,17 +107,18 @@ function NeedsKey() {
         <div className="mb-4 flex size-11 items-center justify-center rounded-2xl bg-accent/12 text-accent">
           <KeyRound size={20} />
         </div>
-        <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Add an OpenAI API key to turn on the coach</p>
+        <p className="text-[1.0625rem] font-semibold tracking-[-0.01em]">Add an Anthropic API key to turn on the coach</p>
         <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-fg-2 marker:text-subtle">
           <li>
             Create a key at{" "}
-            <a className="font-medium text-accent" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
-              platform.openai.com
+            <a className="font-medium text-accent" href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer">
+              platform.claude.com
             </a>
             , and set a monthly spend limit there.
           </li>
           <li>
-            In Vercel, add it to the project as <code className="rounded bg-surface-2 px-1">OPENAI_API_KEY</code> (Production, sensitive).
+            In Vercel, add it to the project as <code className="rounded bg-surface-2 px-1">ANTHROPIC_API_KEY</code> (Production, sensitive). An{" "}
+            <code className="rounded bg-surface-2 px-1">OPENAI_API_KEY</code> also works, and is used as the fallback when both are set.
           </li>
           <li>Redeploy, then come back here.</li>
         </ol>

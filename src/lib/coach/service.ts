@@ -1,10 +1,12 @@
 import "server-only";
-import OpenAI from "openai";
+import type Anthropic from "@anthropic-ai/sdk";
+import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { env } from "../env";
 import { activePlan, refreshFutureWeeks, restoreVersion, undoPlanRestart } from "../planning/service";
 import { buildSnapshot } from "./data";
+import { cleanAnthropicBlocks, coachClients, normaliseAnthropic, normaliseOpenAI, primaryModel, providerOrder, replayable, toAnthropicMessages, type CoachClients, type Provider } from "./llm";
 import { PROMPT_VERSION, SYSTEM_PROMPT } from "./prompt";
 import { isToolName, runTool, TOOL_STATUS, TOOLS, ToolInputError, type CoachAction, type ToolContext } from "./tools";
 
@@ -24,7 +26,7 @@ export type CoachEvent =
 /** Tool-call rounds per athlete message; plenty for look up, change, check, answer. */
 const MAX_ROUNDS = 16;
 
-export const coachConfigured = () => Boolean(env.openaiApiKey());
+export const coachConfigured = () => Boolean(env.anthropicApiKey() || env.openaiApiKey());
 
 export async function listConversations(db: SupabaseClient, userId: string, limit = 30) {
   const { data } = await db.from("coach_conversations").select("id, title, updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(limit);
@@ -79,37 +81,7 @@ function titleFrom(text: string) {
   return t.length > 60 ? `${t.slice(0, 57).trimEnd()}…` : t;
 }
 
-/**
- * Output items as they can be sent back as input next turn. Only the fields the
- * Responses API accepts as input are kept: the SDK's stream helper adds extras
- * (parsed_arguments, parsed) that the API rejects with a 400 on replay.
- */
-export function replayable(items: any[]): Item[] {
-  const out: any[] = [];
-  for (const i of items ?? []) {
-    if (!i || typeof i !== "object") continue;
-    if (i.type === "message" && i.role === "assistant") {
-      out.push({
-        type: "message",
-        id: i.id,
-        role: "assistant",
-        status: i.status ?? "completed",
-        content: (i.content ?? [])
-          .filter((c: any) => c.type === "output_text" || c.type === "refusal")
-          .map((c: any) => (c.type === "refusal" ? { type: "refusal", refusal: c.refusal } : { type: "output_text", text: c.text, annotations: c.annotations ?? [] })),
-      });
-    } else if (i.type === "function_call") {
-      out.push({ type: "function_call", id: i.id, call_id: i.call_id, name: i.name, arguments: i.arguments, status: i.status ?? "completed" });
-    } else if (i.type === "reasoning") {
-      out.push({ type: "reasoning", id: i.id, summary: i.summary ?? [], ...(i.encrypted_content ? { encrypted_content: i.encrypted_content } : {}) });
-    } else if (i.type === "function_call_output") {
-      out.push({ type: "function_call_output", call_id: i.call_id, output: i.output });
-    } else if (i.role === "user" || i.role === "developer" || i.role === "system") {
-      out.push({ role: i.role, content: i.content });
-    }
-  }
-  return out as Item[];
-}
+export { replayable } from "./llm";
 
 export interface TurnInput {
   db: SupabaseClient;
@@ -122,14 +94,36 @@ export interface TurnInput {
   context?: string | null;
 }
 
+/** One model response, the same shape whichever provider produced it. */
+interface RoundResult {
+  /** what to store and replay, in the provider's own format */
+  content: any[];
+  text: string;
+  calls: { id: string; name: string; input: unknown }[];
+  model: string;
+  usage: unknown;
+  stopReason: string | null;
+  /** cut off (output limit) with nothing left to run */
+  incomplete: boolean;
+  /** declined by the provider's safety checks */
+  refused: boolean;
+}
+
+/** Anthropic tool definitions, from the same schemas the OpenAI tools use. */
+const CLAUDE_TOOLS: Anthropic.Beta.BetaTool[] = TOOLS.map((t) => ({ name: t.name, description: t.description ?? "", input_schema: t.parameters as Anthropic.Beta.BetaTool.InputSchema }));
+
 /**
  * Runs one athlete message through the coach and yields events as they
- * happen. Every API item is stored verbatim (append-only), and responses are
- * not stored at OpenAI (store: false, reasoning carried as encrypted content),
- * so the next turn replays exactly what the model saw.
+ * happen. Every API item is stored verbatim (append-only), so the next turn
+ * replays exactly what the model saw. Claude is used when ANTHROPIC_API_KEY is
+ * set; if a Claude request fails (or is declined) before any text reached the
+ * athlete, the rest of the turn runs on OpenAI.
  */
-export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiKey: env.openaiApiKey()! })): AsyncGenerator<CoachEvent> {
+export async function* runCoachTurn(input: TurnInput, clients: CoachClients = coachClients()): AsyncGenerator<CoachEvent> {
   const { db, userId, today } = input;
+  const order = providerOrder(clients);
+  if (!order.length) throw new Error("The coach has no API key");
+  const pinned = primaryModel(clients);
 
   // conversation
   let conv: any;
@@ -140,7 +134,7 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   } else {
     const { data, error } = await db
       .from("coach_conversations")
-      .insert({ user_id: userId, title: titleFrom(input.text), prompt_version: PROMPT_VERSION, model: env.coachModel() })
+      .insert({ user_id: userId, title: titleFrom(input.text), prompt_version: PROMPT_VERSION, model: pinned })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
@@ -148,16 +142,15 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   }
   yield { type: "conversation", id: conv.id, title: conv.title };
 
-  // history (append-only replay). Conversations from another model or provider can't be
-  // replayed item by item, so they continue from their visible text only.
+  // history (append-only replay). Conversations from another model or prompt version
+  // can't be replayed item by item, so they continue from their visible text only.
   const { data: rows } = await db.from("coach_messages").select("seq, role, kind, content, display_text, snapshot_hash").eq("conversation_id", conv.id).order("seq");
   const history = rows ?? [];
-  const sameModel = conv.model === env.coachModel() && conv.prompt_version === PROMPT_VERSION;
-  const items: Item[] = sameModel
-    ? history.flatMap((r: any) => (Array.isArray(r.content) ? replayable(r.content) : []))
-    : history
-        .filter((r: any) => r.display_text && (r.kind === "user" || r.kind === "assistant"))
-        .map((r: any) => ({ role: r.role, content: r.display_text }) as Item);
+  const sameModel = conv.model === pinned && conv.prompt_version === PROMPT_VERSION;
+  /** stored items in replay order: verbatim rows, or plain text for an old conversation */
+  const stored: any[] = sameModel
+    ? history.flatMap((r: any) => (Array.isArray(r.content) ? r.content : []))
+    : history.filter((r: any) => r.display_text && (r.kind === "user" || r.kind === "assistant")).map((r: any) => ({ role: r.role, content: r.display_text }));
   let seq = history.length ? history[history.length - 1].seq + 1 : 0;
 
   const snap = await buildSnapshot(db, userId, today, input.timezone);
@@ -165,55 +158,82 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   const lastSnap = sameModel ? ([...history].reverse().find((r: any) => r.snapshot_hash)?.snapshot_hash ?? null) : null;
   const dayChanged = !sameModel || !history.some((r: any) => r.snapshot_hash && JSON.stringify(r.content).includes(`Today is ${today}`));
   const includeSnapshot = snapHash !== lastSnap || dayChanged;
-  const userItem: Item = {
-    role: "user",
-    content: [
-      ...(includeSnapshot ? [{ type: "input_text" as const, text: `<athlete_data>\n${snap}\n</athlete_data>` }] : []),
-      ...(input.context ? [{ type: "input_text" as const, text: `<run_context>\n${input.context}\n</run_context>` }] : []),
-      { type: "input_text" as const, text: input.text },
-    ],
-  };
+  const parts = [
+    ...(includeSnapshot ? [`<athlete_data>\n${snap}\n</athlete_data>`] : []),
+    ...(input.context ? [`<run_context>\n${input.context}\n</run_context>`] : []),
+    input.text,
+  ];
+  let provider: Provider = order[0];
+  const userItem =
+    provider === "anthropic"
+      ? { role: "user", content: parts.map((text) => ({ type: "text", text })) }
+      : ({ role: "user", content: parts.map((text) => ({ type: "input_text" as const, text })) } satisfies Item);
   const store = async (row: Record<string, unknown>) => {
     const { data, error } = await db.from("coach_messages").insert({ conversation_id: conv.id, user_id: userId, seq: seq++, ...row }).select("id").single();
     if (error) throw new Error(error.message);
     return data.id as string;
   };
   await store({ role: "user", kind: "user", content: [userItem], display_text: input.text, snapshot_hash: includeSnapshot ? snapHash : null });
-  items.push(userItem);
-  if (!sameModel) await db.from("coach_conversations").update({ prompt_version: PROMPT_VERSION, model: env.coachModel() }).eq("id", conv.id);
+  stored.push(userItem);
+  if (!sameModel) await db.from("coach_conversations").update({ prompt_version: PROMPT_VERSION, model: pinned }).eq("id", conv.id);
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const last = round === MAX_ROUNDS - 1;
-    const final: OpenAI.Responses.Response = yield* streamOnce(client, items, last, conv.id);
-    const output = replayable(final.output as any[]);
-    const text = final.output
-      .filter((o): o is OpenAI.Responses.ResponseOutputMessage => o.type === "message")
-      .flatMap((m) => m.content.map((c) => (c.type === "output_text" ? c.text : c.type === "refusal" ? c.refusal : "")))
-      .join("")
-      .trim();
-    const calls = final.output.filter((o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call");
-    await store({ role: "assistant", kind: "assistant", content: output, display_text: text || null, model: final.model, usage: final.usage, stop_reason: final.status });
-    items.push(...output);
-    if (final.status === "incomplete" && !calls.length) {
-      if (!text) yield { type: "text", delta: "Sorry, I lost my train of thought there. Could you ask that again?" };
+    let final: RoundResult | null = null;
+    // try the current provider; before any text reached the athlete, a failure or decline moves to the next one
+    while (!final) {
+      let emitted = false;
+      try {
+        const gen = provider === "anthropic" ? claudeRound(clients.anthropic!, stored, last) : openaiRound(clients.openai!, stored, last, conv.id);
+        let step = await gen.next();
+        while (!step.done) {
+          if (step.value.type === "text") emitted = true;
+          yield step.value;
+          step = await gen.next();
+        }
+        final = step.value;
+        if (final.refused && !emitted && !final.calls.length && nextProvider(order, provider)) {
+          console.warn(`coach: ${provider} declined the request, falling back`);
+          provider = nextProvider(order, provider)!;
+          final = null;
+        }
+      } catch (err) {
+        const next = nextProvider(order, provider);
+        if (emitted || !next) throw err;
+        console.warn(`coach: ${provider} request failed, falling back to ${next}:`, err instanceof Error ? err.message : err);
+        provider = next;
+      }
+    }
+
+    await store({ role: "assistant", kind: "assistant", content: final.content, display_text: final.text || null, model: final.model, usage: final.usage, stop_reason: final.stopReason });
+    stored.push(...final.content);
+    // cut off or declined: a half-written tool call isn't run
+    if (final.incomplete || final.refused) {
+      if (!final.text) yield { type: "text", delta: "Sorry, I lost my train of thought there. Could you ask that again?" };
       break;
     }
-    if (!calls.length) break;
+    if (!final.calls.length) break;
 
     // tools run one after another: later calls may depend on earlier changes
     const ctx: ToolContext = { db, userId, today, actions: [] };
-    const results: Item[] = [];
-    for (const c of calls) {
+    const outputs: { id: string; out: string; error: boolean }[] = [];
+    for (const c of final.calls) {
       let out: string;
+      let error = false;
       try {
-        out = await runTool(c.name, JSON.parse(c.arguments || "{}"), ctx);
+        out = await runTool(c.name, typeof c.input === "string" ? JSON.parse(c.input || "{}") : c.input, ctx);
       } catch (e) {
+        error = true;
         out = e instanceof ToolInputError || e instanceof SyntaxError ? `Invalid input: ${e.message}` : `The app couldn't do this (${e instanceof Error ? e.message : "unknown error"}).`;
       }
-      results.push({ type: "function_call_output", call_id: c.call_id, output: out });
+      outputs.push({ id: c.id, out, error });
     }
+    const results: any[] =
+      provider === "anthropic"
+        ? [{ role: "user", content: outputs.map((o) => ({ type: "tool_result", tool_use_id: o.id, content: o.out, ...(o.error ? { is_error: true } : {}) })) }]
+        : outputs.map((o) => ({ type: "function_call_output", call_id: o.id, output: o.out }));
     const id = await store({ role: "user", kind: "tool_results", content: results, actions: ctx.actions });
-    items.push(...results);
+    stored.push(...results);
     if (ctx.actions.length) yield { type: "actions", messageId: id, items: ctx.actions };
   }
 
@@ -221,12 +241,57 @@ export async function* runCoachTurn(input: TurnInput, client = new OpenAI({ apiK
   yield { type: "done" };
 }
 
-/** One streamed request. Yields text deltas and tool status; returns the final response. */
-async function* streamOnce(client: OpenAI, input: Item[], finalRound: boolean, conversationId: string): AsyncGenerator<CoachEvent, OpenAI.Responses.Response> {
+const nextProvider = (order: Provider[], p: Provider): Provider | null => order[order.indexOf(p) + 1] ?? null;
+
+/** One streamed Claude request. Yields text deltas and tool status. */
+async function* claudeRound(client: Anthropic, stored: any[], finalRound: boolean): AsyncGenerator<CoachEvent, RoundResult> {
+  const stream = client.beta.messages.stream({
+    model: env.claudeModel(),
+    max_tokens: 32000,
+    system: SYSTEM_PROMPT,
+    messages: normaliseAnthropic(toAnthropicMessages(stored)),
+    tools: CLAUDE_TOOLS,
+    // on the last allowed round the coach must answer with what it has
+    tool_choice: { type: finalRound ? "none" : "auto" },
+    // thinking blocks are replayed verbatim; if a stored block no longer matches its
+    // conversation (e.g. after a failed turn was repaired), drop it instead of failing
+    thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
+    output_config: { effort: "high" },
+    // caches the system prompt, tools and history up to the newest message
+    cache_control: { type: "ephemeral" },
+    betas: ["thinking-binding-controls-2026-08-01"],
+  });
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") yield { type: "text", delta: event.delta.text };
+    else if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+      const name = event.content_block.name;
+      yield { type: "status", text: isToolName(name) ? TOOL_STATUS[name] : "Looking that up" };
+    }
+  }
+  const msg = await stream.finalMessage();
+  const content = cleanAnthropicBlocks(msg.content as any[]);
+  return {
+    content: [{ role: "assistant", content }],
+    text: content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim(),
+    calls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id, name: b.name, input: b.input })),
+    model: msg.model,
+    usage: msg.usage,
+    stopReason: msg.stop_reason,
+    incomplete: msg.stop_reason === "max_tokens",
+    refused: msg.stop_reason === "refusal",
+  };
+}
+
+/** One streamed OpenAI request. Yields text deltas and tool status. */
+async function* openaiRound(client: OpenAI, stored: any[], finalRound: boolean, conversationId: string): AsyncGenerator<CoachEvent, RoundResult> {
   const stream = client.responses.stream({
     model: env.coachModel(),
     instructions: SYSTEM_PROMPT,
-    input,
+    input: normaliseOpenAI(replayable(stored)),
     tools: TOOLS,
     // on the last allowed round the coach must answer with what it has
     tool_choice: finalRound ? "none" : "auto",
@@ -245,7 +310,24 @@ async function* streamOnce(client: OpenAI, input: Item[], finalRound: boolean, c
       yield { type: "status", text: isToolName(name) ? TOOL_STATUS[name] : "Looking that up" };
     }
   }
-  return (await stream.finalResponse()) as OpenAI.Responses.Response;
+  const final = (await stream.finalResponse()) as OpenAI.Responses.Response;
+  const text = final.output
+    .filter((o): o is OpenAI.Responses.ResponseOutputMessage => o.type === "message")
+    .flatMap((m) => m.content.map((c) => (c.type === "output_text" ? c.text : c.type === "refusal" ? c.refusal : "")))
+    .join("")
+    .trim();
+  const calls = final.output.filter((o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call");
+  return {
+    content: replayable(final.output as any[]),
+    text,
+    calls: calls.map((c) => ({ id: c.call_id, name: c.name, input: c.arguments })),
+    model: final.model,
+    usage: final.usage,
+    stopReason: final.status ?? null,
+    // complete function calls in a cut-off response still run, as before
+    incomplete: final.status === "incomplete" && !calls.length,
+    refused: false,
+  };
 }
 
 /**

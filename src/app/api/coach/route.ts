@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -19,6 +20,11 @@ const Body = z.object({
 });
 
 function friendly(err: unknown): string {
+  // Claude errors only reach here when there's no OpenAI fallback (or it failed too)
+  if (err instanceof Anthropic.AuthenticationError) return "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in Vercel.";
+  if (err instanceof Anthropic.RateLimitError) return "The coach is rate-limited or out of API credit right now. Check your Anthropic billing, or try again in a minute.";
+  if (err instanceof Anthropic.APIConnectionError) return "Couldn't reach the Anthropic API. Try again.";
+  if (err instanceof Anthropic.APIError) return `The Anthropic API returned an error (${err.status ?? "unknown"}). Try again.`;
   if (err instanceof OpenAI.AuthenticationError) return "The OpenAI API key was rejected. Check OPENAI_API_KEY in Vercel.";
   if (err instanceof OpenAI.RateLimitError) return "The coach is rate-limited or out of API credit right now. Check your OpenAI billing, or try again in a minute.";
   if (err instanceof OpenAI.APIConnectionError) return "Couldn't reach the OpenAI API. Try again.";
@@ -30,7 +36,7 @@ function friendly(err: unknown): string {
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!coachConfigured()) return NextResponse.json({ error: "The coach needs OPENAI_API_KEY to be set in Vercel." }, { status: 503 });
+  if (!coachConfigured()) return NextResponse.json({ error: "The coach needs ANTHROPIC_API_KEY (or OPENAI_API_KEY) to be set in Vercel." }, { status: 503 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid request" }, { status: 400 });
 

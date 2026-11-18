@@ -11,8 +11,13 @@ export const env = {
   supabaseServiceRoleKey: () => required("SUPABASE_SERVICE_ROLE_KEY"),
   cronSecret: () => required("CRON_SECRET"),
   garminBaseUrl: () => process.env.GARMIN_API_BASE_URL || undefined,
-  /** OpenAI API key for the coach; the Coach tab explains how to add it when missing. */
+  /** Anthropic API key: the coach runs on Claude when it's set. */
+  anthropicApiKey: () => process.env.ANTHROPIC_API_KEY || null,
+  /** Claude model for the coach. */
+  claudeModel: () => process.env.COACH_CLAUDE_MODEL || "claude-sonnet-5-5",
+  /** OpenAI API key: the coach's fallback (or the only provider when there's no Anthropic key). */
   openaiApiKey: () => process.env.OPENAI_API_KEY || null,
+  /** OpenAI model for the coach's fallback. */
   coachModel: () => process.env.COACH_MODEL || "gpt-6-luna",
 };
 
