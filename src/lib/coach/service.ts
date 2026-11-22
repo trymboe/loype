@@ -74,6 +74,20 @@ export async function loadTranscript(db: SupabaseClient, userId: string, convers
   return out.filter((t) => t.role === "user" || t.text || t.actions.length);
 }
 
+/**
+ * Whether a reply is still being written in this conversation. A turn stamps
+ * the conversation's updated_at when it finishes, so a stored message newer
+ * than that stamp belongs to a turn that hasn't finished (or was cut short).
+ */
+export async function turnInProgress(db: SupabaseClient, userId: string, conversationId: string): Promise<boolean> {
+  const [{ data: conv }, { data: last }] = await Promise.all([
+    db.from("coach_conversations").select("updated_at").eq("id", conversationId).eq("user_id", userId).maybeSingle(),
+    db.from("coach_messages").select("created_at").eq("conversation_id", conversationId).eq("user_id", userId).order("seq", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (!conv || !last) return false;
+  return new Date(last.created_at).getTime() > new Date(conv.updated_at).getTime();
+}
+
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
 function titleFrom(text: string) {

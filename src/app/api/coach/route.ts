@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { revalidatePath } from "next/cache";
@@ -6,7 +6,7 @@ import { z } from "zod";
 import { todayIn } from "@/lib/dates";
 import { createAdminClient, getSessionUser } from "@/lib/db/server";
 import { checkinContext } from "@/lib/coach/checkin";
-import { coachConfigured, runCoachTurn, type CoachEvent } from "@/lib/coach/service";
+import { coachConfigured, loadTranscript, runCoachTurn, turnInProgress, type CoachEvent } from "@/lib/coach/service";
 import { userTimezone } from "@/lib/user-tz";
 
 export const maxDuration = 120;
@@ -32,6 +32,25 @@ function friendly(err: unknown): string {
   return "Something went wrong while the coach was answering. Try again.";
 }
 
+/** Heartbeat while the coach thinks or runs tools: mobile networks drop connections that go quiet. */
+const PING_MS = 8000;
+
+/**
+ * The stored transcript of a conversation, and whether a reply is still being
+ * written. The chat uses it to recover a reply whose stream was cut off (the
+ * phone locked, the app went to the background, the network dropped): the turn
+ * keeps running on the server and is stored either way.
+ */
+export async function GET(request: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const id = z.string().uuid().safeParse(request.nextUrl.searchParams.get("c"));
+  if (!id.success) return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  const db = createAdminClient();
+  const [turns, inProgress] = await Promise.all([loadTranscript(db, user.id, id.data), turnInProgress(db, user.id, id.data)]);
+  return NextResponse.json({ turns, inProgress }, { headers: { "Cache-Control": "no-store" } });
+}
+
 /** Streams the coach's answer as newline-delimited JSON events. */
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -46,9 +65,24 @@ export async function POST(request: NextRequest) {
   const context = parsed.data.activityId ? await checkinContext(db, user.id, parsed.data.activityId).catch(() => null) : null;
   const encoder = new TextEncoder();
 
+  let finished!: () => void;
+  // keep the function alive until the turn is stored, even if the browser disconnects
+  after(new Promise<void>((resolve) => (finished = resolve)));
+
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (e: CoachEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
+      let open = true;
+      const write = (line: string) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(line));
+        } catch {
+          // the browser went away; the turn still finishes and is stored
+          open = false;
+        }
+      };
+      const send = (e: CoachEvent) => write(`${JSON.stringify(e)}\n`);
+      const ping = setInterval(() => write(`{"type":"ping"}\n`), PING_MS);
       let changed = false;
       try {
         for await (const e of runCoachTurn({ db, userId: user.id, conversationId: parsed.data.conversationId, text: parsed.data.text, today, timezone, context })) {
@@ -59,13 +93,22 @@ export async function POST(request: NextRequest) {
         console.error("coach turn failed", err instanceof Error ? err.message : err);
         send({ type: "error", message: friendly(err) });
       } finally {
+        clearInterval(ping);
         if (changed) {
           revalidatePath("/plan", "layout");
           revalidatePath("/routes", "layout");
           revalidatePath("/activities", "layout");
           revalidatePath("/");
         }
-        controller.close();
+        if (open) {
+          open = false;
+          try {
+            controller.close();
+          } catch {
+            // already closed by a disconnect
+          }
+        }
+        finished();
       }
     },
   });

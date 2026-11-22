@@ -658,3 +658,23 @@ describe("coach on Claude", async () => {
     ]);
   });
 });
+
+describe("coach reply recovery", async () => {
+  const { turnInProgress } = await import("@/lib/coach/service");
+  const C = "c0000000-0000-4000-8000-000000000001";
+  const db = (updatedAt: string, messages: string[]) =>
+    new FakeDb({
+      coach_conversations: [{ id: C, user_id: U, updated_at: updatedAt }],
+      coach_messages: messages.map((created_at, seq) => ({ id: `m${seq}`, conversation_id: C, user_id: U, seq, created_at })),
+    });
+
+  it("reports a reply as in progress until the turn stamps the conversation", async () => {
+    // athlete message stored, the coach is still answering
+    expect(await turnInProgress(db("2026-11-22T15:39:35.246Z", ["2026-11-22T15:39:35.772Z"]) as any, U, C)).toBe(true);
+    // finished: updated_at is set after the last stored message
+    expect(await turnInProgress(db("2026-11-22T15:39:46.800Z", ["2026-11-22T15:39:35.772Z", "2026-11-22T15:39:46.762Z"]) as any, U, C)).toBe(false);
+    // someone else's conversation, or an empty one
+    expect(await turnInProgress(db("2026-11-22T15:39:35.246Z", ["2026-11-22T15:39:35.772Z"]) as any, "someone-else", C)).toBe(false);
+    expect(await turnInProgress(db("2026-11-22T15:39:35.246Z", []) as any, U, C)).toBe(false);
+  });
+});
