@@ -21,7 +21,30 @@ type Event =
   | { type: "status"; text: string }
   | { type: "actions"; messageId: string; items: Change[] }
   | { type: "done" }
+  | { type: "ping" }
   | { type: "error"; message: string };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Resolves once the page is in the foreground: iOS suspends a backgrounded page's network. */
+const visible = () =>
+  document.visibilityState === "visible"
+    ? Promise.resolve()
+    : new Promise<void>((r) => {
+        const on = () => {
+          if (document.visibilityState !== "visible") return;
+          document.removeEventListener("visibilitychange", on);
+          r();
+        };
+        document.addEventListener("visibilitychange", on);
+      });
+
+/** Polling for a reply whose stream was cut off: every 3 s, for up to 2 minutes of foreground time. */
+const RECOVER_TRIES = 40;
+const RECOVER_EVERY_MS = 3000;
+
+/** An error the server sent on purpose (shown as is), as opposed to a dropped connection. */
+class CoachHttpError extends Error {}
 
 export function CoachChat({
   conversationId: initialId,
@@ -62,11 +85,14 @@ export function CoachChat({
     const update = (fn: (t: Turn) => Turn) => setTurns((ts) => ts.map((t) => (t.id === reply.id ? fn(t) : t)));
     let afterStatus = false;
     let newId: string | null = null;
+    let convId = conversationId;
+    const usersBefore = turns.filter((t) => t.role === "user").length;
+    const checkin = turns[0]?.id === "checkin" ? turns[0] : null;
     try {
       const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, text: q, activityId: conversationId ? null : (runContext?.activityId ?? null) }) });
       if (!res.ok || !res.body) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `The coach couldn't answer (HTTP ${res.status}).`);
+        throw new CoachHttpError(body?.error ?? `The coach couldn't answer (HTTP ${res.status}).`);
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -83,6 +109,7 @@ export function CoachChat({
           const e = JSON.parse(line) as Event;
           if (e.type === "conversation") {
             newId = conversationId ? null : e.id;
+            convId = e.id;
             setConversationId(e.id);
           } else if (e.type === "text") {
             setStatus(null);
@@ -98,7 +125,20 @@ export function CoachChat({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The coach couldn't answer.");
+      if (err instanceof CoachHttpError || err instanceof SyntaxError) {
+        setError(err.message);
+      } else {
+        // the connection dropped (Safari: "Load failed"), e.g. the phone locked or the app went to
+        // the background. The reply keeps going on the server and is stored, so fetch it from there.
+        setStatus("Reconnecting");
+        const outcome = convId ? await recover(convId, usersBefore, checkin) : "lost";
+        if (outcome === "lost") {
+          setDraft(q);
+          setError("Couldn't reach the coach. Check your connection and send it again.");
+        } else if (outcome === "pending") {
+          setError("The coach is still answering. Open this conversation again in a minute to see the reply.");
+        }
+      }
     } finally {
       setBusy(false);
       setStatus(null);
@@ -107,6 +147,27 @@ export function CoachChat({
       // only now: updating the URL re-renders the page from the stored conversation
       if (newId) window.history.replaceState(null, "", `/coach?c=${newId}`);
     }
+  }
+
+  /** Loads the stored transcript once the reply has finished on the server. */
+  async function recover(id: string, usersBefore: number, checkin: Turn | null): Promise<"recovered" | "pending" | "lost"> {
+    for (let i = 0; i < RECOVER_TRIES; i++) {
+      await visible();
+      await sleep(i === 0 ? 1000 : RECOVER_EVERY_MS);
+      try {
+        const res = await fetch(`/api/coach?c=${id}`, { cache: "no-store" });
+        if (!res.ok) continue;
+        const data = (await res.json()) as { turns: Turn[]; inProgress: boolean };
+        const arrived = data.turns.filter((t) => t.role === "user").length > usersBefore;
+        if (data.inProgress) continue;
+        if (!arrived) return "lost";
+        setTurns(checkin ? [checkin, ...data.turns] : data.turns);
+        return "recovered";
+      } catch {
+        // still offline: try again
+      }
+    }
+    return "pending";
   }
 
   const empty = turns.length === 0;
