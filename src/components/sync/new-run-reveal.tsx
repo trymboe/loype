@@ -83,7 +83,8 @@ export function NewRunReveal({ runs, onClose }: { runs: RevealRun[]; onClose: ()
 function RevealBody({ run, onNext, onClose, isLast, position }: { run: RevealRun; onNext: () => void; onClose: () => void; isLast: boolean; position: string | null }) {
   const coords = useMemo(() => (run.is_indoor ? [] : (run.route_preview ?? [])).filter((c) => Array.isArray(c) && c.length === 2), [run]);
   const hasRoute = coords.length >= 2;
-  const drawMs = Math.min(3000, Math.max(1700, coords.length * 6));
+  // unhurried, cinematic draw: about 3–5 s depending on route detail
+  const drawMs = Math.min(5200, Math.max(3000, coords.length * 10));
   const [drawn, setDrawn] = useState(!hasRoute);
   const onDrawn = useCallback(() => setDrawn(true), []);
   // with a route, the numbers count up while the line draws; without one, shortly after opening

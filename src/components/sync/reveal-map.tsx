@@ -33,7 +33,8 @@ export function sliceRoute(coords: Coord[], cum: number[], p: number): Coord[] {
   return [...coords.slice(0, i), [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]];
 }
 
-const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+// easeInOutSine: a gentle start and finish with an even pace in between (cubic rushed the middle)
+const ease = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 
 /**
  * Map (the same base style as everywhere else) that draws the run's route from start to finish, with the camera slowly tilting in.
@@ -117,7 +118,7 @@ export function RevealMap({ coords, durationMs, onStart, onDrawn }: { coords: Co
           // tilt and turn slowly while the line draws, like a flyover
           if (!still) {
             const cam = m.cameraForBounds(bounds, { padding: { top: 70, bottom: 110, left: 48, right: 48 } });
-            if (cam) m.easeTo({ ...cam, pitch: 42, bearing: -18, duration: durationMs + 900, easing: (t) => t * (2 - t) });
+            if (cam) m.easeTo({ ...cam, pitch: 42, bearing: -18, duration: durationMs + 1200, easing: (t) => 1 - (1 - t) ** 3 });
           }
           const t0 = performance.now() + 200;
           const tick = (now: number) => {
