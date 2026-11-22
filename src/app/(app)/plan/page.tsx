@@ -1,4 +1,5 @@
 import Link from "@/components/link";
+import { plannedMinutes } from "@/lib/planning/week-total";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronRight, Flag, History, Lock, Minus, Target, X } from "lucide-react";
 import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui";
@@ -173,7 +174,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           const items = ws.filter((w) => w.date >= wk.start && w.date <= end);
           const isCurrent = wk.start === thisWeek;
           const past = end < today;
-          const planned = items.filter((w) => w.status !== "skipped").reduce((a, w) => a + w.duration_s / 60, 0);
+          const planned = plannedMinutes(items);
           const ran = ranBy.get(wk.start) ?? 0;
           return (
             <details
