@@ -17,6 +17,7 @@ import type { Execution } from "./match";
 import { isHard, WORKOUT_LABEL, type Baseline, type Goal, type Step, type WorkoutType } from "./types";
 import { SIGNAL_THRESHOLD, wellnessSignals, type WellnessPoint } from "./wellness-signals";
 import { buildWorkout, stepsDistance, stepsDuration, target, type TargetContext } from "./workouts";
+import { replacedIds } from "./replaced";
 
 export type Rule = "A" | "B" | "C" | "D";
 
@@ -33,6 +34,8 @@ export interface AdaptWorkout {
   key: boolean;
   locked: boolean;
   status: string;
+  /** "generator" | "athlete" | "adaptation" */
+  source?: string | null;
   execution: Execution | null;
   rpe: number | null;
 }
@@ -152,7 +155,9 @@ export function proposeAdaptations(input: AdaptInput): Proposal[] {
 
   // B: missed sessions
   const from10 = addDaysIso(today, -10);
-  const missed = input.workouts.filter((w) => w.status === "missed" && w.date >= from10 && w.date < today);
+  // a run that was rescheduled and done on another day isn't a missed one
+  const replaced = replacedIds(input.workouts);
+  const missed = input.workouts.filter((w) => w.status === "missed" && w.date >= from10 && w.date < today && !replaced.has(w.id));
   if (!breakDetected && missed.length >= 2) {
     const from7 = addDaysIso(today, -7);
     const actual = input.runs.filter((r) => r.date >= from7 && r.date < today).reduce((a, r) => a + (r.movingS ?? 0) / 60, 0);

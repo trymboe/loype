@@ -148,7 +148,7 @@ async function recapForWeek(
   const [{ data: fs }, { data: wos }, { data: earlier }] = await Promise.all([
     db.from("fitness_state").select("model_version, as_of, output").eq("user_id", userId).maybeSingle(),
     plan
-      ? db.from("planned_workouts").select("date, type, title, status, key, duration_s, activity_id").eq("plan_id", plan.id).gte("date", addDaysIso(ws, -28)).lte("date", we)
+      ? db.from("planned_workouts").select("id, date, type, title, status, key, duration_s, activity_id, source").eq("plan_id", plan.id).gte("date", addDaysIso(ws, -28)).lte("date", we)
       : Promise.resolve({ data: [] as any[] }),
     db.from("weekly_recaps").select("week_start, estimates").eq("user_id", userId).lt("week_start", ws).order("week_start", { ascending: false }).limit(8),
   ]);
@@ -170,7 +170,7 @@ async function recapForWeek(
         estimate: est ? { vdot: est.vdot, lower: est.lower, upper: est.upper, confidence: est.confidence } : null,
         longestRecentM: out?.longestRecentM ?? 0,
       });
-      const proj = plan ? livePlanProjection(plan, out, ((wos ?? []) as any[]).map((w) => ({ date: w.date, status: w.status, type: w.type })), today) : null;
+      const proj = plan ? livePlanProjection(plan, out, ((wos ?? []) as any[]).map((w) => ({ id: w.id, date: w.date, status: w.status, type: w.type, source: w.source })), today) : null;
       race = {
         name: goal.name,
         distanceM: goal.distanceM,
@@ -241,6 +241,8 @@ async function recapForWeek(
     workouts: ((wos ?? []) as any[])
       .filter((w) => w.date >= ws)
       .map((w) => ({
+        id: w.id,
+        source: w.source,
         date: w.date,
         type: w.type,
         title: w.title,

@@ -12,6 +12,7 @@ import { proposeAdaptations, retarget, type AdaptWorkout, type Change } from "./
 import { buildWorkout, finalize, stepsDistance, stepsDuration, type TargetContext, type WorkoutSpec } from "./workouts";
 import { editIssues, hardSeconds, rebuildSteps, titleFor, type EditableStep } from "./edit-steps";
 import { HARD_TYPES, PLANNER_VERSION, WORKOUT_LABEL, isHard, type Baseline, type Goal, type PlanConfig, type PlanWeek, type PlannedWorkout, type Step, type WorkoutType } from "./types";
+import { stillNeeded } from "./replaced";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -375,7 +376,9 @@ export async function refreshFutureWeeks(
   if (replaceable.length) await check(db.from("planned_workouts").delete().in("id", replaceable.map((r: any) => r.id)));
   const keptTts = (rows ?? []).filter((r: any) => !replaceable.includes(r) && r.type === "time_trial" && r.status === "planned").map((r: any) => r.date as string);
   const fresh_ = easeAroundTimeTrials(
-    gen.workouts.filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial")),
+    // a kept workout (moved, edited, done, skipped) stands in for the generated one of its kind that week
+    stillNeeded(gen.workouts, (rows ?? []).filter((r: any) => !replaceable.includes(r)))
+      .filter((w) => !keptDates.has(w.date) && (allowTt || w.type !== "time_trial")),
     keptTts,
     { baseline, racePace: gen.racePace, raceLabel: raceLabelFor(goal) },
     gen.workouts,
@@ -641,6 +644,7 @@ const toAdapt =
     key: w.key,
     locked: w.locked,
     status: w.status,
+    source: w.source,
     execution: w.execution,
     rpe: w.activity_id ? (feedback.get(w.activity_id)?.rpe ?? null) : null,
   });
