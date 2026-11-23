@@ -41,7 +41,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
   const db = await createUserClient();
   const [{ data: workouts }, { data: proposals }, { data: acts }] = await Promise.all([
-    db.from("planned_workouts").select("id, date, type, title, duration_s, distance_m, key, locked, status, activity_id, execution").eq("plan_id", plan.id).order("date"),
+    db.from("planned_workouts").select("id, date, type, title, duration_s, distance_m, key, locked, status, activity_id, execution, source").eq("plan_id", plan.id).order("date"),
     db
       .from("adaptation_proposals")
       .select("id, rule, title, explanation, evidence, changes, status, decided_at")

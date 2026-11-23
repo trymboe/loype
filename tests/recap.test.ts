@@ -146,6 +146,49 @@ describe("buildWeekRecap", () => {
     expect(r.caution).toBeNull();
   });
 
+  it("doesn't count a cancelled run that was rescheduled as missed", () => {
+    const r = buildWeekRecap({
+      weekStart: WEEK,
+      runs: history(),
+      planWeeks,
+      workouts: [
+        // the weekly update planned strides on Monday after the coach had moved them to Tuesday
+        { id: "a", date: "2026-11-02", type: "strides", title: "25 min easy + 6 strides", status: "missed", key: false, durationS: 1980, source: "generator" },
+        { id: "b", date: "2026-11-03", type: "strides", title: "34 min easy run + strides", status: "completed", key: false, durationS: 2040, actualS: 2040, source: "athlete" },
+        { id: "c", date: "2026-11-05", type: "easy", title: "26 min easy", status: "completed", key: false, durationS: 1560, actualS: 1560, source: "athlete" },
+        // skipped with nothing in its place still counts
+        { id: "d", date: "2026-11-07", type: "threshold", title: "Threshold", status: "skipped", key: false, durationS: 2400, source: "generator" },
+        { id: "e", date: "2026-11-08", type: "long", title: "50 min long run", status: "completed", key: true, durationS: 3000, actualS: 3000, source: "athlete" },
+      ],
+      current: snapshotFromModel(model(42, 30), null, null),
+      previous: null,
+      comparedWith: null,
+    });
+    expect(r.plan!.sessions.map((s) => s.date)).toEqual(["2026-11-03", "2026-11-05", "2026-11-07", "2026-11-08"]);
+    expect(r.plan!.done).toBe(3);
+    expect(r.plan!.total).toBe(4);
+    expect(r.plan!.missed).toBe(0);
+    expect(r.plan!.skipped).toBe(1);
+  });
+
+  it("counts every replaced run once the week is all done", () => {
+    const r = buildWeekRecap({
+      weekStart: WEEK,
+      runs: history(),
+      planWeeks,
+      workouts: [
+        { id: "a", date: "2026-11-02", type: "strides", title: "Strides", status: "missed", key: false, durationS: 1980, source: "generator" },
+        { id: "b", date: "2026-11-03", type: "strides", title: "Strides", status: "completed", key: false, durationS: 2040, source: "athlete" },
+        { id: "c", date: "2026-11-05", type: "easy", title: "Easy", status: "completed", key: false, durationS: 1560, source: "generator" },
+        { id: "e", date: "2026-11-08", type: "long", title: "Long", status: "completed", key: true, durationS: 3000, source: "athlete" },
+      ],
+      current: snapshotFromModel(model(42, 30), null, null),
+      previous: null,
+      comparedWith: null,
+    });
+    expect(r.headline).toBe("All 3 planned runs done");
+  });
+
   it("flags a big jump in volume", () => {
     const r = buildWeekRecap({
       weekStart: WEEK,
@@ -248,7 +291,7 @@ describe("ensureWeeklyRecap", () => {
     stored.seen_at = "2026-11-09T08:00:00Z";
     db.rows("fitness_state")[0].output = model(50, 60);
     const again = (await ensureWeeklyRecap(db as any, "u", "2026-11-10"))!;
-    expect(again.recap.version).toBe("recap@2");
+    expect(again.recap.version).toBe("recap@3");
     expect((again.recap as any).adjustments).toBeUndefined();
     expect(again.seen_at).toBeNull();
     expect(again.estimates.vdot!.value).toBe(first.estimates.vdot!.value);

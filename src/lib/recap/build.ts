@@ -14,8 +14,9 @@ import { addDaysIso, weekStart } from "../dates";
 import { fmtDist, fmtTime, type Confidence } from "../analytics/fitness/estimate";
 import { formatPace } from "../units";
 import { WORKOUT_LABEL, type Phase, type PlanWeek, type WorkoutType } from "../planning/types";
+import { replacedIds } from "../planning/replaced";
 
-export const RECAP_VERSION = "recap@2";
+export const RECAP_VERSION = "recap@3";
 
 /* ------------------------------------------------------------------ */
 /* Estimate snapshot                                                   */
@@ -260,6 +261,9 @@ export interface RecapWorkout {
   durationS: number;
   /** moving time of the run it was matched to */
   actualS?: number | null;
+  id?: string;
+  /** who put it there; a cancelled run that an "athlete" one replaced is left out */
+  source?: string | null;
 }
 
 export interface RecapSession {
@@ -356,8 +360,11 @@ export function buildWeekRecap(input: {
 
   // plan: planned vs done
   const pw = input.planWeeks?.find((w) => w.start === ws) ?? null;
-  const sessions: RecapSession[] = input.workouts
-    .filter((w) => w.type !== "rest" && w.date >= ws && w.date <= we)
+  const inWeek = input.workouts.filter((w) => w.date >= ws && w.date <= we).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+  // a cancelled run that was rescheduled is not a missed one: only its replacement counts
+  const replaced = replacedIds(inWeek);
+  const sessions: RecapSession[] = inWeek
+    .filter((w) => w.type !== "rest" && !replaced.has(w.id))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((w) => ({
       date: w.date,

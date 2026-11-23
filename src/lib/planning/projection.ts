@@ -6,6 +6,7 @@
  */
 import { predictTimeS } from "../analytics/fitness/vdot";
 import { endurancePenalty } from "../analytics/fitness/estimate";
+import { replacedIds } from "./replaced";
 
 export interface Projection {
   distanceM: number;
@@ -96,9 +97,10 @@ export function liveProjection(stored: Projection, opts: { vdot: number; remaini
   });
 }
 
-/** Share of planned sessions in the last 4 weeks that were done (skipped ones you chose don't count against you). */
-export function adherence(workouts: { date: string; status: string; type: string }[], today: string, from: string): number {
-  const past = workouts.filter((w) => w.type !== "rest" && w.date < today && w.date >= from && (w.status === "completed" || w.status === "missed"));
+/** Share of planned sessions in the last 4 weeks that were done (skipped ones you chose, and rescheduled ones, don't count against you). */
+export function adherence(workouts: { id?: string; date: string; status: string; type: string; source?: string | null }[], today: string, from: string): number {
+  const replaced = replacedIds(workouts.map((w, i) => ({ ...w, id: w.id ?? `w${i}` })));
+  const past = workouts.filter((w, i) => w.type !== "rest" && w.date < today && w.date >= from && (w.status === "completed" || w.status === "missed") && !replaced.has(w.id ?? `w${i}`));
   if (past.length < 3) return 1;
   return past.filter((w) => w.status === "completed").length / past.length;
 }

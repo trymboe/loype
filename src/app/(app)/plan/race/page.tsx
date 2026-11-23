@@ -58,7 +58,7 @@ export default async function RacePage({ searchParams }: { searchParams: Promise
       .neq("type", "race")
       .order("date")
       .limit(4),
-    db.from("planned_workouts").select("date, status, type").eq("plan_id", plan.id),
+    db.from("planned_workouts").select("id, date, status, type, source").eq("plan_id", plan.id),
   ]);
   const out = fitness?.output;
   const est = out?.estimate && !out.estimate.withheld ? out.estimate : null;
