@@ -8,6 +8,7 @@ import { AddTimeTrial } from "./add-time-trial";
 import { ProjectionCard } from "@/components/plan/projection-card";
 import { PlanMonth } from "@/components/plan/plan-month";
 import { adherence, liveProjection, type Projection } from "@/lib/planning/projection";
+import { weekViews, type WeekView } from "@/lib/planning/week-view";
 import { BaselineCard, defaultsFor } from "@/components/plan/plan-start";
 import { addDaysIso, daysBetween, formatDay, todayIn, weekStart } from "@/lib/dates";
 import { createAdminClient, createUserClient, getSessionUser } from "@/lib/db/server";
@@ -56,6 +57,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const pred = d ? predictedPace(baseline, d) : null;
   const weeks = plan.weeks as PlanWeek[];
   const thisWeek = weekStart(today);
+  const views = weekViews(weeks, ws);
   const ranBy = new Map<string, number>();
   for (const a of acts ?? []) ranBy.set(weekStart(a.local_date), (ranBy.get(weekStart(a.local_date)) ?? 0) + (a.moving_s ?? 0) / 60);
   const title = goal.kind === "race" && goal.name ? goal.name : GOAL_LABEL[goal.kind as keyof typeof GOAL_LABEL];
@@ -153,7 +155,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           </Card>
         )}
 
-        <PhaseBar weeks={weeks} current={thisWeek} />
+        <PhaseBar weeks={views} current={thisWeek} />
 
         <div className="flex items-start gap-1.5 px-1">
           <div className="flex gap-1.5" aria-label="Plan view">
@@ -168,12 +170,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
         {view === "month" && <PlanMonth workouts={ws} today={today} first={weeks[0].start} last={addDaysIso(weeks.at(-1)!.start, 6)} />}
 
-        {view === "list" && weeks.map((wk) => {
+        {view === "list" && views.map((wk) => {
           const end = addDaysIso(wk.start, 6);
           const items = ws.filter((w) => w.date >= wk.start && w.date <= end);
           const isCurrent = wk.start === thisWeek;
           const past = end < today;
-          const planned = items.filter((w) => w.status !== "skipped").reduce((a, w) => a + w.duration_s / 60, 0);
+          const planned = wk.minutes;
           const ran = ranBy.get(wk.start) ?? 0;
           return (
             <details
@@ -189,7 +191,6 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                     <span className="font-normal text-muted">{formatDay(wk.start, { day: "numeric", month: "short" })}</span>
                     {isCurrent && <Badge tone="accent">This week</Badge>}
                   </div>
-                  <div className="mt-0.5 truncate text-xs text-muted">{wk.note || PHASE_LABEL[wk.phase]}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2.5 text-right">
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted" title={PHASE_LABEL[wk.phase]}>
@@ -284,17 +285,17 @@ const PHASE_COLOR: Record<Phase, string> = {
   race: "var(--intervals)",
 };
 
-function PhaseBar({ weeks, current }: { weeks: PlanWeek[]; current: string }) {
-  const max = Math.max(...weeks.map((w) => w.targetMinutes), 1);
+function PhaseBar({ weeks, current }: { weeks: WeekView[]; current: string }) {
+  const max = Math.max(...weeks.map((w) => w.minutes), 1);
   return (
     <Card>
       <CardHeader title="Phases and weekly time" className="mb-4" />
       <div className="flex h-24 items-end gap-[3px]">
         {weeks.map((w) => (
-          <div key={w.start} className="flex h-full flex-1 flex-col items-center justify-end" title={`Week ${w.index + 1}: ${PHASE_LABEL[w.phase]}, ${w.targetMinutes} min`}>
+          <div key={w.start} className="flex h-full flex-1 flex-col items-center justify-end" title={`Week ${w.index + 1}: ${PHASE_LABEL[w.phase]}, ${w.minutes} min`}>
             <div
               className={clsx("w-full rounded-[3px]", w.start === current && "ring-2 ring-fg ring-offset-2 ring-offset-[var(--surface)]")}
-              style={{ height: `${Math.max(6, (w.targetMinutes / max) * 100)}%`, background: PHASE_COLOR[w.phase] }}
+              style={{ height: `${Math.max(6, (w.minutes / max) * 100)}%`, background: PHASE_COLOR[w.phase] }}
             />
           </div>
         ))}
